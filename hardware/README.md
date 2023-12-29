@@ -44,11 +44,9 @@ parts of the case are shown below.
 The [case](case) folder contains the FreeCad (0.20.2) design files for this project.
 
 ## Power Supply
-This project requires the use of an AC - AC supply. Examples of suitable power supplies are detailed below.
+This project requires the use of an AC - AC supply. The CT6 PCB assembly is calibrated using the power supply detailed below.
 
-1 [Power supply A](https://uk.farnell.com/ideal-power/77db-10-15m/power-supply-ac-ac-11-5w-15v-0/dp/2368009?st=15v%20ac%20power%20supply)
-
-2 [Power supply B](https://www.ebay.co.uk/itm/235232679606)
+[AC - AC Power supply](https://www.ebay.co.uk/itm/235232679606)
 
 Note !!!
 
