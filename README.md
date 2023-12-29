@@ -30,6 +30,7 @@ I also added an several requirements at this point.
     - The WiFi RSSI (dBm).
     - The Temperature (°C).
 - A display to show the power on each port.
+- Single unit will have 6 ports rather than 4.
 - If possible it would be useful to have the ability to stack units so that up to 24 ports could be monitored.
 
 The development of this hardware involved schematic design, PCB layout, PCB manufacture and case design of this unit. The PCB was fabricated, assembled, tested and a 3D printed case was produced. The [hardware](hardware) folder contains details of the schematic/ PCB and  also the design for the 3D printed case. The [software](software) folder contains the source code for the CT6 unit firmware along with the other software required.
