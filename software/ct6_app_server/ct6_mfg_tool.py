@@ -314,13 +314,32 @@ class FactorySetup(CT6Base):
 
         self._uio.info("Successfully set the unit serial number.")
 
+    def _getPortRange(self):
+        """@brief Get a list of the ports to be calibrated.
+           @return The port list."""
+        portRange = [1,2,3,4,5,6]
+        if self._options.cal_ports != "all":
+            portRange = []
+            elems = self._options.cal_ports.split(",")
+            for elem in elems:
+                try:
+                    port = int(elem)
+                    if port < 1 or port > 6:
+                        raise ValueError("")
+                    portRange.append( port )
+                except ValueError:
+                    raise Exception(f"{self._options.cal_ports} is not a valid port range")
+                
+        return portRange
+    
     def calibrate(self):
         """@brief Perform the user configuration of a CT6 device."""
         self._checkAddress()
         self._uio.info(f'Factory setup and calibration of {self._ipAddress}')
 
+        portRange = self._getPortRange()
         # Add prompt for user to connect CT to each channel as its calibrated
-        for ct in range(1,7):
+        for ct in portRange:
             self._uio.info("")
             self._uio.info("Ensure no AC load is connected.")
             self._uio.getInput(f"Connect an SCT013_100A current transformer (CT) to port {ct} and press RETURN")
@@ -434,7 +453,7 @@ class FactorySetup(CT6Base):
     def _waitForPicoPath(self, exists=True):
         """@brief wait for the path that appears when the RPi Pico button is held down
            and the RPi Pico is powered up to no longer be present."""
-        self._uio.info(f"Waiting for RPi Pico W to restart.")
+        self._uio.info("Waiting for RPi Pico W to restart.")
         picoPath = self._getPicoPath()
         while True:
             if exists:
@@ -527,6 +546,7 @@ class FactorySetup(CT6Base):
         finally:
             if closeSerialPort and self._ser:
                 self._ser.close()
+                self._ser = None
                 
         self._uio.debug("_checkMicroPython(): STOP")
         
@@ -587,6 +607,7 @@ class FactorySetup(CT6Base):
         finally:
             if self._ser:
                 self._ser.close()
+                self._ser = None
                 
         return ipAddress
 
@@ -620,6 +641,7 @@ class FactorySetup(CT6Base):
         finally:
             if self._ser:
                 self._ser.close()
+                self._ser = None
         self._uio.info("The WiFi switch is working. Release the WiFi switch.")
         
         self._uio.info("Press and release the reset switch on the CT6 board.")
@@ -688,7 +710,7 @@ class FactorySetup(CT6Base):
     def _cleanConfig(self):
         """@brief Set the config to the state required to ship the CT6 unit from the factory.
                   The WiFi config is reset to the default value."""
-        self._uio.info(f"Set factory CT6 WiFi.")
+        self._uio.info("Set factory CT6 WiFi.")
         url=f"http://{self._ipAddress}/reset_wifi_config"
         return self._runRESTCmd(url)
  
@@ -710,12 +732,61 @@ class FactorySetup(CT6Base):
         # Therefore wait for the WiFi to connect.
         self._waitForWiFiReconnect() 
 
+        
+    def _waitForAppStart(self, closeSerialPort=True, timeout=60):
+        """@brief Wait for App to startup after reboot.
+           @param closeSerialPort If True then close the serial port on exit.
+           @param timeout The timeout value, in seconds, when waiting for the CT6 app to startup."""
+        self._uio.debug("_waitForAppStart(): START")
+        startTime = time()
+        try:
+            while True:
+                try:
+                    self._openSerialPort()
+                    #Wait for data to arrive
+                    sleep(0.25)
+                    now = time()
+                    if self._ser.in_waiting > 0:
+                        data = self._ser.readline()
+                        if len(data) > 0:
+                            data=data.decode()
+                            self._uio.debug(f"Serial data = {data}")
+                            if data.find("Activating WiFi") != -1:
+                                self._uio.info("CT6 App running.")
+                                break
+                except serial.SerialException as ex:
+                    self._uio.debug(f"SerialException: {str(ex)}")
+                if self._ser:
+                    self._ser.close()
+                    self._ser = None
+                    
+                if time() > startTime+timeout:
+                    raise Exception("{} second timeout waiting for CT6 app to startup.")
+                    
+        finally:
+            if closeSerialPort and self._ser:
+                self._ser.close()
+                self._ser = None
+                
+        self._uio.debug("_waitForAppStart(): STOP")
+
+
     def _setDefaultConf(self):
         """@brief Set the factory default configuration."""
         self._saveFactoryConfig()        
         self._cleanConfig()
         self._storeConfig()
-
+        self._uio.info("Rebooting with default configuration.")
+        url=f"http://{self._ipAddress}/reboot"
+        self._runRESTCmd(url)
+        self._waitForAppStart(closeSerialPort=False)
+        ledWorking = self._uio.getBoolInput("Is the blue LED next to the Reset switch flashing ? y/n")
+        if not ledWorking:
+            raise Exception("Fix the issue with the blue bluetooth LED and try again.")
+        ledWorking = self._uio.getBoolInput("Is the green LED next to the WiFi switch flashing ? y/n")
+        if not ledWorking:
+            raise Exception("Fix the issue with the green WiFi LED and try again.")
+                
     def _getFileContents(self, filename):
         """@brief Get the contents of a text file on the CT6 unit using the serial ports python prompt.
            @param filename The filename of the file to read.
@@ -934,6 +1005,7 @@ def main():
         parser.add_argument("-p", "--power_cycle",      action='store_true', help="Perform a number of power cycle tests to check the reliability of the power cycling feature.")
         parser.add_argument("-t", "--test",             action='store_true', help="Test only. This can be used on boards that are returned as faulty.")
         parser.add_argument("-r", "--restore",          action='store_true', help="Restore the factory config to the CT6 unit.")
+        parser.add_argument("--cal_ports",              help="Ports to calibrate. Default = all. The port number or comma separated list of ports (E.G 1,2,3,4,5,6) may be entered.", default="all")
 
         options = parser.parse_args()
 
