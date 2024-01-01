@@ -60,8 +60,8 @@ I also wrote an Android App that is used to connect the CT6 device to a WiFi net
 More information on this is detailed in the [Android App](software/Android_App/README.md) folder in the software folder.
 
 # Purchasing CT6 units
-If you are interested in purchasing the assembled PCB or a PCB + the case please email pausten.os@gmail.com to
-register your interest. I have some available and could add them to https://www.tindie.com/ to allow them to be purchased.
+If you are interested in purchasing a PCB, assembled PCB or the case please email pausten.os@gmail.com to
+register your interest. I'll let you know when I have parts available and I plan to add them to https://www.tindie.com/ when they are available.
 
 # Discalimer
 This project is designed to use the YHDC SCT013 100A 0-1V split core current transformer. No other current transformer is currently supported. As mains voltage is dangerous it is the users responsibility to connect these current clamps using this hardware.
