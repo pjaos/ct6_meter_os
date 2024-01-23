@@ -39,12 +39,17 @@ parts of the case are shown below.
 
 ![alt text](images/switch_and_led_plate.png "CT6 Switch an LED light Pipe Plate")
 
+The two small holes in the above part are drilled using a 1.8mm drill bit. Then a length of clear PETG filament is inserted
+into the hole. Each end is then cut off to create light pipes.
+
 ![alt text](images/button.png "CT6 Button")
 
 The [case](case) folder contains the FreeCad (0.20.2) design files for this project.
 
 ## Power Supply
 This project requires the use of an AC - AC supply. The CT6 PCB assembly is calibrated using the power supply detailed below.
+
+![alt text](images/test_psu.jpg "CT6 PSU")
 
 [AC - AC Power supply](https://www.ebay.co.uk/itm/235232679606)
 
