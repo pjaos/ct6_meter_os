@@ -18,6 +18,8 @@ from .base_constants import BaseConstants
 class YView(BaseConstants):
     """@brief Manage connections to the YView network."""
 
+    RX_TIME_SECS = "RX_TIME_SECS"
+
     def __init__(self, uio, config):
         """@brief Constructor
            @param uio A UIO instance.
@@ -455,6 +457,7 @@ class LocalYViewCollector(BaseConstants):
         self._running = True
         while self._running:
             data = sock.recv(65536)
+            rxTime = time()
             #Ignore the message we sent
             if data != AreYouThereThread.AreYouThereMessage:
                 try:
@@ -463,6 +466,8 @@ class LocalYViewCollector(BaseConstants):
                     if BaseConstants.PRODUCT_ID in rx_dict:
                         prodID = rx_dict[BaseConstants.PRODUCT_ID]
                         if prodID in self._validProuctIDList:
+                            # Add the time we received the message to the rx_dict
+                            rx_dict[YView.RX_TIME_SECS]=rxTime
                             self._updateListeners(rx_dict)
                             
                         if BaseConstants.IP_ADDRESS in rx_dict:
@@ -490,7 +495,11 @@ class LocalYViewCollector(BaseConstants):
     def _updateListeners(self, devData):
         """@brief Update all listeners with the device data."""
         for devListener in self._devListenerList:
+            startTime = time()
+            dataLen = len(devData)
             devListener.hear(devData)
+            exeSecs = time() - startTime 
+            self._uio.debug(f"EXET: devListener.hear(devData) Took {exeSecs:.6f} seconds to execute.")
                 
     def setValidProuctIDList(self, validProductIDList):
         """@brief Set a list of product ID's that we're interested in.

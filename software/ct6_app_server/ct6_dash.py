@@ -13,7 +13,7 @@ from time import time, sleep
 from datetime import datetime, timedelta, date
 
 from bokeh.layouts import column, row
-from bokeh.models import Div, Button, HoverTool
+from bokeh.models import Div, Button, HoverTool, CustomJS
 from bokeh.models import TabPanel, Tabs
 from bokeh.models.css import Styles
 from bokeh.plotting import figure, ColumnDataSource
@@ -69,7 +69,7 @@ class GUI(MultiAppServer):
     ENABLE_ACTION_BUTTONS       = "ENABLE_ACTION_BUTTONS"
     SUMMARY_ROW                 = "SUMMARY_ROW"
 
-    XAXIS_NAME                  = "date"
+    X_AXIS_NAME                 = "date"
     DEFAULT_YAXIS_NAME          = "kW"
     AC_VOLTS_YAXIS_NAME         = "Volts"
     AC_FREQ_YAXIS_NAME          = "Hertz"
@@ -134,6 +134,7 @@ class GUI(MultiAppServer):
 
         self._plotPanel = None
         self._updatePlotType = GUI.PLOT_TYPE_POWER_ACTIVE
+        self._cmdButtonList = []
 
     def getAppMethodDict(self):
         """@return The server app method dict."""
@@ -226,7 +227,7 @@ class GUI(MultiAppServer):
            @param event The button event."""
         today = datetime.today()
         self._startDateTimePicker.value = today.date()
-        endDateTime = today.replace(hour=23, minute=59)
+        endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
@@ -237,7 +238,7 @@ class GUI(MultiAppServer):
         today = datetime.today()
         yesterday = today - timedelta(days = 1)
         self._startDateTimePicker.value = yesterday.date()
-        endDateTime = yesterday.replace(hour=23, minute=59)
+        endDateTime = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
        # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
@@ -250,7 +251,7 @@ class GUI(MultiAppServer):
         startOfWeek = today - timedelta(days = dayOfWeek)
         today = datetime.today()
         self._startDateTimePicker.value = startOfWeek.date()
-        endDateTime = today.replace(hour=23, minute=59)
+        endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
@@ -263,7 +264,7 @@ class GUI(MultiAppServer):
         endOfLastWeek = today - timedelta(days = dayOfWeek+1)
         startOfLastWeek = endOfLastWeek - timedelta(days = 6)
         self._startDateTimePicker.value = startOfLastWeek.date()
-        endDateTime = endOfLastWeek.replace(hour=23, minute=59)
+        endDateTime = endOfLastWeek.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
@@ -275,7 +276,7 @@ class GUI(MultiAppServer):
         dayOfMonth = today.day
         firstDayOfMonth = today - timedelta(days = dayOfMonth-1)
         self._startDateTimePicker.value = firstDayOfMonth.date()
-        endDateTime = today.replace(hour=23, minute=59)
+        endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
@@ -289,7 +290,7 @@ class GUI(MultiAppServer):
         daysInLastMonth = calendar.monthrange(lastDayOfLastMonth.year, lastDayOfLastMonth.month)[1]
         firstDayOfLastMonth = lastDayOfLastMonth - timedelta(days = daysInLastMonth-1)
         self._startDateTimePicker.value = firstDayOfLastMonth.date()
-        endDateTime = lastDayOfLastMonth.replace(hour=23, minute=59)
+        endDateTime = lastDayOfLastMonth.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
@@ -298,10 +299,8 @@ class GUI(MultiAppServer):
         """@brief Process button click.
            @param event The button event."""
         today = datetime.today()
-        firstDayOfYear = date(date.today().year, 1, 1)
-        self._startDateTimePicker.value = firstDayOfYear
-        endDateTime = today.replace(hour=23, minute=59)
-        self._stopDateTimePicker.value = endDateTime
+        self._startDateTimePicker.value = datetime(today.year, 1, 1, 0, 0 , 0, 0)
+        self._stopDateTimePicker.value  = datetime(today.year, 12, 31, 23,59, 39, 999999)
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -309,11 +308,8 @@ class GUI(MultiAppServer):
         """@brief Process button click.
            @param event The button event."""
         today = date.today()
-        firstDayOfLastYear = date(today.year-1, 1, 1)
-        lastDayOfLastYear = date(today.year-1, 12, 31)
-        self._startDateTimePicker.value = firstDayOfLastYear
-        endDateTime = lastDayOfLastYear.replace(hour=23, minute=59)
-        self._stopDateTimePicker.value = endDateTime
+        self._startDateTimePicker.value = datetime(today.year-1, 1, 1, 0, 0 , 0, 0)
+        self._stopDateTimePicker.value  = datetime(today.year-1, 12, 31, 23,59, 39, 999999)
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -357,26 +353,22 @@ class GUI(MultiAppServer):
         else:
             self._doc.add_next_tick_callback(self._setButtonsDisabled)
 
+    def _enableButtons(self, enabled):
+        """@brief Enable/disable buttons.
+           @param enabled True if buttons are to be enabled."""
+        for button in self._cmdButtonList:
+            button.disabled = not enabled
+            
     def _setButtonsActive(self):
-        self._powerButton.disabled = False
-        self._powerFactorButton.disabled = False
-        self._voltageButton.disabled = False
-        self._freqButton.disabled = False
-        self._tempButton.disabled = False
-        self._rssiButton.disabled = False
+        self._enableButtons(True)
 
     def _setButtonsDisabled(self):
-        self._powerButton.disabled = True
-        self._powerFactorButton.disabled = True
-        self._voltageButton.disabled = True
-        self._freqButton.disabled = True
-        self._tempButton.disabled = True
-        self._rssiButton.disabled = True
-
+        self._enableButtons(False)
+    
     def _getActionButtonPanel(self):
         self._powerButton = Button(label="Power", button_type=GUI.BUTTON_TYPE)
         self._powerButton.on_click(self._powerButtonHandler)
-
+        
         self._powerFactorButton = Button(label="Power Factor", button_type=GUI.BUTTON_TYPE)
         self._powerFactorButton.on_click(self._powerFactorButtonHandler)
 
@@ -465,17 +457,29 @@ class GUI(MultiAppServer):
 
         self._lastYearButton = Button(label="Last Year", button_type=GUI.BUTTON_TYPE)
         self._lastYearButton.on_click(self._lastYearButtonHandler)
-
-        self._startDateTimePicker = DatetimePicker(title='Start date (year-month-day hour:min)', width=300)
-        self._stopDateTimePicker = DatetimePicker(title='Stop date (year-month-day hour:min)', width=300)
+        
+        addStartDaybutton = Button(label = ">")
+        addStartDaybutton.on_click(self._addStartDayCallBack)
+        
+        subtractStartDaybutton = Button(label = "<")
+        subtractStartDaybutton.on_click(self._subtractStartDayCallBack)
+                 
+        addStopDaybutton = Button(label = ">") 
+        addStopDaybutton.on_click(self._addStopDayCallBack)
+        
+        subtractStopDaybutton = Button(label = "<")
+        subtractStopDaybutton.on_click(self._subtractStopDayCallBack)
+        
+        self._startDateTimePicker = DatetimePicker(title='Start (year-month-day hour:min)')
+        self._stopDateTimePicker = DatetimePicker(title='Stop (year-month-day hour:min)')
 
         # Div to move the table down to the top edge of the plot.
         div1 = Div(height=20)
         leftButtonPanel = column(children=[self._todayButton, self._thisWeekButton, self._thisMonthButton, self._thisYearButton])
         rightButtonPanel = column(children=[self._yesterdayButton, self._lastWeekButton, self._lastMonthButton, self._lastYearButton])
         buttonPanel0 = row(children=[leftButtonPanel, rightButtonPanel])
-        buttonPanel1 = row(children=[self._startDateTimePicker], width=300)
-        buttonPanel2 = row(children=[self._stopDateTimePicker], width=300)
+        buttonPanel1 = row(children=[subtractStartDaybutton, self._startDateTimePicker, addStartDaybutton], width=200)
+        buttonPanel2 = row(children=[subtractStopDaybutton, self._stopDateTimePicker, addStopDaybutton], width=200)
         self._line0StatusDiv = Div()
         self._line1StatusDiv = Div()
         self._line2StatusDiv = Div()
@@ -505,9 +509,9 @@ class GUI(MultiAppServer):
                                         buttonPanel4,
                                         buttonPanel5])
 
-        resLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content=f"Select the plot resolution.", position="left"))
-        pwrTypeLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content=f"Select the power type. Active = Power normally charged by electricity supplier.", position="left"))
-        pwrPolarityLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content=f"Select imported electrical power to be plotted as negative or positive values.", position="left"))
+        resLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content="Select the plot resolution.", position="left"))
+        pwrTypeLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content="Select the power type. Active = Power normally charged by electricity supplier.", position="left"))
+        pwrPolarityLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content="Select imported electrical power to be plotted as negative or positive values.", position="left"))
 
         labelPanel = column(children=[resLabelButton,
                                       pwrTypeLabelButton,
@@ -530,8 +534,47 @@ class GUI(MultiAppServer):
                                        self._line3StatusDiv,
                                        self._line4StatusDiv,
                                        self._line5StatusDiv])
+        
+        self._cmdButtonList = ( self._powerButton,
+                                self._powerFactorButton,
+                                self._voltageButton,
+                                self._freqButton,
+                                self._tempButton,
+                                self._rssiButton,
+                                self._todayButton,
+                                self._yesterdayButton,
+                                self._thisWeekButton,
+                                self._lastWeekButton,
+                                self._thisMonthButton,
+                                self._lastMonthButton,
+                                self._thisYearButton,
+                                self._lastYearButton)
 
         return buttonPanel
+
+    def _addStartDayCallBack(self, event):
+        """@brief Called when the associated button is clicked to add a day to the start time.
+           @param event The event that triggered the method call."""
+        dateTimeObj=datetime.fromtimestamp(self._startDateTimePicker.value/1000)
+        self._startDateTimePicker.value = dateTimeObj + timedelta(days=1)
+        
+    def _subtractStartDayCallBack(self, event):
+        """@brief Called when the associated button is clicked to subtract a day to the start time.
+           @param event The event that triggered the method call."""
+        dateTimeObj=datetime.fromtimestamp(self._startDateTimePicker.value/1000)
+        self._startDateTimePicker.value = dateTimeObj - timedelta(days=1)
+        
+    def _addStopDayCallBack(self, event):
+        """@brief Called when the associated button is clicked to add a day to the stop time.
+           @param event The event that triggered the method call."""
+        dateTimeObj=datetime.fromtimestamp(self._stopDateTimePicker.value/1000)
+        self._stopDateTimePicker.value = dateTimeObj + timedelta(days=1)
+
+    def _subtractStopDayCallBack(self, event):
+        """@brief Called when the associated button is clicked to subtract a day to the stop time.
+           @param event The event that triggered the method call."""
+        dateTimeObj=datetime.fromtimestamp(self._stopDateTimePicker.value/1000)
+        self._stopDateTimePicker.value = dateTimeObj - timedelta(days=1)
 
     def _getSelectedDataBase(self):
         """@brief The user can select the tab on the GUI. This tab is the name of the database for the CT6
@@ -681,6 +724,7 @@ class GUI(MultiAppServer):
         # Using rem rather than px can help ensure consistency of font size and spacing throughout your UI.
         fontSize='1rem'
         theme = "dark_minimal"
+        self._plotPanels = []
 
         self._dbTableList = []
         self._cdsDict = {}
@@ -688,7 +732,7 @@ class GUI(MultiAppServer):
             devInfoDict = self._metaDataDict[dbName]
 
             colors = itertools.cycle(Category20_20)
-
+            
             # One panel multiple plot traces
             # By default select the zoom tool
             self._plotPanel = figure(title="",
@@ -696,13 +740,15 @@ class GUI(MultiAppServer):
                                tools=GUI.TOOLS,
                                toolbar_location="below",
                                x_axis_type='datetime',
-                               active_drag="box_zoom")
+                               active_drag="box_zoom",
+                               y_axis_label="kW")
+            self._plotPanels.append(self._plotPanel)
             # PJA: This simply reverses the values on the plot. Not used as when inverting the data we also
             #      want the kWh table to be updated.
 #            self._plotPanel.y_range.flipped = True
-
+            
             hover = HoverTool()
-            dateS =  '@{}'.format(GUI.XAXIS_NAME)
+            dateS =  '@{}'.format(GUI.X_AXIS_NAME)
             dateS += '{%F}'
             hover.tooltips = [("","$name"),("kW", "$y{1.1f}"), ('date', "$x{%Y-%m-%d}"), ('time', "$x{%H:%M:%S}"), ("sample", "$index")]
             hover.formatters = {'$x': 'datetime'}
@@ -719,9 +765,10 @@ class GUI(MultiAppServer):
             for i in range(0,6):
                 if plotNames[i] and len(plotNames[i]) > 0:
 
-                    cds = ColumnDataSource({GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []})
+                    cds = ColumnDataSource({GUI.X_AXIS_NAME: [],
+                                            GUI.DEFAULT_YAXIS_NAME: []})
                     self._cdsDict[dbName + plotNames[i]] = cds
-                    self._plotPanel.line(GUI.XAXIS_NAME, GUI.DEFAULT_YAXIS_NAME, source=cds, name=plotNames[i], legend_label=plotNames[i], line_color=next(colors), line_width=3)
+                    self._plotPanel.line(GUI.X_AXIS_NAME, GUI.DEFAULT_YAXIS_NAME, source=cds, name=plotNames[i], legend_label=plotNames[i], line_color=next(colors), line_width=3)
                     self._plotPanel.legend.click_policy="hide"
 
             # The dBname = the device name = the tab name
@@ -734,6 +781,8 @@ class GUI(MultiAppServer):
         leftPanel = column(children=[self._allTabsPanel], sizing_mode="stretch_both")
         mainPanel = row(children=[leftPanel, controlPanel], sizing_mode="stretch_both")
 
+        self._updateYAxis()
+        
         self._doc.add_root( mainPanel )
 
         self._doc.theme = theme
@@ -742,6 +791,42 @@ class GUI(MultiAppServer):
         # On Startup set the start/stop dates to show today's data.
         self._todayButtonHandler(None)
 
+    def _updateYAxis(self):
+        """@brief Add the callbacks to set the Y Axis label."""
+        for pp in self._plotPanels:
+            pwrCallback = CustomJS(args=dict(axis=pp.yaxis[0]), code="""
+                axis.axis_label = "kW"
+            """)
+            self._powerButton.js_on_click(pwrCallback)
+            self._todayButton.js_on_click(pwrCallback)
+            self._yesterdayButton.js_on_click(pwrCallback)
+            self._thisWeekButton.js_on_click(pwrCallback)
+            self._lastWeekButton.js_on_click(pwrCallback)
+            self._thisMonthButton.js_on_click(pwrCallback)
+            self._lastMonthButton.js_on_click(pwrCallback)
+            self._thisYearButton.js_on_click(pwrCallback)
+            self._lastYearButton.js_on_click(pwrCallback)
+            pwrFactorCallback = CustomJS(args=dict(axis=pp.yaxis[0]), code="""
+                axis.axis_label = "Power Factor"
+            """)
+            self._powerFactorButton.js_on_click(pwrFactorCallback)
+            voltageCallback = CustomJS(args=dict(axis=pp.yaxis[0]), code="""
+                axis.axis_label = "Volts"
+            """)
+            self._voltageButton.js_on_click(voltageCallback)
+            freqCallback = CustomJS(args=dict(axis=pp.yaxis[0]), code="""
+                axis.axis_label = "Hz"
+            """)
+            self._freqButton.js_on_click(freqCallback)
+            tempCallback = CustomJS(args=dict(axis=pp.yaxis[0]), code="""
+                axis.axis_label = "°C"
+            """)
+            self._tempButton.js_on_click(tempCallback)
+            rssiCallback = CustomJS(args=dict(axis=pp.yaxis[0]), code="""
+                axis.axis_label = "dBm"
+            """)
+            self._rssiButton.js_on_click(rssiCallback)
+            
     def _plotSingleField(self, plotName, units, appPlotField, rxDict):
         """@brief Show a single value list on the plot area
            @param plotName The name of the plot.
@@ -769,12 +854,12 @@ class GUI(MultiAppServer):
                 if dbName in rxDict:
                     data = rxDict[dbName]
                     #Replace the data set with empty sets to remove traces from plot
-                    ct1Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct2Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct3Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct4Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct5Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct6Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct1Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct2Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct3Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct4Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct5Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct6Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
 
                     # Remove all data from other traces and use CT1 to display the single trace of interest
                     self._cdsDict[ct2TraceKey].data = ct2Dict
@@ -787,7 +872,7 @@ class GUI(MultiAppServer):
                         if appPlotField in recordDict and \
                            BaseConstants.TIMESTAMP in recordDict:
                             ts = recordDict[BaseConstants.TIMESTAMP]
-                            ct1Dict[GUI.XAXIS_NAME].append(ts)
+                            ct1Dict[GUI.X_AXIS_NAME].append(ts)
                             ct1Dict[GUI.DEFAULT_YAXIS_NAME].append(recordDict[appPlotField])
                     # Plot the value of interest using the ct1Dict trace
                     self._cdsDict[ct1TraceKey].data = ct1Dict
@@ -852,28 +937,24 @@ class GUI(MultiAppServer):
         else:
 
             if self._updatePlotType == GUI.PLOT_TYPE_AC_VOLTS:
-                self._plotPanel.yaxis.axis_label = GUI.AC_VOLTS_YAXIS_NAME
                 appPlotField = BaseConstants.VOLTAGE
                 plotName = "AC Voltage"
                 units = GUI.AC_VOLTS_YAXIS_NAME
                 self._plotSingleField(plotName, units, appPlotField, rxDict)
 
             elif self._updatePlotType == GUI.PLOT_TYPE_AC_FREQ:
-                self._plotPanel.yaxis.axis_label = GUI.AC_FREQ_YAXIS_NAME
                 appPlotField = BaseConstants.FREQUENCY
                 plotName = "AC Frequency"
                 units = GUI.AC_FREQ_YAXIS_NAME
                 self._plotSingleField(plotName, units, appPlotField, rxDict)
 
             elif self._updatePlotType == GUI.PLOT_TYPE_TEMP:
-                self._plotPanel.yaxis.axis_label = GUI.TEMP_YAXIS_NAME
                 appPlotField = BaseConstants.TEMPERATURE
                 plotName = "CT6 device Temperature"
                 units = GUI.TEMP_YAXIS_NAME
                 self._plotSingleField(plotName, units, appPlotField, rxDict)
 
             elif self._updatePlotType == GUI.PLOT_TYPE_RSSI:
-                self._plotPanel.yaxis.axis_label = GUI.RSSI_YAXIS_NAME
                 appPlotField = BaseConstants.RSSI_DBM
                 plotName = "WiFi RSSI"
                 units = GUI.RSSI_YAXIS_NAME
@@ -881,7 +962,6 @@ class GUI(MultiAppServer):
 
             else:
                 self._plotKWH(rxDict, self._updatePlotType)
-
 
         exeTime = time()-startT
         self._uio.debug(f"{fName}: Execution time {exeTime:.1f} seconds.")
@@ -893,8 +973,7 @@ class GUI(MultiAppServer):
            @param plotType The type of data to plot."""
         try:
             self._showStatus(0, "Plotting Data...")
-            invertKw = self._invertKW()
-            self._plotPanel.yaxis.axis_label = GUI.DEFAULT_YAXIS_NAME
+            
             fieldNameList = None
             if plotType == GUI.PLOT_TYPE_POWER_ACTIVE:
                 fieldNameList = (BaseConstants.CT1_ACT_WATTS,
@@ -904,10 +983,12 @@ class GUI(MultiAppServer):
                                  BaseConstants.CT5_ACT_WATTS,
                                  BaseConstants.CT6_ACT_WATTS)
 
-                if invertKw:
-                    self._line1StatusDiv.text = "Values above 0 = Electricity imported from the grid."
-                else:
-                    self._line1StatusDiv.text = "Values below 0 = Electricity imported from the grid."
+                 # Not sure how useful this message is, it may confuse rather than inform.
+#                 invertKw = self._invertKW()
+#                if invertKw:
+#                    self._line1StatusDiv.text = "Values above 0 = Electricity imported from the grid."
+#                else:
+#                    self._line1StatusDiv.text = "Values below 0 = Electricity imported from the grid."
 
             elif plotType == GUI.PLOT_TYPE_POWER_REACTIVE:
                 fieldNameList = (BaseConstants.CT1_REACT_WATTS,
@@ -988,12 +1069,12 @@ class GUI(MultiAppServer):
                         ct6TraceKey=dbName+ct6Name
 
                     #Replace the data set
-                    ct1Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct2Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct3Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct4Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct5Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
-                    ct6Dict = {GUI.XAXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct1Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct2Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct3Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct4Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct5Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
+                    ct6Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
 
                     for _row in rowList:
 
@@ -1069,7 +1150,7 @@ class GUI(MultiAppServer):
            @param plotType The type of data being plotted."""
         invertKw = self._invertKW()
         ts = rowData[BaseConstants.TIMESTAMP]
-        plotDict[GUI.XAXIS_NAME].append(ts)
+        plotDict[GUI.X_AXIS_NAME].append(ts)
         if plotType == GUI.PLOT_TYPE_POWER_FACTOR:
             plotDict[GUI.DEFAULT_YAXIS_NAME].append(abs(rowData[key]))
         else:
@@ -1082,7 +1163,7 @@ class GUI(MultiAppServer):
         # the user sees a stepped chart
         if self._resRadioButtonGroup.active == GUI.HOUR_RESOLUTION:
             ts=ts=ts.replace(minute=59, second=59, microsecond=999)
-            plotDict[GUI.XAXIS_NAME].append(ts)
+            plotDict[GUI.X_AXIS_NAME].append(ts)
             if plotType == GUI.PLOT_TYPE_POWER_FACTOR:
                 plotDict[GUI.DEFAULT_YAXIS_NAME].append(abs(rowData[key]))
             else:
@@ -1096,7 +1177,7 @@ class GUI(MultiAppServer):
         # the user sees a stepped chart
         if self._resRadioButtonGroup.active == GUI.DAY_RESOLUTION:
             ts=ts=ts.replace(hour=23, minute=59, second=59, microsecond=999)
-            plotDict[GUI.XAXIS_NAME].append(ts)
+            plotDict[GUI.X_AXIS_NAME].append(ts)
             if plotType == GUI.PLOT_TYPE_POWER_FACTOR:
                 plotDict[GUI.DEFAULT_YAXIS_NAME].append(abs(rowData[key]))
             else:
@@ -1167,9 +1248,15 @@ class GUI(MultiAppServer):
            @param stopDateTime The last date/time of interest as epoch time.
            @param The resolution of the data to read.
            @return A dict containing the results of the DB read."""
+        results={}
         # Start and stop dates are in milliseconds since epoch time, convert to seconds since epoch time.
         startDT=datetime.fromtimestamp(startDateTime/1000)
         stopDT=datetime.fromtimestamp(stopDateTime/1000)
+        if startDT >= stopDT:
+            self._error("Stop must be after the start date.")
+            self._sendEnableActionButtonsMsg(True)
+            return results
+
         startDate = startDT.strftime("%Y-%m-%d")
         stopDate = stopDT.strftime("%Y-%m-%d")
         startHoursMins = startDT.strftime("%H:%M")
@@ -1179,7 +1266,6 @@ class GUI(MultiAppServer):
         startT = time()
         fName = inspect.currentframe().f_code.co_name
         self._uio.debug(f"{fName}: startDate={startDate}, stopDate={stopDate}, resolution={resolution}")
-        results={}
         connectedToDB = False
         try:
             cmd = "use {};".format(dBName)
@@ -1242,8 +1328,7 @@ class GUI(MultiAppServer):
                 recordCount = len(responseTuple)
         self._uio.debug("Found {} records.".format( recordCount ))
         if recordCount > self._options.maxpp:
-#                self._error(f"Reduce plot resolution. {recordCount} is greater than the max plot points ({self._options.maxpp}).")
-            self._error(f"Reduce the plot resolution as we have to many values ({recordCount} > {self._options.maxpp}).")
+            self._error(f"Reduce plot resolution ({recordCount} values read, max = {self._options.maxpp}).")
             self._sendEnableActionButtonsMsg(True)
         else:
             results[dBName]=responseTuple

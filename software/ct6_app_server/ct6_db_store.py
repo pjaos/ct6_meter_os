@@ -34,14 +34,23 @@
 # apt-get install libbz2-dev
 # And then rebuild Python as the bz2 module was missing.
 #
+import warnings
+warnings.filterwarnings('ignore')
+
+import sys
 import argparse
 import threading
 import traceback
+import inspect
+import os
 
+import numpy as np
 import pandas as pd
+import MySQLdb
 
 from time import time
-from datetime import datetime
+from datetime import datetime, timedelta
+from tempfile import gettempdir
 
 from p3lib.helper import logTraceBack
 from p3lib.uio import UIO
@@ -50,7 +59,7 @@ from p3lib.ssh import SSH
 
 from lib.config import ConfigBase
 from lib.db_handler import DBHandler
-from lib.yview import YViewCollector, LocalYViewCollector
+from lib.yview import YViewCollector, LocalYViewCollector, YView
 from lib.base_constants import BaseConstants
 
 class CTDBClientConfig(ConfigBase):
@@ -65,11 +74,47 @@ class CTDBClientConfig(ConfigBase):
         ConfigBase.DB_USERNAME:                "",
         ConfigBase.DB_PASSWORD:                ""
     }
+
+class LockFile(object):
+               
+    def __init__(self, lockFilename):
+        """@brief Construct a ProcessLock instance.
+           @param lockFilename The name (no path) of the lock file."""
+        self._lockFile = self._getLockFile(lockFilename)
+           
+    def _getLockFile(self, lockFilename):
+        """@return The full path name of the lock file.
+           @param lockFilename The name of the lock file."""
+        return os.path.join( gettempdir(), lockFilename)
+        
+    def getLockFile(self):
+        """@return The full path of the lock file."""
+        return self._lockFile 
+
+    def isLockFilePresent(self):
+        """@return True if the process lock file is present."""
+        fileFound = False
+        if os.path.isfile(self._lockFile):
+            fileFound = True
+        return fileFound
     
+    def createLockFile(self):
+        """@brief Create the process lock file. The file is created and is overwritten if already present."""
+        with open(self._lockFile , 'w'):
+            pass
+
+    def removeLockFile(self):
+        """@brief Ensure no lock file is present. Remove it if it is present."""
+        if os.path.isfile(self._lockFile):
+            os.remove(self._lockFile)
+
+          
 class MySQLDBClient(BaseConstants):
     """@Responsible for
         - Providing an interface to view and change a database.."""
     
+    LOCK_FILE_NAME = "MySQLDBClient.lock"
+               
     @staticmethod
     def AddToTable(tableName, dictData, databaseIF):
         """@brief Add data to table. We assume this is in the currently selected database.
@@ -89,6 +134,64 @@ class MySQLDBClient(BaseConstants):
         sql += ');'
         databaseIF.executeSQL(sql)
   
+    @staticmethod
+    def AddListsToTable(tableName, colNameList, valueList, databaseIF):
+        """@brief Add data to table. We assume this is in the currently selected database.
+           @param tableName The name of the table to add to. If the table does not exist it will be created.
+           @param colNameList A list of the column names to be added to the table.
+           @param valueList A list of the column values to be added to the table (single row).
+           @param databaseIF The database interface instance."""
+        sql = "NOSQL"
+        try:
+            # Check for NaN ignoring the timestamp column
+            containsNaN = np.isnan(np.array(valueList[1:])).any()
+            #If not all the columns are valid
+            if not containsNaN:
+                sql = 'INSERT INTO `' + tableName
+                sql += '` ('
+                sql += ', '.join(colNameList)
+                sql += ') VALUES ('
+                sql += ', '.join(map(DatabaseIF.GetQuotedValue, valueList))
+                sql += ');'
+
+                databaseIF.executeSQL(sql)
+        except:
+            print(f"SQL CMD FAILED: {sql}")
+            raise
+        
+    @staticmethod
+    def AddBatchRowsToTable(tableName, colNameList, batchValueList, databaseIF):
+        """@brief Add data to table in batches of rows to reduce execution time. We assume this is in the currently selected database.
+           @param tableName The name of the table to add to. If the table does not exist it will be created.
+           @param colNameList A list of the column names to be added to the table.
+           @param batchValueList A list of rows to be added to the table. Each element contains a list of the column 
+                  values to be added to the table (single row).
+           @param databaseIF The database interface instance."""
+        sql = "NOSQL"
+        try:
+            validBatchList = []
+            # Check for NaN ignoring the timestamp column on each set of row data
+            for valueList in batchValueList:
+                containsNaN = np.isnan(np.array(valueList[1:])).any()
+                if not containsNaN:
+                    validBatchList.append(valueList)
+
+            #If not all the columns are valid
+            if len(validBatchList) > 0:
+                sql = 'INSERT INTO `' + tableName
+                sql += '` ('
+                sql += ', '.join(colNameList) + ') VALUES'
+                for valueList in validBatchList:
+                    sql += ' ('
+                    sql += ', '.join(map(DatabaseIF.GetQuotedValue, valueList)) + '),'
+                sql = sql.rstrip(',')
+                sql += ';'
+                databaseIF.executeSQL(sql)
+
+        except:
+            print(f"SQL CMD FAILED: {sql}")
+            raise
+
     def __init__(self, uio, options, config):
         """@brief Constructor
            @param uio A UIO instance
@@ -104,7 +207,9 @@ class MySQLDBClient(BaseConstants):
             self._tableSchema       = self.getTableSchema()
         except:
             self._tableSchema       = ""
-        self._startTime             = time()           
+        self._startTime             = time()
+        self._sqlCmdCount           = 0
+        self._lockFile              = LockFile(MySQLDBClient.LOCK_FILE_NAME)
 
     def _setupDBConfig(self, dbName=None):
         """@brief Setup the internal DB config
@@ -322,100 +427,241 @@ class MySQLDBClient(BaseConstants):
         self._uio.info("PJA: TODO")
         #self._uio.info("LOCATION:VARCHAR(64) TIMESTAMP:TIMESTAMP VOLTS:FLOAT(5,2) AMPS:FLOAT(5,2) WATTS:FLOAT(10,2)")
     
+    def getDBNameList(self):
+        """@brief Get a list of all the CT6 databases on the database server.
+                  Mus be connected to the database server before calling this. """
+        ct6DatabaseList = []
+        self._uio.info("Checking databases...")
+        sql = 'SHOW DATABASES;'
+        recordTuple = self._dataBaseIF.executeSQL(sql)
+        self._sqlCmdCount += 1
+        for record in recordTuple:
+            if 'Database' in record:
+                dBname = record['Database']
+                sql = 'USE {};'.format(dBname)                   
+                recordTuple = self._dataBaseIF.executeSQL(sql)
+                self._sqlCmdCount += 1
+                sql = 'SHOW TABLES;'
+                recordTuple = self._dataBaseIF.executeSQL(sql)
+                self._sqlCmdCount += 1
+                key = 'Tables_in_{}'.format(dBname)
+                for record in recordTuple:
+                    tableName = record[key]
+                    if tableName == MySQLDBClient.CT6_TABLE_NAME:
+                        ct6DatabaseList.append(dBname)
+                        break
+        return ct6DatabaseList
+
     def createLowResTables(self):
-        """@brief Create tables with lower resolution data derived from the main sensor table.
-                  These are created because they are faster to than the full resolution data."""            
+        """@brief Create tables with lower resolution data. These tables are derived from the main CT6_SENSOR table data.
+                  These are created because they are faster to access max resolution data 
+                  which are updated about once a second."""    
+        self._uio.warn("!!! Deleting and recreating the min, hour and day tables can take a long time.")   
+        self._uio.warn("!!! This is particularly true when you have a lot of data.")   
+        self._uio.warn("!!! Once started this process should be left to complete.")   
+        yes = self._uio.getBoolInput("Are you sure you want to do this ? y/n")
+        if not yes:
+            return  
         try:
-            self._uio.info("Creating Hour and Day tables...")
+            self._sqlCmdCount = 0
             self._setupDBConfig()
             self._dataBaseIF.connectNoDB()
-            sql = 'SHOW DATABASES;'
-            recordTuple = self._dataBaseIF.executeSQL(sql)
-            for record in recordTuple:
+            dbNameList = self.getDBNameList()
+            for dBname in dbNameList:
+                sql = 'USE {};'.format(dBname)                   
+                self._dataBaseIF.executeSQL(sql)
+                
+                self._uio.info(f"Creating Hour and Day tables in the {dBname} database.")
+                # Delete all derived tables.
+                for tableName in MySQLDBClient.LOW_RES_DATA_TABLE_LIST:
+                    try:
+                        self._dataBaseIF.dropTable(tableName)
+                    except:
+                        pass
+                # Create empty derived tables.
+                recordSets=[]
+                for tableName in MySQLDBClient.LOW_RES_DATA_TABLE_LIST:                     
+                    self._dataBaseIF.createTable(tableName, MySQLDBClient.GetTableSchema(CTDBClient.CT6_DB_TABLE_SCHEMA) )                            
+                    self._uio.info(f"Created {tableName} table in {dBname}.")
+                    # Create empty lists to be used later
+                    recordSets.append([])
+    
+                self.updateLowResTables(dBname)
+                
                 startTime = time()
-                if 'Database' in record:
-                    dBname = record['Database']
-                    sql = 'USE {};'.format(dBname)
-                    recordTuple = self._dataBaseIF.executeSQL(sql)
-                    sql = 'SHOW TABLES;'
-                    recordTuple = self._dataBaseIF.executeSQL(sql)
-                    key = 'Tables_in_{}'.format(dBname)
-                    ct6Database = False
-                    for record in recordTuple:
-                        tableName = record[key]
-                        if tableName == MySQLDBClient.CT6_TABLE_NAME:
-                            ct6Database = True
-                            break
-                        
-                    if ct6Database:
-                        # Delete all derived tables.
-                        for tableName in MySQLDBClient.LOW_RES_DATA_TABLE_LIST:
-                            try:
-                                self._dataBaseIF.dropTable(tableName)
-                            except:
-                                pass
-                        # Create empty derived tables.
-                        recordSets=[]
-                        for tableName in MySQLDBClient.LOW_RES_DATA_TABLE_LIST:                     
-                            self._dataBaseIF.createTable(tableName, MySQLDBClient.GetTableSchema(CTDBClient.CT6_DB_TABLE_SCHEMA) )                            
-                            self._uio.info(f"Created {tableName} table in {dBname}.")
-                            # Create empty lists to be used later
-                            recordSets.append([])
-
-                        self._uio.info(f"Creating derived tables in {dBname}.")
-                        # This can take a while with a large database. However once written these tables allow faster access.
-                        for chunkLen, srcTableName, destTableName in [[60, BaseConstants.CT6_TABLE_NAME, CTDBClient.MINUTE_RES_DB_DATA_TABLE_NAME],
-                                                                      [60, CTDBClient.MINUTE_RES_DB_DATA_TABLE_NAME, CTDBClient.HOUR_RES_DB_DATA_TABLE_NAME],
-                                                                      [24, CTDBClient.HOUR_RES_DB_DATA_TABLE_NAME, CTDBClient.DAY_RES_DB_DATA_TABLE_NAME] ]:
-                        
-                            sql = f"select * from {srcTableName};"
-                            recordTuple = self._dataBaseIF.executeSQL(sql)
-                            df = pd.DataFrame(recordTuple)
-                            # This appears no faster and raises compatibility message, s use above
-                            # df = pd.read_sql(f"select * from {BaseConstants.CT6_TABLE_NAME};", con=self._dataBaseIF._dbCon)
-                            startT=time()
-                            # Chop up into 60 second blocks
-                            n = chunkLen
-                            chunks = [df[i:i+n] for i in range(0,df.shape[0],n)]
-                            elapsedSecs=time()-startT
-                            startT=time()
-                            # Write a single record with the average of all records.
-                            for chunk in chunks:
-                                MySQLDBClient.AddToTable(destTableName, chunk.mean(), self._dataBaseIF)
-                            elapsedSecs=time()-startT
-                            self._uio.info(f"Took {elapsedSecs:.1f} seconds to write {destTableName} table in {dBname}")
-
-                        # Create time stamp indexes for all derived tables to improve search speed.
-                        for tableName in MySQLDBClient.LOW_RES_DATA_TABLE_LIST:  
-                            # Index on time stamp as most search will be based around a date/time
-                            cmd = f"CREATE INDEX {tableName}_INDEX ON {tableName} ({CTDBClient.TIMESTAMP})"
-                            self._dataBaseIF.executeSQL(cmd)
-                            self._uio.info(f"Created {tableName}_INDEX in {dBname}.")
-                        
-                        elapsedTime = time()-startTime
-                        self._uio.info(f"Took {elapsedTime:.1f} seconds to create derived tables in {dBname}")
+                
+                # Create time stamp indexes for all derived tables to improve search speed.
+                self._createIndex(dBname, MySQLDBClient.LOW_RES_DATA_TABLE_LIST)
+                
+                elapsedTime = time()-startTime
+                self._uio.info(f"Took {elapsedTime:.1f} seconds to create derived tables in {dBname}")
                         
             self._uio.info("Derived tables created.")
 
         finally:
             self._shutdownDBSConnection()
- 
+
+    def createLowResTablesLock(self):
+        """@brief As per def createLowResTables() but ensure only one instance is running on a system."""
+        try:
+            # Provide some user info on how to remedy lock file issues.
+            if self._lockFile.isLockFilePresent():
+                self._uio.warn(f"The {self._lockFile.getLockFile()} file was found.")
+                self._uio.warn(f"This indicates that another instance of {sys.argv[0]} is running with the '--create_dt' command line option.")
+                self._uio.warn(f"Either wait for this this process to complete or kill the process and delete the above lock file.")
+                self._uio.error("Unable to start this instance of this program.")
+            
+            else:
+                self._lockFile.createLockFile()
+                self.createLowResTables()
+                self._lockFile.removeLockFile()
+                
+        except KeyboardInterrupt:
+            self._lockFile.removeLockFile()
+            
+    def isCreatingLowResTables(self):
+        """@return True if the low resolution database tables are currently being created."""
+        return self._lockFile.isLockFilePresent()
+        
+    def _createIndex(self, dBname, tableNameList):
+        """@brief Create an index on the timestamp field to improve search time.
+           @param dBname The name of the database currently being used.
+                         This database must have been selected before calling this method.
+           @param tableNameList A list of the names of the tables to index"""
+        # Create time stamp indexes for all derived tables to improve search speed.
+        for tableName in tableNameList:  
+            # Index on time stamp as most search will be based around a date/time
+            cmd = f"CREATE INDEX {tableName}_INDEX ON {tableName} ({CTDBClient.TIMESTAMP})"
+            self._dataBaseIF.executeSQL(cmd)
+            self._sqlCmdCount += 1
+            self._uio.info(f"Created {tableName}_INDEX in {dBname}.")
+                        
+    def updateLowResTables(self, dBname):
+        """@brief Update all the low resolution tables.
+           @param dBname The name of the database currently being used.
+                         This database must have been selected before calling this method."""
+
+        # Update derived tables
+        firstTimeStamp = None
+        colNames = None # The name of the columns.
+        for reSampleSize, srcTableName, destTableName in [['min',     BaseConstants.CT6_TABLE_NAME, CTDBClient.MINUTE_RES_DB_DATA_TABLE_NAME],
+                                                          ['60min',   CTDBClient.MINUTE_RES_DB_DATA_TABLE_NAME, CTDBClient.HOUR_RES_DB_DATA_TABLE_NAME],
+                                                          ['1440min', CTDBClient.HOUR_RES_DB_DATA_TABLE_NAME, CTDBClient.DAY_RES_DB_DATA_TABLE_NAME] ]:
+            startTime = time()
+            self._uio.info(f"Creating {destTableName} table in the {dBname} database.")
+            
+            # Select the first record in the src table
+            sql = f"SELECT * FROM {srcTableName} LIMIT 1"
+            recordTuple = self._dataBaseIF.executeSQL(sql)
+            self._sqlCmdCount += 1
+            # If we have some data in the current source table.
+            if len(recordTuple) > 0:
+                # get it's time stamp
+                startTS = recordTuple[0][CTDBClient.TIMESTAMP]
+                # Store the TS as we may need it if other tables have no starting time. I.E no records in them.
+                if srcTableName == BaseConstants.CT6_TABLE_NAME:
+                    firstTimeStamp = startTS
+
+            else:
+                startTS = firstTimeStamp
+        
+            now = datetime.now()
+            # Loop here until we've read all the records in the table.
+            # We assume that no records exist in the database after the current date/time.
+            while startTS < now:
+                loopStartSecs = time()
+                
+                # 0 = Took 7.5 seconds. Record count = 42514. Took 0.175620 seconds per 1000 records.
+                # 1 = Took 37.3 seconds. Record count = 117245. Took 0.318019 seconds per 1000 records.
+                # 2 = Took 73.4 seconds. Record count = 199188. Took 0.368613 seconds per 1000 records.
+                # Therefore chose 0 days
+                stopTS = startTS + timedelta(days=0)
+                # Stop at the end of a day.
+                stopTS = stopTS.replace(hour=23, minute=59, second=59, microsecond=999999)
+                self._uio.info(f"Reading from {startTS} to {stopTS}")
+                                                
+                # Search all records each day
+                #stopTS = datetime(startTS.year, startTS.month, startTS.day, 23, 59, 59, 999999);
+                sql = f"select * from {srcTableName} where TIMESTAMP BETWEEN '{startTS}' AND '{stopTS}';"
+                
+                # Process the SQL cmd and convert result to pandas DataFrame 
+                df = pd.read_sql(sql, con=self._dataBaseIF._dbCon)
+                self._sqlCmdCount += 1
+                recordCount = len(df.index)
+
+                # This approach executes the SQL command and converts the result to a pandas DataFrame later
+                # which was found to be generally slower.
+                # recordTuple = self._dataBaseIF.executeSQL(sql)
+                # self._sqlCmdCount += 1
+                # recordCount = len(recordTuple)
+                self._uio.info(f"Processing {recordCount} records.")
+                # If we got some records to process
+                if recordCount > 0:
+                    # Convert to pandas dataframeif pd.read_sql is not used.
+                    #df = pd.DataFrame(recordTuple)
+                    # Create a table that contains the resampled data (E.G seconds -> mins, mins -> hours or hours -> days)
+                    df1 = df.resample(reSampleSize, on='TIMESTAMP').mean()
+                    # Each of the derived tables has the same columns so we only read these once. This saves a little time,
+                    if colNames is None:
+                        # Get a list of the column names
+                        colNames = df1.columns.values.tolist()
+                        # Add the timestamp to the start
+                        colNames.insert(0, "TIMESTAMP")
+                    rows = df1.itertuples()
+                    #Add each row in the table to the database
+                    batchOfRows = []
+                    for row in rows:
+                        # Add to the batch of rows to be written
+                        batchOfRows.append(row)
+                        # Write in batches of rows for speed. This speeds up writes by a factor of over 45 when
+                        # compared with inserting one row at a time. After testing 150 appeared to be a good trade
+                        # off between speed and buffer space needed to send large SQL messages containing the row data.
+                        if len(batchOfRows) == 150:
+                            self._uio.debug(f"Adding {len(batchOfRows)} rows of data to the {destTableName} table in the {dBname} database.")
+                            MySQLDBClient.AddBatchRowsToTable(destTableName, colNames, batchOfRows, self._dataBaseIF)
+                            batchOfRows = []
+                            self._sqlCmdCount += 1
+                    # If we have some unwritten rows add these now.
+                    if len(batchOfRows) > 0:
+                        self._uio.debug(f"Adding {len(batchOfRows)} rows of data to the {destTableName} table in the {dBname} database.")
+                        MySQLDBClient.AddBatchRowsToTable(destTableName, colNames, batchOfRows, self._dataBaseIF)
+
+                startTS += timedelta(days=1)
+                if startTS.hour != 0 or startTS.min != 0 or startTS.second != 0 or startTS.microsecond != 0:
+                    #Move to the start of the next unit of time
+                    startTS = datetime(startTS.year, startTS.month, startTS.day, 0, 0, 0, 0);
+                        
+                elapsedSecs = time()-loopStartSecs
+                perRecordET = 0
+                if elapsedSecs > 0 and recordCount > 0:
+                    perRecordET = elapsedSecs/(recordCount/1000)
+                self._uio.info(f"Took {elapsedSecs:.1f} seconds. Record count = {recordCount}. Took {perRecordET:.6f} seconds per 1000 records ({self._sqlCmdCount} SQL commands).")
+            
+            elapsedSecs=time()-startTime
+            self._uio.info(f"Took {elapsedSecs:.1f} seconds to write {destTableName} table in {dBname}")
+
 
 class CTDBClient(DBHandler):
     """@responsible for CT6 sensor database access."""
 
-    def __init__(self, uio, options, config):
+    LOCK_FILE_NAME = "CTDBClient.lock"
+    
+    def __init__(self, uio, options, config, mySQLDBClient):
         """@brief Constructor
            @param uio A UIO instance.
            @param options The command line options instance.
-           @param config A ConfigBase instance."""
+           @param config A ConfigBase instance.
+           @param mySQLDBClient An instance of MySQLDBClient."""
         super().__init__(uio, config)
         self._options = options
+        self._mySQLDBClient = mySQLDBClient
         self._metaTableSchema = DBHandler.GetTableSchema( CTDBClient.CT6_DB_META_TABLE_SCHEMA )
         self._tableSchema = DBHandler.GetTableSchema( CTDBClient.CT6_DB_TABLE_SCHEMA )
         self._dbLock = threading.Lock()
         self._historyDicts={}
         self._hourRecordSets=[]
+        self._devDictList = []
+        self._metaTableUpdateTime = time()
         
         #Create a list of CT6 unit addresses that the user does not wish to collect data from
         self._excludeAddressList = []
@@ -434,11 +680,23 @@ class CTDBClient(DBHandler):
             ipAddress = rxDict[CTDBClient.IP_ADDRESS]
         return ipAddress
             
+    def _getDatabaseName(self, devDict):
+        """@brief Get the database name.
+           @param devDict The device dictionary as received in response to the AYT message.
+           @return The name of the database or None if not found"""
+        dbName = None  
+        if CTDBClient.UNIT_NAME in devDict:
+            dbName = devDict[CTDBClient.UNIT_NAME]
+        return dbName      
+    
     def _ensureDBTables(self, devDict):
         """@brief Ensure the database and tables exist in the connected database assuming that
                   devDict contains the assy label of the device.
-           @param The device dictionary as received from the YView server.
+           @param devDict The device dictionary as received in response to the AYT message.
            @return The name of the database."""
+    
+        startT = devDict[YView.RX_TIME_SECS]
+        self._recordDeviceTimestamp(startT, 1)
         dBName = None
         dbFound = False
         if CTDBClient.UNIT_NAME in devDict and CTDBClient.PRODUCT_ID in devDict : 
@@ -450,7 +708,8 @@ class CTDBClient(DBHandler):
                                         
                 else:
                     self._uio.warn("Found a CT6 device that does not have the device name field set.")
-                # Don't record data unless the device name has been set as this is used as the database name.
+                # Don't record data unless the device name has been set. 
+                # The device name is used as the database name.
                 return
             
             productID = devDict[CTDBClient.PRODUCT_ID]
@@ -458,7 +717,9 @@ class CTDBClient(DBHandler):
             if productID in CTDBClient.VALID_PRODUCT_ID_LIST:
                 dBName = unitName
                 self._dbConfig.dataBaseName = dBName
+                self._recordDeviceTimestamp(startT, 2)
                 recordTuple = self._dataBaseIF.executeSQL(DBHandler.SHOW_DATABASES_SQL_CMD)
+                self._recordDeviceTimestamp(startT, 3)
                 for record in recordTuple:
                     if DBHandler.DATABASE_KEY in record:
                         dbName = record[DBHandler.DATABASE_KEY]
@@ -482,38 +743,44 @@ class CTDBClient(DBHandler):
                     self._dataBaseIF.executeSQL(cmd)
                 except:
                     pass
-                            
+                          
+        self._recordDeviceTimestamp(startT, 4)  
         return dBName
- 
+            
     def _updateMetaTable(self, dbName, devDict):
-        """@brief Update the table containing meta data.
+        """@brief Update the table containing meta data. This keeps the meta table up to date.
            @param dbName The name of the database to update.
            @param devDict The device dict."""
-        self._dataBaseIF.executeSQL("USE {};".format(dbName))
-        rowCount = self._dataBaseIF.getTableRowCount(CTDBClient.CT6_META_TABLE_NAME)
-        self._dataBaseIF.createTable(CTDBClient.CT6_META_TABLE_NAME, self._metaTableSchema)
-        cmd = 'INSERT INTO {}({},{},{},{},{},{},{}) VALUES("{}","{}","{}","{}","{}","{}","{}");'.format(dbName+"."+CTDBClient.CT6_META_TABLE_NAME,
-                                                                         CTDBClient.HW_ASSY,
-                                                                         CTDBClient.CT1_NAME,
-                                                                         CTDBClient.CT2_NAME,
-                                                                         CTDBClient.CT3_NAME,
-                                                                         CTDBClient.CT4_NAME,
-                                                                         CTDBClient.CT5_NAME,
-                                                                         CTDBClient.CT6_NAME,
-                                                                         devDict[CTDBClient.ASSY],
-                                                                         devDict[CTDBClient.CT1][CTDBClient.NAME],
-                                                                         devDict[CTDBClient.CT2][CTDBClient.NAME],
-                                                                         devDict[CTDBClient.CT3][CTDBClient.NAME],
-                                                                         devDict[CTDBClient.CT4][CTDBClient.NAME],
-                                                                         devDict[CTDBClient.CT5][CTDBClient.NAME],
-                                                                         devDict[CTDBClient.CT6][CTDBClient.NAME] )
-        self._dataBaseIF.executeSQL(cmd)
-        # We keep only one row in this table
-        if rowCount > 0:
-            self._dataBaseIF.deleteRows(CTDBClient.CT6_META_TABLE_NAME, rowCount)
+        self._devDictList.append(devDict)
+        if time() >= self._metaTableUpdateTime:
+            self._dataBaseIF.executeSQL("USE {};".format(dbName))
+            rowCount = self._dataBaseIF.getTableRowCount(CTDBClient.CT6_META_TABLE_NAME)
+            self._dataBaseIF.createTable(CTDBClient.CT6_META_TABLE_NAME, self._metaTableSchema)
+            cmd = 'INSERT INTO {}({},{},{},{},{},{},{}) VALUES("{}","{}","{}","{}","{}","{}","{}");'.format(dbName+"."+CTDBClient.CT6_META_TABLE_NAME,
+                                                                             CTDBClient.HW_ASSY,
+                                                                             CTDBClient.CT1_NAME,
+                                                                             CTDBClient.CT2_NAME,
+                                                                             CTDBClient.CT3_NAME,
+                                                                             CTDBClient.CT4_NAME,
+                                                                             CTDBClient.CT5_NAME,
+                                                                             CTDBClient.CT6_NAME,
+                                                                             devDict[CTDBClient.ASSY],
+                                                                             devDict[CTDBClient.CT1][CTDBClient.NAME],
+                                                                             devDict[CTDBClient.CT2][CTDBClient.NAME],
+                                                                             devDict[CTDBClient.CT3][CTDBClient.NAME],
+                                                                             devDict[CTDBClient.CT4][CTDBClient.NAME],
+                                                                             devDict[CTDBClient.CT5][CTDBClient.NAME],
+                                                                             devDict[CTDBClient.CT6][CTDBClient.NAME] )
+            self._dataBaseIF.executeSQL(cmd)
+            # We keep only one row in this table
+            if rowCount > 0:
+                self._dataBaseIF.deleteRows(CTDBClient.CT6_META_TABLE_NAME, rowCount)
+            # Init the list and set the time for the next update.
+            self._devDictLis= []
+            self._metaTableUpdateTime = time()+60          
             
     def _updateDerivedTables(self, dbName, thisRecord, historyDicts, dataBaseIF, lowResTableList):
-        """@brief Update the min, hour and day tables in the database.
+        """@brief Update the min, hour and day tables in the database with new data just read from a sensor.
            @param dbName The name of the database to update. We assume this has been selected previously (sql use DB command issued).
            @param thisRecord The dict containing the data to be added to the database.
            @param historyDicts The dicts containing the reading history.
@@ -523,18 +790,18 @@ class CTDBClient(DBHandler):
         if not dbName in historyDicts:
             # We need lists to hold the min, hour and day records
             historyDicts[dbName]=[[],[],[]]
-        # The record sets for this database
+        # Get the record sets for this database
         recordSets = historyDicts[dbName]
-
+        
         # First derived table (minute)
         tableName = lowResTableList[0]
         recordSet = recordSets[0]
-        # If we've moved into the next minute
-        if len(recordSet) > 0 and (thisRecord[BaseConstants.TIMESTAMP].second  - recordSet[0][BaseConstants.TIMESTAMP].second) <= 0:
+        # If we've moved into the next minute   
+        if len(recordSet) > 0 and (thisRecord[BaseConstants.TIMESTAMP].minute != recordSet[0][BaseConstants.TIMESTAMP].minute):
             # Ensure we have several records as we may get two readings in the same second (microseconds apart) but we don't want to add
-            # data to the database unless it's valid. We should have 60 second values in the list but this may vary slightly as 
-            # poll/response and  network delays to-from the CT6 device may move the sampling times.
-            if len(recordSet) > 5:
+            # data to the database unless it's valid. We should have 60 second values in the list but will vary as 
+            # poll/response and network delays to-from the CT6 device may move the sampling times.
+            if len(recordSet) >= 3:
                 # Use a pandas data frame to calculate the mean values for each column
                 df = pd.DataFrame(recordSet)
                 MySQLDBClient.AddToTable(tableName, df.mean(), dataBaseIF)
@@ -546,7 +813,7 @@ class CTDBClient(DBHandler):
                 tableName = lowResTableList[1]
                 recordSet = recordSets[1]
                 # If we've moved into the next hour
-                if len(recordSet) > 0 and (thisRecord[BaseConstants.TIMESTAMP].minute - recordSet[0][BaseConstants.TIMESTAMP].minute) <= 0:
+                if len(recordSet) > 0 and (thisRecord[BaseConstants.TIMESTAMP].hour != recordSet[0][BaseConstants.TIMESTAMP].hour):
                     # Use a pandas data frame to calculate the mean values for each column
                     df = pd.DataFrame(recordSet)
                     MySQLDBClient.AddToTable(tableName, df.mean(), dataBaseIF)
@@ -558,7 +825,7 @@ class CTDBClient(DBHandler):
                     tableName = lowResTableList[2]
                     recordSet = recordSets[2]
                     # If we've moved into the next day
-                    if len(recordSet) > 0 and (thisRecord[BaseConstants.TIMESTAMP].hour - recordSet[0][BaseConstants.TIMESTAMP].hour) <= 0:
+                    if len(recordSet) > 0 and (thisRecord[BaseConstants.TIMESTAMP].day != recordSet[0][BaseConstants.TIMESTAMP].day):
                         # Use a pandas data frame to calculate the mean values for each column
                         df = pd.DataFrame(recordSet)
                         MySQLDBClient.AddToTable(tableName, df.mean(), dataBaseIF)
@@ -579,14 +846,29 @@ class CTDBClient(DBHandler):
             # Add to the set of record to be averaged later
             recordSet.append(thisRecord)
 
+    def _recordDeviceTimestamp(self, startT, id):
+        """@brief Record the time since device data was received from the CT6 device.
+           @param startT The time in seconds when the message was received from the CT6 unit.
+           @param id A string identifying the call location."""
+        callerRef = inspect.stack()[2][4][0]
+        callerRef = callerRef.strip()
+        elapsedT = time() - startT
+        self._uio.debug(f"DEVTS: {callerRef: >40} id={id} elapsed time = {elapsedT:.6f} seconds.")
+        
     def _addDevice(self, dbName, devDict):
         """@brief Add device data to the database.
            @param dbName The name of the database to update.
            @param devDict The device dict."""
-
+        startT = devDict[YView.RX_TIME_SECS] # This field is not added to the database. It holds the time
+                                             # the dict was received on this machine.
         self._dataBaseIF.executeSQL("USE {};".format(dbName))
+        self._recordDeviceTimestamp(startT, 1)
+                    
         sensorDataDict = {}
-        sensorDataDict[MySQLDBClient.TIMESTAMP] = datetime.now()
+        # Record the time the message was received on the TCP socket rather than the time now 
+        # as CPU delays may cause dither in the time we get to this point.
+        sensorDataDict[MySQLDBClient.TIMESTAMP] = datetime.fromtimestamp(startT)
+
         # active power
         sensorDataDict[CTDBClient.CT1_ACT_WATTS]=devDict[CTDBClient.CT1][CTDBClient.PRMS]
         sensorDataDict[CTDBClient.CT2_ACT_WATTS]=devDict[CTDBClient.CT2][CTDBClient.PRMS]
@@ -623,15 +905,26 @@ class CTDBClient(DBHandler):
         sensorDataDict[CTDBClient.RSSI_DBM]=devDict[CTDBClient.RSSI]
 
         self._updateMetaTable(dbName, devDict)
+        self._recordDeviceTimestamp(startT, 2)
                     
         # Add sensor data to the table containing all sensor data
         MySQLDBClient.AddToTable( CTDBClient.CT6_TABLE_NAME, sensorDataDict, self._dataBaseIF)            
 
-        self._updateDerivedTables(dbName, sensorDataDict, self._historyDicts, self._dataBaseIF, CTDBClient.LOW_RES_DATA_TABLE_LIST)       
+        self._recordDeviceTimestamp(startT, 3)
+        
+        # If the user does not have another instance running deleting and creating the low resolution data tables.
+        if not self._mySQLDBClient.isCreatingLowResTables():
+            # Update these tables with new data we have just received.
+            self._updateDerivedTables(dbName, sensorDataDict, self._historyDicts, self._dataBaseIF, CTDBClient.LOW_RES_DATA_TABLE_LIST)   
+        else:
+            self._uio.info("Not updating low resolution data tables as they are currently being re created.")    
     
+        self._recordDeviceTimestamp(startT, 4)
+        
     def hear(self, devDict):
         """@brief Called when data is received from the device.
-           @param devDict The device dict."""
+           @param devDict The device dict."""          
+        startT = devDict[YView.RX_TIME_SECS]
         try:
             ipAddress = self._getDeviceIPAddress(devDict)
             # If the address of this CT6 unit is in the exclude list
@@ -639,19 +932,28 @@ class CTDBClient(DBHandler):
                 # Abort
                 return
             # Later CT6 device SW contains an ACTIVE flag that can be set to 0/False
-            # This stops the population of databases from the device.
+            # This stops the population of databases from the device if device is not active.
+            # This config option can be set using ct6_tool.py
             devActive = True
             if CTDBClient.ACTIVE in devDict:
                 if not devDict[CTDBClient.ACTIVE]:
                     
-                    self._uio.warn(f"{ipAddress}: Is not active.")
+                    self._uio.info(f"{ipAddress}: Is not active.")
                     devActive = False
                     
+            self._recordDeviceTimestamp(startT, 1)
             if devActive:
                 with self._dbLock:
-                    dbName = self._ensureDBTables(devDict)
+                    self._recordDeviceTimestamp(startT, 2)
+                    dbName = self._getDatabaseName(devDict)
                     if dbName:
-                        self._addDevice(dbName, devDict)
+                        try:
+                            self._addDevice(dbName, devDict)
+                        except MySQLdb.OperationalError:
+                            # If database not found, attempt to create them.
+                            self._ensureDBTables(devDict)
+                            self._addDevice(dbName, devDict)
+                    self._recordDeviceTimestamp(startT, 3)
 
         except Exception as ex:
             self._uio.error( str(ex) )
@@ -668,6 +970,7 @@ class CTAppServer(object):
         - Presenting the user with a web GUI to allow data to be displayed and manipulated."""
 
     DEFAULT_CONFIG_FILENAME = "ct6DBStore.cfg"
+    LOCK_FILE_NAME          = "CTAppServer.lock"
     
     def __init__(self, uio, options, config):
         """@brief Constructor
@@ -679,6 +982,7 @@ class CTAppServer(object):
         self._config                = config
         self._yViewCollector        = None
         self._dbHandler             = None
+        self._lockFile              = LockFile(CTAppServer.LOCK_FILE_NAME)
 
     def close(self):
         """@brief Close down the app server."""
@@ -689,31 +993,13 @@ class CTAppServer(object):
         if self._dbHandler:
             self._dbHandler.disconnect()
             self._dbHandler = None
-
-    def startIcons(self):
-        """@Start the App server running."""
-        raise Exception("PJA will not work now we have put the device on a different YDEV AT UDP port.")
+            
+    def _start(self, mySQLDBClient):
+        """@Start the App server running.
+           @param mySQLDBClient An instance of MySQLDBClient."""
         try:
             # Connect to the database
-            self._dbHandler = CTDBClient(self._uio, self._options, self._config)
-            self._dbHandler.connect()
-            
-            # Start running the collector in a separate thread
-            self._yViewCollector = YViewCollector(self._uio, self._options, self._config)
-            self._yViewCollector.setValidProuctIDList(YViewCollector.VALID_PRODUCT_ID_LIST)
-            # Register the dBHandler as a listener for device data so that it can be
-            # stored in the database.
-            self._yViewCollector.addDevListener(self._dbHandler)
-            self._yViewCollector.start()
-
-        finally:
-            self.close()
-            
-    def startLocal(self):
-        """@Start the App server running."""
-        try:
-            # Connect to the database
-            self._dbHandler = CTDBClient(self._uio, self._options, self._config)
+            self._dbHandler = CTDBClient(self._uio, self._options, self._config, mySQLDBClient)
             self._dbHandler.connect()
             
             # Start running the local collector in a separate thread
@@ -728,7 +1014,26 @@ class CTAppServer(object):
         finally:
             self.close()
 
-
+    def startLock(self, mySQLDBClient):
+        """@brief As per def startLock() but ensure only one instance is running on a system.
+           @param mySQLDBClient An instance of MySQLDBClient."""
+        try:
+            # Provide some user info on how to remedy lock file issues.
+            if self._lockFile.isLockFilePresent():
+                self._uio.warn(f"The {self._lockFile.getLockFile()} file was found.")
+                self._uio.warn(f"This indicates that another instance of {sys.argv[0]} is running to collect data from CT6 units.")
+                self._uio.warn(f"Either wait for this this process to complete or kill the process and delete the above lock file.")
+                self._uio.error("Unable to start this instance of this program.")
+            
+            else:
+                
+                self._lockFile.createLockFile()
+                self._start(mySQLDBClient)
+                self._lockFile.removeLockFile()
+                
+        except KeyboardInterrupt:
+            self._lockFile.removeLockFile()
+            
 def main():
     """@brief Program entry point"""
     uio = UIO()
@@ -740,7 +1045,6 @@ def main():
                                                      "- Presenting a web interface to view and manipulate the data.",
                                          formatter_class=argparse.RawDescriptionHelpFormatter)
         parser.add_argument("-d", "--debug",        action='store_true', help="Enable debugging.")
-        parser.add_argument("-i", "--icons",        action='store_true', help="Collect data from an ICON server. If this command line argument is not used then data is collected from local (to this LAN) devices.")
         parser.add_argument("-c", "--configure",    help="Configure the CT App Server.", action='store_true')
         parser.add_argument("-f", "--config_file",  help="The configuration file for the CT App Server"\
                             " (default={}).".format(CTDBClientConfig.GetConfigFile(CTAppServer.DEFAULT_CONFIG_FILENAME)),
@@ -762,9 +1066,8 @@ def main():
         parser.add_argument("--read",               help="Read a number of records from the end of the database table.", action="store_true", default=False)
         parser.add_argument("--read_count",         help="The number of lines to read from the end of the database table (default=1).", type=int, default=1)
         parser.add_argument("--sql",                help="Execute an SQL command.")
-        parser.add_argument("--create_dt",          help=f"This option creates the tables derived from the main sensor table ({BaseConstants.CT6_TABLE_NAME}). These contain lower resolution data that is faster to search.", action="store_true", default=False)
+        parser.add_argument("--create_dt",          help=f"This option creates the tables derived from the main sensor table ({BaseConstants.CT6_TABLE_NAME}). These tables contain lower resolution data (min, hour and day) for faster data access.", action="store_true", default=False)
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
-        parser.add_argument("-n", "--nodtc",        action='store_true', help="Do not create the derived tables on startup.")
         parser.add_argument("-e", "--exclude",      help="A comma separated list of addresses of CT6 units to exclude from data collection.")
         
         options = parser.parse_args()
@@ -811,22 +1114,11 @@ def main():
             mySQLDBClient.showExSchema()
             
         elif options.create_dt:
-            if options.nodtc:
-                raise Exception("Invalid command line argument combination: --create_dt and --nodtc")
-            mySQLDBClient.createLowResTables()
+            mySQLDBClient.createLowResTablesLock()
 
         else:
-            # By default we recreate the min, hour and day tables when starting the process of reaping data
-            if not options.nodtc:
-                mySQLDBClient.createLowResTables()
-            else:
-                uio.info("Skipping derived tables creation.")
             ctAppServer = CTAppServer(uio, options, ctDBClientConfig)
-            
-            if options.icons:
-                ctAppServer.startIcons()
-            else:
-                ctAppServer.startLocal()
+            ctAppServer.startLock(mySQLDBClient)
 
     #If the program throws a system exit exception
     except SystemExit:

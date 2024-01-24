@@ -32,7 +32,7 @@ bi directional power. An example of this dashboard is shown below.
 
 This dashboard allows the user to examine the data from CT6 hardware units. Each CT6 unit is displayed in a separate tab.
 
- - The Today/Yesterday, This Week/Last Week, This Month/Last Month and This Year/Last Year green buttons populate the start and stop date fields and trigger a new power plot of the data. The Start and Stop fields can be updated directly if the user requires other start stop date/times.
+ - The Today/Yesterday, This Week/Last Week, This Month/Last Month and This Year/Last Year green buttons populate the start and stop date fields and trigger a new power plot of the data. The '>' and '<' buttons either side of the start and stop fields can be used to increment or decrement the fields by one day for each press. The Start and Stop fields can also be updated directly. The buttons at the bottom of the dash can then be selected to plot the data.
 
  - The grey Sec, Min, Hour and Day buttons set the resolution of the data to plot (default = Min). It may be necessary for the user to reduce the resolution when plotting over long time periods.
 
