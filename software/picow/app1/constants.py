@@ -4,18 +4,19 @@ class Constants(BaseConstants):
     """@brief Define the constants used by this project.
               This extends BaseContants to make a more specialised configuration for this machine."""
 
-    FIRMWARE_VERSION            = "2.3"
+    FIRMWARE_VERSION            = "2.5"
 
     # Override the BaseConstants GPIO pins to those connected on this hardware
     WIFI_SETUP_BUTTON_PIN       = 14
     BLUETOOTH_LED_PIN           = 15
     WIFI_LED_PIN                = 16
     POWER_CYCLE_GPIO            = 13
+    DISPLAY_ON_GPIO             = 7
 
     VALID_CT_ID_LIST            = (1,2,3,4,5,6)
 
     TEMP_ADC_PIN                = 28        # The pin connected to the on board MCP9700 temperature sensor.
-    ADC_CODES_TO_MV             = 19757.69 # Arrived at empirically by measuring the ADC voltage @ 24C
+    ADC_CODES_TO_MV             = 19757.69  # Arrived at empirically by measuring the ADC voltage @ 24C
     MCP9700_VOUT_0C             = 0.5
     MCP9700_TC                  = 0.01
 
@@ -24,6 +25,7 @@ class Constants(BaseConstants):
     ATM90E32_SPI_MISO_PIN       = 4         # The SPI MISO pin used to communicate with all ATM90E32 devices
     ATM90E32_CS0_PIN            = 5         # The SPI chip select connected to the first ATM90E32 device.
     ATM90E32_CS4_PIN            = 22        # The SPI chip select connected to the second ATM90E32 device.
+    ATM90E32_RESET_PIN          = 19        # The active low reset pin for both ATM90E32 devices.
 
     ATM90E32_PGA_GAIN           = 4
 
@@ -119,7 +121,8 @@ class Constants(BaseConstants):
                            CT3_IOFFSET_KEY,
                            CT4_IOFFSET_KEY,
                            CT5_IOFFSET_KEY,
-                           CT6_IOFFSET_KEY
+                           CT6_IOFFSET_KEY,
+                           LINE_FREQ_HZ_KEY
                            
                            ]
         
@@ -149,20 +152,21 @@ class Constants(BaseConstants):
                 BaseConstants.PASSWORD_KEY:         "12345678"
                 },
 
-        # This is a good starting point for the calibration of current using SCT013 100A 1V sensors
-        CT1_IGAIN_KEY:                  10734,
-        CT2_IGAIN_KEY:                  10734,
-        CT3_IGAIN_KEY:                  10734,
-        CT4_IGAIN_KEY:                  10734,
-        CT5_IGAIN_KEY:                  10734,
-        CT6_IGAIN_KEY:                  10734,
+        # This is a good starting point for the calibration of current using SCT013 100A 1V 
+        # sensors. Low side on all HW tested.
+        CT1_IGAIN_KEY:                  45000,
+        CT2_IGAIN_KEY:                  45000,
+        CT3_IGAIN_KEY:                  45000,
+        CT4_IGAIN_KEY:                  45000,
+        CT5_IGAIN_KEY:                  45000,
+        CT6_IGAIN_KEY:                  45000,
 
-        CT1_IOFFSET_KEY:                0,
-        CT2_IOFFSET_KEY:                0,
-        CT3_IOFFSET_KEY:                0,
-        CT4_IOFFSET_KEY:                0,
-        CT5_IOFFSET_KEY:                0,
-        CT6_IOFFSET_KEY:                0,
+        CT1_IOFFSET_KEY:                45000,
+        CT2_IOFFSET_KEY:                45000,
+        CT3_IOFFSET_KEY:                45000,
+        CT4_IOFFSET_KEY:                45000,
+        CT5_IOFFSET_KEY:                45000,
+        CT6_IOFFSET_KEY:                45000,
 
         CT1_TYPE_KEY:                   SCT013_100A_SENSOR_TYPE,
         CT2_TYPE_KEY:                   SCT013_100A_SENSOR_TYPE,
@@ -178,9 +182,9 @@ class Constants(BaseConstants):
         CT5_NAME_KEY:                   "",
         CT6_NAME_KEY:                   "",
 
-        # This is a good starting point for the calibration of voltage
-        CS0_VOLTAGE_GAIN_KEY:           49871,
-        CS4_VOLTAGE_GAIN_KEY:           49871,
+        # This is a good starting point for the voltage calibration. Low side on all HW tested.
+        CS0_VOLTAGE_GAIN_KEY:           45000,
+        CS4_VOLTAGE_GAIN_KEY:           45000,
 
         # The measured power where we assume that the power is zero. The zero power gate level.
         # This can be set to 0. If so then a residual power of ~ 0.4W will be returned. This
@@ -245,7 +249,8 @@ class Constants(BaseConstants):
 
                                    CS0_VOLTAGE_OFFSET,
                                    CS4_VOLTAGE_OFFSET,
-                                   ACTIVE
+                                   ACTIVE,
+                                   LINE_FREQ_HZ_KEY
                                    )
 
     # --- END CONFIG SECTION ---

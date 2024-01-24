@@ -9,7 +9,7 @@ ALLOW_APP_TO_CRASH = True          # !!! This must be set to False on released p
                                    # This should be set to False on production code.
                                    # Note !!!
                                    # The main.py file is not updated when an over the air upgrade
-                                   # is performed. To update main.py use deploy_and_run.py.
+                                   # is performed. To update main.py use ct6_mfg_tool.py.
 def getActiveApp():
     """@brief Get the active app from the field in the config dict file.
        @return Either 1 or 2"""

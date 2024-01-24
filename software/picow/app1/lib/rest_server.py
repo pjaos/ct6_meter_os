@@ -4,6 +4,7 @@ import machine
 import hashlib
 import binascii
 import os
+from time import time
 
 from lib.uo import UOBase
 from lib.io import IO
@@ -28,6 +29,7 @@ class BuiltInCmdHandler(object):
     RM_FILE_CMD             = "/rmfile"
     GET_FILE_CMD            = "/get_file"
     RESET_WIFI_CONFIG_CMD   = "/reset_wifi_config"
+    UPTIME_CMD              = "/get_uptime"
     GET_ACTIVE_APP_FOLDER   = "/get_active_app_folder"
     GET_INACTIVE_APP_FOLDER = "/get_inactive_app_folder"
     SWAP_ACTIVE_APP         = "/swap_active_app"
@@ -51,7 +53,8 @@ class BuiltInCmdHandler(object):
         self._machineConfig = machineConfig
         self._activeAppKey = activeAppKey
         self._savePersistentDataMethod = None
-
+        self._startTime = time()
+                
     def handle(self, cmdDict):
         """@brief Process the commands and return a response dict.
            @return A dict in response to the command or None if the command was not handled."""
@@ -106,6 +109,10 @@ class BuiltInCmdHandler(object):
             elif cmd.startswith(BuiltInCmdHandler.RESET_WIFI_CONFIG_CMD):
                 self._machineConfig.resetWiFiConfig()
                 responseDict = RestServer.GetOKDict()
+
+            elif cmd.startswith(BuiltInCmdHandler.UPTIME_CMD):
+                responseDict = RestServer.GetOKDict()                
+                responseDict["UPTIME_SECONDS"] = time()-self._startTime
 
         return responseDict
 

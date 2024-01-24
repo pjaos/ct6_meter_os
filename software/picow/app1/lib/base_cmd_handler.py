@@ -39,6 +39,7 @@ class BaseCmdHandler(object):
         self._savePersistentDataMethod = None
         if Constants.POWER_CYCLE_GPIO >= 0:
             self._powerCyclePin = machine.Pin(Constants.POWER_CYCLE_GPIO, machine.Pin.OUT, value=0)
+        self._powerCycleTimer = Hardware.GetTimer()
 
     def setWiFi(self, wiFi):
         """@brief Set a reference to the WiFi object."""
@@ -203,10 +204,10 @@ class BaseCmdHandler(object):
                 self._savePersistentDataMethod()
             self._info("Power cycling MCU")
             # Ensure the file system is synced before we reboot.
-            os.sync()
-            # We power cycle after returning so that the rest server can return a response
-            timer = Hardware.GetTimer()
-            timer.init(mode=machine.Timer.ONE_SHOT, period=250, callback=self._powerOff) # Reboot in 250 ms
+            os.sync()           
+            delay=250
+            # Start timer to set power cycle pin high and turn off the 3V3 regulator.
+            self._powerCycleTimer.init(mode=machine.Timer.PERIODIC, period=delay, callback=self._powerOff)
             
     def _powerOff(self, timer):
         """@brief Called to actually perform the power cycle.

@@ -5,7 +5,7 @@ from constants import Constants
 from lib.drivers.atm90e32 import ATM90E32
 from lib.base_cmd_handler import BaseCmdHandler
 from lib.rest_server import RestServer
-from time import ticks_us
+from time import ticks_us, sleep_ms
 
 class CmdHandler(BaseCmdHandler):
     """@brief Handle project commands dicts sent over the network."""
@@ -14,6 +14,8 @@ class CmdHandler(BaseCmdHandler):
     INIT_ATM90E32_DEVICES            = "/init_atm90e32_devs"
     SAVE_FACTORY_CONFIG_CMD          = "/save_factory_cfg"
     GET_TEMPERATURE_CMD              = "/get_temperature"
+    SET_WIFI_LED                     = "/set_wifi_led"
+    FLASH_BLUETOOTH_LED              = "/set_bluetooth_led"
     
     CT6_BOARD_TEMPERATURE            = "CT6_BOARD_TEMPERATURE"
     CMD_SUCCESS                      = "CMD_SUCCESS"
@@ -24,15 +26,17 @@ class CmdHandler(BaseCmdHandler):
            @param machineConfig The machine configuration instance."""
         # Call base class constructor
         super().__init__(uo, machineConfig)
-        # The interface tp the on board MCP9700 temp seonsor device
+        # The interface tp the on board MCP9700 temp sensor device
         self._tempADC = machine.ADC( Constants.TEMP_ADC_PIN )
     
+        self._atm90e32Reset = machine.Pin(Constants.ATM90E32_RESET_PIN, machine.Pin.OUT, value=False) # Initially ATM90E32 devices are in reset
+        
         # The spi interface to both ATM90E32 devices.
         self._spi = ATM90E32.SPIFactory(Constants.ATM90E32_SPI_CLK_PIN,
                                   Constants.ATM90E32_SPI_MOSI_PIN,
                                   Constants.ATM90E32_SPI_MISO_PIN)
         self._initATM90E32Devs()
-    
+            
     def getBoardTemp(self):
         """@brief Get The temperature of the unit."""
         adcValue = self._tempADC.read_u16()
@@ -188,12 +192,67 @@ class CmdHandler(BaseCmdHandler):
                 # Add the board temperature to the response
                 responseDict[CmdHandler.CT6_BOARD_TEMPERATURE] = temperature
                 
+            elif cmd.startswith( CmdHandler.SET_WIFI_LED ):
+                self._setWifiLed(cmdDict)
+                responseDict = RestServer.GetOKDict()
+                
+            elif cmd.startswith( CmdHandler.FLASH_BLUETOOTH_LED ):
+                self._setBluetoothLed(cmdDict)
+                responseDict = RestServer.GetOKDict()
+                
         return responseDict
                 
+    def _setWifiLed(self, cmdDict):
+        """@brief Flash the WiFi LED. 
+                  See WiFi.setWiFiLED() for details of the argument values that may be set."""
+        if 'on' in cmdDict:
+            on = cmdDict['on']
+            if self._wifi:
+                self._wifi.setWiFiLED(on)
+        
+    def _setBluetoothLed(self, cmdDict):
+        """@brief Flash the bluetooth LED. This method allows the testing of the Bluetooth LED.
+           on=1 sets LED on, on= anything else sets led off."""
+        if 'on' in cmdDict:
+            on = False
+            if cmdDict['on'] == '1':
+                on = True
+            if self._wifi:
+                self._wifi.setBlueToothLED(on)
+        
+    def _showConfig(self, config, paramList):
+        """@brief Display debug messages detailing the contents of the config.
+           @param config A MachineConfig instance.
+           @param keyList A list of the config parameters."""
+        for param in paramList:
+            self._debug(f"{param: <25} = {config.get(param)}")
+            
     def _initATM90E32Devs(self):
         """@brief reinit the ATM90E32 devices with the current configuration settings."""
-        # Create an interface to the first ATM90E32 device. 
+        # Reset both ATM90E32 devices (this was added to V2.1 boards)
+        # assert active low reset
+        self._atm90e32Reset.value(0)
+        sleep_ms(10)
+        # release active low reset
+        self._atm90e32Reset.value(1)
+        sleep_ms(10)
+        
+        # Enabling this debug output caused the calibration to fail because
+        # the serial data backs up waiting to be sent out the serial port.
+        # This causes the MCU to run out of memory and the MCU restarts 
+        # during calibration. Therefore this has been disabled.
         # Note that the second channel (B) is CT1,2 & 3 to ease PCB layout
+#        self._debug("Init ATM90E32 Channel B (CT1,CT2 and CT3)")
+#        self._showConfig(self._machineConfig,  (Constants.LINE_FREQ_HZ_KEY,
+#                                                Constants.CS4_VOLTAGE_GAIN_KEY,
+#                                                Constants.CT1_IGAIN_KEY,
+#                                                Constants.CT2_IGAIN_KEY,
+#                                                Constants.CT3_IGAIN_KEY,
+#                                                Constants.CS4_VOLTAGE_OFFSET,
+#                                                Constants.CT1_IOFFSET_KEY,
+#                                                Constants.CT2_IOFFSET_KEY,
+#                                                Constants.CT3_IOFFSET_KEY))
+        # Create an interface to the first ATM90E32 device.
         self._cs4ATM90E32 = ATM90E32(self._spi,
                             Constants.ATM90E32_CS4_PIN,
                             self._machineConfig.get(Constants.LINE_FREQ_HZ_KEY),
@@ -208,8 +267,23 @@ class CmdHandler(BaseCmdHandler):
                             iOffset1=self._machineConfig.get(Constants.CT1_IOFFSET_KEY),
                             iOffset2=self._machineConfig.get(Constants.CT2_IOFFSET_KEY),
                             iOffset3=self._machineConfig.get(Constants.CT3_IOFFSET_KEY))
-        # Create an interface to the second ATM90E32 device
+               
+        # Enabling this debug output caused the calibration to fail because
+        # the serial data backs up waiting to be sent out the serial port.
+        # This causes the MCU to run out of memory and the MCU restarts 
+        # during calibration. Therefore this has been disabled.
         # Note that the first channel (A) is CT4,5 & 6 to ease PCB layout
+#        self._debug("Init ATM90E32 Channel A (CT4,CT5 and CT6)")
+#        self._showConfig(self._machineConfig,  (Constants.LINE_FREQ_HZ_KEY,
+#                                                Constants.CS0_VOLTAGE_GAIN_KEY,
+#                                                Constants.CT4_IGAIN_KEY,
+#                                                Constants.CT5_IGAIN_KEY,
+#                                                Constants.CT6_IGAIN_KEY,
+#                                                Constants.CS0_VOLTAGE_OFFSET,
+#                                                Constants.CT4_IOFFSET_KEY,
+#                                                Constants.CT5_IOFFSET_KEY,
+#                                                Constants.CT6_IOFFSET_KEY))
+        # Create an interface to the second ATM90E32 device
         self._cs0ATM90E32 = ATM90E32(self._spi,
                             Constants.ATM90E32_CS0_PIN,
                             self._machineConfig.get(Constants.LINE_FREQ_HZ_KEY),

@@ -150,6 +150,7 @@ class WiFi(object):
         self._wifiSSID = None
         self._wifiPassword = None
         self._resetWiFiSettings = False
+        self._forceWiFiLEDState = False
 
     def _info(self, msg):
         """@brief Show an info message.
@@ -379,7 +380,7 @@ class WiFi(object):
                 # If user has held WiFi button then the WiFi button should be set back on if currently connected.
                 self.setWiFiLED(self._wifiConnected)
         
-        return defaultWiFiConfig
+        return defaultWiFiConfig   
 
     def toggleWiFiLED(self):
         """@brief Change the state of the WiFi LED."""
@@ -387,10 +388,42 @@ class WiFi(object):
             self._wifiLed.value( not self._wifiLed.value() )
 
     def setWiFiLED(self, on):
-        """@brief Set the LED state to indicate the WiFi is connected (LED on).
-           @param on If True the WiFi LED is on."""
+        """@brief Set the LED state to WiFi indicator LED.
+           @param on This may be
+                     "force_on" to set the LED on until set to "release".
+                     "force_off" to set the LED on until set to "release".
+                     "release" to allow the LED state to be set to a boolean value.
+                     True set LED on if in a not in a forced state.
+                     False set LED off if not in a forced state.
+                     
+                     The forced states are used when testing the WiFi LED.
+                      """
         if self._wifiLed:
-            self._wifiLed.value(on)
+            if on == 'force_on':
+                self._forceWiFiLEDState = True
+                self._wifiLed.value(True)
+                
+            elif on == 'force_off':
+                self._forceWiFiLEDState = True
+                self._wifiLed.value(False)
+                            
+            elif on == 'release':
+                self._forceWiFiLEDState = False
+                
+            else:
+                if not self._forceWiFiLEDState:
+                    self._wifiLed.value(on)
+            
+    def toggleBlueToothLED(self):
+        """@brief Set the LED state to BlueTooth indicator LED. if associated with a BlueTooth instance."""
+        if self._blueTooth:
+            self._blueTooth.toggleLED()
+
+    def setBlueToothLED(self, on):
+        """@brief Set the LED state to indicate the BlueTooth is connected (LED on).
+           @param on True to set the LED on."""
+        if self._blueTooth:
+            self._blueTooth.setLED(on)
 
     def getIPAddress(self):
         """@brief Get the IP address we have on the network.

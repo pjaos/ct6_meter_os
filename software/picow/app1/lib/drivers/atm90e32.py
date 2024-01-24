@@ -380,9 +380,8 @@ class ATM90E32:
     def csPin(self, csGPIOPin):
         """@brief Set the csPin. This is useful when using one instance of ATM90E32 for different devices.
             @param csGPIOPin The GPIO pin used as a chip select fort he ATM90E32 device (integer value)."""
+        self._csPin = Pin(csGPIOPin, Pin.OUT, value=True) # Set the CS pin to inactive state in GPIO pin initialisation.
         self._csGPIOPin = csGPIOPin
-        self._csPin = Pin(csGPIOPin, Pin.OUT)
-        self._csPin.on()
            
     def _spi_raw(self, rw, address, value):
         """@brief Read/write 16 bits of data from/to an SPI register.

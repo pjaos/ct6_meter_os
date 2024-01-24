@@ -38,13 +38,13 @@ class BlueTooth():
         self._register()
         self._advertiser()
 
-    def _setLED(self, on):
+    def setLED(self, on):
         """@brief Set the bluetooth status indicator LED if a GPIO pin was allocated for it.
            @param on LED on if True."""
         if self._led:
             self._led.value(on)
 
-    def _toggleLED(self):
+    def toggleLED(self):
         "@brief Toggle the state of the LED  if a GPIO pin was allocated for it."
         if self._led:
             self._led.value(not self._led.value())
@@ -52,7 +52,7 @@ class BlueTooth():
     def _connected(self):
         """@bried Set the internal state as connected."""
         self._ble_connected = True
-        self._setLED(True)
+        self.setLED(True)
         if self._timer1 and self._led:
             self._timer1.deinit()
 
@@ -72,7 +72,7 @@ class BlueTooth():
             self._timer1.deinit()
             self._timer1 = None
         self._ble.active(False)
-        self._setLED(False)
+        self.setLED(False)
 
     def isEnabled(self):
         """@brief Determine if bluetooth is enabled.

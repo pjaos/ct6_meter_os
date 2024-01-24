@@ -3,52 +3,43 @@ import st7789
 import vga2_bold_16x16 as font
 
 from lib.rest_server import RestServer
-from lib.io import IO
 from cmd_handler import CmdHandler
 from constants import Constants
 import utime
 
 from lib.base_machine import BaseMachine
-
-import json
+from lib.config import MachineConfig
 
 class Display(Constants):
-    # Dict to store energy history in
-    WH_DICT = {
-        BaseMachine.CT1_KEY: {Constants.PRMS: 0.0},
-        BaseMachine.CT2_KEY: {Constants.PRMS: 0.0},
-        BaseMachine.CT3_KEY: {Constants.PRMS: 0.0},
-        BaseMachine.CT4_KEY: {Constants.PRMS: 0.0},
-        BaseMachine.CT5_KEY: {Constants.PRMS: 0.0},
-        BaseMachine.CT6_KEY: {Constants.PRMS: 0.0}
-    }
-    # File that the above is stored in
-    WH_FILE = "wh.json"
 
-    # These must be an int values
-    UPDATE_MILLI_SECONDS = 1000
-    CALC_KWH_MILLI_SECONDS = 10000
-
-    ROW_HEIGHT_MARGIN = 20
-
-    FIRST_COL_PIXEL = 0
-    LAST_COL_PIXEL = 239
-    LAST_ROW_PIXEL = 319
-    COL0_START_PIXEL = 3
-    COL1_START_PIXEL = 60
+    # This must be an int value
+    UPDATE_MILLI_SECONDS    = 1000
+    ROW_HEIGHT_MARGIN       = 20
+    FIRST_COL_PIXEL         = 0
+    LAST_COL_PIXEL          = 239
+    LAST_ROW_PIXEL          = 319
+    COL0_START_PIXEL        = 3
+    COL1_START_PIXEL        = 60
+    FIELD_TYPE_KW           = 1
+    FIELD_TYPE_AMPS         = 2
+    DISPLAY_TIMEOUT_SECONDS = 60        # The number of seconds that the display will stay on after 
+                                        # power up or the WiFi button is pressed.
 
     def __init__(self, uo):
         """@brief Display constructor
            @param uo A UO instance."""
         self._uo = uo
-        self._initDisplay = False
+        self._startup = True
+        self._displayPowerPin = None
         self.update(None, False)
         self._preWiFiReg = True
         self._lastDisplayUpdateMS = utime.ticks_ms()
         self._lastWHUpdateMS = self._lastDisplayUpdateMS
-        self._whDict = self._loadWH()
-        self._showKWH = False
         self._buttonPressedTime = None
+        self._warningLines = None
+        self._lastWarningLines = None
+        self._ctFieldType = Display.FIELD_TYPE_KW
+        self._lastButtonPressedMS = utime.ticks_ms()
 
     def _setText(self, row, col, text):
         self._tft.text( font, text.encode(), int(row), int(col), st7789.YELLOW, st7789.BLACK )
@@ -72,8 +63,27 @@ class Display(Constants):
            @param getIPMethod The method to call to read the units IP address."""
         self._getIPMethod = getIPMethod
 
+    def _setDisplayPower(self, on):
+        """@brief turn the display power on/off.
+           @param on If True the display power is set on."""
+        if self._displayPowerPin is None:
+            self._displayPowerPin = Pin(Constants.DISPLAY_ON_GPIO, Pin.OUT, value=0)
+        self._displayPowerPin.value(on)
+        if on:
+            # We reset these so that any subsequent waring message is displayed.
+            self._lastWarningLines = None 
+            self._warningLines = None
+        
+    def _isDisplayPowered(self):
+        """@brief Determine if the display has power to it.
+           @return True if the display has power."""
+        return self._displayPowerPin.value()
+        
     def _init(self):
         """@brief Init the display."""
+        # Ensure the display is powered up
+        self._setDisplayPower(True)
+        
         rotation =0
         self._tft = self._config(rotation=rotation)
         self._tft.init()
@@ -111,47 +121,12 @@ class Display(Constants):
                        self._rowMax-10,\
                        st7789.BLUE)
         self._setText(0, self._rowMax, " Connecting...")
-        self._initDisplay = True
+        self._uo.info("Turned the display on.")
 
-    def _loadWH(self):
-        """@brief Load the kWh dict from flash.
-           @return A dict containing the kWh read on each port."""
-        kwHDict = Display.WH_DICT
-        fileExists = IO.FileExists(Display.WH_FILE)
-        if fileExists:
-            try:
-                with open(Display.WH_FILE, 'r') as fd:
-                    kwHDict = json.load(fd)
-            except:
-                # We could loose kWh history here. This needs addressing...
-                pass
-        return kwHDict
-
-    def _storeWH(self, wHDict):
-        """@brief Save dict to file in flash.
-           @param wHDict The kWH dict to store."""
-        with open(Display.WH_FILE, 'w') as fd:
-            json.dump(wHDict, fd)
-
-    def _updateWH(self, statsDict, now):
-        """@brief Update the watt hours values.
-           @param statsDict The stats dict including the instantaneous watts values on each port.
-           @param now The time now in micro seconds. From utime.ticks_us() call."""
-        elapsedMS = utime.ticks_diff(now, self._lastWHUpdateMS)
-        # If it's time to calculate the power used.
-        if elapsedMS > Display.CALC_KWH_MILLI_SECONDS:
-            elapsedHours = elapsedMS/3600000
-            self._whDict = self._loadWH()
-            for ct in range(1,7):
-                ctName = f"CT{ct}"
-                if ctName in statsDict:
-                    ctDict = statsDict[ctName]
-                    if Display.PRMS in ctDict:
-                        watts = ctDict[Constants.PRMS]
-                        wH = watts*elapsedHours
-                        newWH = self._whDict[ctName][Constants.PRMS] + wH
-                        self._whDict[ctName][Constants.PRMS]=newWH
-            self._lastWHUpdateMS = now
+    def _displayOff(self):
+        """@brief Turn the display off."""
+        self._setDisplayPower(False)
+        self._uo.info(f"{Display.DISPLAY_TIMEOUT_SECONDS} second display timeout. Powered down display.")
 
     def _updateParams(self, statsDict, now):
         """@brief Update the parameters read from the CT6 unit on the display.
@@ -159,27 +134,27 @@ class Display(Constants):
            @param now The time now in micro seconds. From utime.ticks_us() call."""
         vRMS = None
         if statsDict:
-            self._updateWH(statsDict, now)
 
             pwrDict = statsDict
-            unit="kW"
-            if self._showKWH:
-                pwrDict = self._whDict
-                unit=""
-            if pwrDict is None:
-                pwrDict = statsDict
-                unit="kW"
-
+            
             for ct in range(1,7):
                 key = f"CT{ct}"
                 if key in pwrDict:
                     ctStatsDict = pwrDict[key]
-                    if Constants.PRMS in ctStatsDict:
-                        pWatts = ctStatsDict[Constants.PRMS]
-                        pKW = pWatts/1000.0
-                        yPos = ((ct-1)*self._rowH)+(Display.ROW_HEIGHT_MARGIN/2)+1
-                        self._setText(Display.COL0_START_PIXEL, yPos, f"CT{ct}")
-                        self._setText(Display.COL1_START_PIXEL, yPos, f"{pKW:.3f} {unit}    ")
+                    yPos = ((ct-1)*self._rowH)+(Display.ROW_HEIGHT_MARGIN/2)+1
+                    self._setText(Display.COL0_START_PIXEL, yPos, f"CT{ct}")
+                    if self._ctFieldType == Display.FIELD_TYPE_KW:
+                        unit="kW"
+                        if Constants.PRMS in ctStatsDict:
+                            pWatts = ctStatsDict[Constants.PRMS]
+                            pKW = pWatts/1000.0
+                            self._setText(Display.COL1_START_PIXEL, yPos, f"{pKW:.3f} {unit}    ")
+                            
+                    if self._ctFieldType == Display.FIELD_TYPE_AMPS:
+                        unit="A"
+                        if Constants.IRMS in ctStatsDict:
+                            amps = ctStatsDict[Constants.IRMS]
+                            self._setText(Display.COL1_START_PIXEL, yPos, f"{amps:.2f} {unit}    ")
 
             #We read the voltage from CT1 ATM90E32 device
             if vRMS is None and Constants.VRMS in statsDict[Constants.CT1_KEY]:
@@ -211,67 +186,83 @@ class Display(Constants):
                   and toggle display power mode.
            @param pressed If True the button is pressed.
            @param now The time now in milli seconds."""
-        self._updatePowerType(buttonPressed, now)
         if buttonPressed:
-            self._tft.line(Display.LAST_COL_PIXEL,\
-                           Display.LAST_ROW_PIXEL-10,\
-                           Display.LAST_COL_PIXEL,\
-                           Display.LAST_ROW_PIXEL,\
-                           st7789.YELLOW)
+            self._lastButtonPressedMS = now
+            # If the display is on then the user can switch between displaying kW and amps
+            if self._isDisplayPowered():
+                if self._ctFieldType == Display.FIELD_TYPE_KW:
+                    self._ctFieldType = Display.FIELD_TYPE_AMPS
+    
+                elif self._ctFieldType == Display.FIELD_TYPE_AMPS:
+                    self._ctFieldType = Display.FIELD_TYPE_KW
+                                
+            self._tft.fill_rect(Display.LAST_COL_PIXEL-font.WIDTH, Display.LAST_ROW_PIXEL-font.HEIGHT+1, font.WIDTH, font.HEIGHT-1, st7789.RED)
+            
         else:
-          self._tft.line(Display.LAST_COL_PIXEL,\
-                         Display.LAST_ROW_PIXEL-10,\
-                         Display.LAST_COL_PIXEL,\
-                         Display.LAST_ROW_PIXEL,\
-                         st7789.BLACK)
-
-    def _updatePowerType(self, buttonPressed, now):
-        """@brief Update the type of power displayed, either kW or kWh
-                  based on the user pressing the WiFi button to toggle
-                  between the two.
-           @param buttonPressed True if the button is pressed.
-           @param now The time now in milli seconds."""
-        # If the button is not pressed now but previously was
-        if not buttonPressed and self._buttonPressedTime is not None:
-                downTimeMS = utime.ticks_diff(now, self._buttonPressedTime)
-                # Short button press < 0.5 seconds to toggle power mode.
-                if downTimeMS < 500:
-                     self._showKWH = not self._showKWH
-                self._buttonPressedTime = None
-        # If the button is pressed now
-        elif buttonPressed:
-            self._buttonPressedTime = utime.ticks_ms()
-
-
+            # If the button is not pressed and has not been pressed for the display timeout period
+            delta = utime.ticks_diff(now, self._lastButtonPressedMS)
+            if delta > Display.DISPLAY_TIMEOUT_SECONDS*1000 and self._isDisplayPowered():
+                # Turn the display off
+                self._displayOff()
+    
     def update(self, statsDict, buttonPressed):
         """@brief Update the display.
            @param statsDict The stats dict that contains the information to display.
            @param buttonPressed If True then the WiFi button is pressed."""
-        if not self._initDisplay:
+        
+        # If the unit has just started up
+        if self._startup:
+            # Init the display
             self._init()
+            # Ensure we don't visit this point again.
+            self._startup = False
 
         else:
+            # If the WiFi button has just been pressed and the display is not on as a display timeout has occured.
+            if buttonPressed and not self._isDisplayPowered():
+                # Turn the display on.
+                self._init()
+                
             now = utime.ticks_ms()
             self._setButtonPressed(buttonPressed, now)
             delta = utime.ticks_diff(now, self._lastDisplayUpdateMS)
             # If it's time to display the stats
             if delta > Display.UPDATE_MILLI_SECONDS:
-                self._updateParams(statsDict, now)
+                # If a warning message is defined then display this 
+                # rather than the normal display.
+                if self._warningLines:
+                    self._showWarning(statsDict)
+                else:
+                    self._updateParams(statsDict, now)
                 self._lastDisplayUpdateMS = now
-
-            # If the user presses the WiFi button save the current wH history values.
-            # We used to save this periodically but the flash memory would have a
-            # short life (~ 70 days) if this were the case. Therefore the user
-            # needs to press the WiFi SW to save the kWh values persistently.
-            if buttonPressed:
-                self.saveWH()
                 
-    def saveWH(self):
-        """@brief Save the watt house dict to flash."""
-        # Save the result persistently
-        self._storeWH(self._whDict)
-        self._uo.info("Saved watt hour data to flash.")
-                
+    def _showWarning(self, statsDict):
+        """@brief Show a warning message on the display."""
+        if self._warningLines != self._lastWarningLines:
+            # Clear the screen to make space for lines of waring text
+            self._tft.init()
+            self._tft.fill(st7789.BLACK)
+            lines = self._warningLines.split("\n")
+            row = 0
+            for line in lines:
+                yPos = (row*self._rowH)+(Display.ROW_HEIGHT_MARGIN/2)+1
+                self._setText(Display.COL0_START_PIXEL, yPos, line)
+                row = row + 1
+                        
+        # We still show the IP address of the unit at the bottom of the display
+        # when a waring message is displayed
+        ipAddress = self._getIPMethod()
+        if ipAddress:
+            self._setText(0, self._rowMax, f"{ipAddress}    ")
+            
+        # Only update if we seen changes in the warning message
+        self._lastWarningLines = self._warningLines
+            
+    def setWarning(self, warningLines):
+        """@brief Set a warning message on the display.
+           @param warningLines The lines of text to display."""
+        self._warningLines = warningLines
+        
 class ThisMachine(BaseMachine):
     """@brief Implement functionality required by this project."""
 
@@ -287,11 +278,11 @@ class ThisMachine(BaseMachine):
         # Call base class constructor
         super().__init__(uo, configFile, activeAppKey, activeApp, wdt)
         self._statsDict = None
-
+        
         # Init the display to display the booting message as early as possible.
         self._display = Display(uo)
 
-        #The following is required for a IOT app that needs WiFi and a REST server
+        #The following is required for an IOT app that needs WiFi and a REST server
 
         # Start a server to provide a REST interface.
         # Update cmd_handler.py as required by your project.
@@ -304,12 +295,24 @@ class ThisMachine(BaseMachine):
         # Pass a reference to the WiFi so that the RSSI can be included in the stats dict if required
         self._projectCmdHandler.setWiFi(self._wifi)
 
-        # Init the display again or the display update time is about 330 time slower.
-        # It's unclear why this is.
+        # Init the display again or the display update time is about 330 times slower.
+        # Further investigation required.
         self._display = Display(uo)
         self._display.setGetIPMethod(self._wifi.getIPAddress)
         self._lastStatsUpdateMS = utime.ticks_ms()
-
+            
+    def _isFactoryConfigPresent(self):
+        """@brief Check if the factory config file is present.
+           @return True if the factory config file is present in flash."""
+        factoryConfPresent = False
+        try:
+            fd = open("/"+MachineConfig.FACTORY_CONFIG_FILENAME)
+            fd.close()
+            factoryConfPresent = True
+        except OSError:
+            pass
+        return factoryConfPresent
+    
     def _isNextStatsUpdateTime(self):
         """@brief Determine if it's time to update the stats.
            @return True if it's time."""
@@ -323,7 +326,6 @@ class ThisMachine(BaseMachine):
 
     def _savePersistentData(self):
         """@brief a single method to save all persistent data on the device."""
-        self._display.saveWH()
         self._machineConfig.store()
         self._uo.info("Saved all persistent data on unit.")
         
@@ -355,6 +357,8 @@ class ThisMachine(BaseMachine):
 
         # Show the RAM usage on the serial port. This can be useful when debugging.
         self._showRAMInfo()
+        if not self._isFactoryConfigPresent():
+            self._display.setWarning("Uncalibrated\nCT6 device.")
         self._display.update( self._statsDict, self._wifi.isWiFiButtonPressed() )
 
         return Constants.POLL_SECONDS
