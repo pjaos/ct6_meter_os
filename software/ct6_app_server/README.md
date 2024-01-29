@@ -297,3 +297,8 @@ INFO:  Connected to MySQL server.
 ```
 
 If executed from an Ubuntu desktop machine the above command will also launch a browser session. If a browser session is started for the above configuration then the URL http://192.168.0.23:10000 will connect to the server.
+
+
+## Bringing Up A CT6 unit.
+
+More information can be found on this [here](README_MFG.md)

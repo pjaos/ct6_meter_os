@@ -1,5 +1,5 @@
 # CT6 Test and Calibration.
-This document details how to bring up the CT6 hardware, test it and calibrate it.
+This document details how to install the software onto the RPi Pico W on the CT6 unit, test it and calibrate it.
 
 ## Installation of SW
 To use the tools to test and calibrate a CT6 unit the Linux package must be installed. 
@@ -824,6 +824,10 @@ The test system can be setup as per the previous section with the addition of me
 
 Note !!!
 As mains voltage is dangerous ensure that the wiring is safe to allow the AC voltage to be measured.
+
+The equipment should be connected as per the diagram shown below.
+
+![alt text](images/calibrate_ac_voltage.png "Test/Voltage Calibration System")
 
 Run the following command to calibrate the AC voltage.
 
