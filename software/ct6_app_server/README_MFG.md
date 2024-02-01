@@ -2,7 +2,7 @@
 This document details how to install the software onto the RPi Pico W on the CT6 unit, test it and calibrate it.
 
 ## Installation of SW
-To use the tools to test and calibrate a CT6 unit the Linux package must be installed. 
+To use the tools to test and calibrate a CT6 unit the Linux package must be installed.
 This installer has to be built first. To build the installer perform the following
 
 ```
@@ -74,7 +74,7 @@ Using /usr/local/bin/python3.9 (3.9.8) to create virtualenv...
     added seed packages: pip==23.3.2, setuptools==68.2.2, wheel==0.42.0
   activators BashActivator,CShellActivator,FishActivator,PowerShellActivator,PythonActivator,XonshActivator
 
-✔ Successfully created virtual environment! 
+✔ Successfully created virtual environment!
 Virtualenv location: /usr/local/bin/python-ct6-apps.pipenvpkg/.venv
 Installing dependencies from Pipfile.lock (7b1881)...
   🐍   ▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉▉ 41/41 — 00:00:19
@@ -100,7 +100,7 @@ Alternatively, run a command inside the virtualenv with pipenv run.
 ### Equipment required
 - CT6 unit hardware (CT6 board with display connected).
 - CT6 AC power supply.
-- Micro USB cable.
+- Modified micro USB cable. This cable must have the +5v power lead disconnected. This is normally the red wire in the 4 wire USB cable.
 - AC power meter.
   [E.G ENERGENIE ENE007](https://energenie4u.co.uk/catalogue/product/ENER007)). However it should be noted that the accuracy of this device will govern the CT6 calibration accuracy.
 - Linux PC running Ubuntu 20.04 or later.
@@ -550,7 +550,7 @@ The CT6 unit is now ready for use. See the README.md file for more information o
 ### Equipment required
 - CT6 unit hardware (CT6 board with display connected).
 - CT6 AC power supply.
-- Micro USB cable.
+- Modified micro USB cable. This cable must have the +5v power lead disconnected. This is normally the red wire in the 4 wire USB cable.
 
 The equipment should be connected as per the diagram shown below.
 
@@ -563,7 +563,7 @@ The equipment should be connected as per the diagram shown below.
 This section details how to fully wipe and reload the code on the Pico W and then reload the factory configuration file.
 
 - The steps below show will load all code onto the CT6 unit and test it. You must run the ct6_mfg_tool in the software/ct6_app_server folder. Note that '<YOUR WIFI SSID>' and '<YOUR WIFI PASSWORD>' should be replaced with your WiFi SSID and password.
-  
+
 ```
 ct6_mfg_tool --no_cal
 INPUT: The local WiFi SSID: : <YOUR WIFI SSID>
@@ -818,9 +818,18 @@ INFO:  Loaded the factory.cfg data to the CT6 board.
 The CT6 unit is now ready for use. See the README.md file for more information on this.
 
 ## Calibrating the AC voltage
+
+### Equipment required
+- CT6 unit hardware (CT6 board with display connected).
+- CT6 AC power supply.
+- Modified micro USB cable. This cable must have the +5v power lead disconnected. This is normally the red wire in the 4 wire USB cable.
+- A digital multimeter (DMM) capable of reading the AC mains voltage.
+
+### Performing the AC mains voltage calibration
+
 If you have a AC-AC power supply that is not the one detailed in the hardware/README.md file then this section can be used to update the voltage calibration after the calibration file has been loaded as detailed in the previous section.
 
-The test system can be setup as per the previous section with the addition of meter to measure the mains AC voltage. 
+The test system can be setup as per the previous section with the addition of meter to measure the mains AC voltage.
 
 Note !!!
 As mains voltage is dangerous ensure that the wiring is safe to allow the AC voltage to be measured.
@@ -874,4 +883,3 @@ INFO:  Saving the factory configuration file to the CT6 unit.
 ```
 
 The CT6 unit is now ready for use. See the README.md file for more information on this.
-
