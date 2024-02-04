@@ -25,7 +25,7 @@ This project is designed to use only the YHDC SCT013 100A 0-1V split core curren
 
 ![alt text](images/ct.jpg "Current Transformer")
 
-These can be plugged into ports 1 - 6 to provide up to six separate bi directional measurements of AC power. When clipping the current transformer around the live AC wire the face shown above should be on the AC supply (grid) side.
+These can be plugged into ports 1 - 6 to provide up to six separate bi directional measurements of AC power. When clipping the current transformer around the live AC wire the face shown above should be on the AC supply (grid) side. It may be possible to use other current transformers but the calibration mechanism has only been tested with these current transformers.
 
 ## Case
 The Case was designed using [FreeCad](https://www.freecad.org/). The various
