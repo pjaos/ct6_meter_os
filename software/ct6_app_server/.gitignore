@@ -4,3 +4,4 @@ cmd_list.cmd
 house_wifi.cfg
 packages
 .venv
+fwd_mysql.sh
