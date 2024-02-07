@@ -24,3 +24,4 @@ to V2.1 by applying the modification below.
 # Status
 This modification has been withdrawn because it does not fix the issue when
 the power turns off and on very quickly on some boards.
+It has been found that if ECO 3 is applied this problem does not occur.
