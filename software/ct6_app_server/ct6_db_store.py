@@ -1031,7 +1031,8 @@ class CTAppServer(object):
                 self._start(mySQLDBClient)
                 self._lockFile.removeLockFile()
                 
-        except KeyboardInterrupt:
+        # Ensure the lock file is removed when we shutdown
+        finally:
             self._lockFile.removeLockFile()
             
 def main():
