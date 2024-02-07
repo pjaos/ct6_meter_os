@@ -435,7 +435,7 @@ class CT6Base(BaseConstants):
         """@brief Load the CT6 code onto the CT6 hardware.
            @param factoryConfigFile If set this is the factory.cfg file to load onto the CT6 unit."""
         self._uio.debug("loadCT6Firmware(): START")
-        # If factory config defined check the constents of the file.
+        # If factory config defined check the contents of the file.
         if factoryConfigFile:
             self._checkFactoryConfFile(factoryConfigFile)
             
@@ -592,7 +592,7 @@ class MCULoader(CT6Base):
         for aFile in fileList:
             if os.path.isfile(aFile):
                 os.remove(aFile)
-                self._info("Deleted {}".format(aFile))
+                self._info("Deleted local {}".format(aFile))
                 
     def deleteMPYFiles(self):
         """@brief Delete existing *.mpy files"""
@@ -658,6 +658,7 @@ class MCULoader(CT6Base):
             fd.write("{}\n".format(l))
         fd.close()
         self._runCmd(port, MCULoader.CMD_LIST_FILE)
+        self._info("Deleted all files from CT6 unit.")
         
     def load(self):
         """@brief Load the python code onto the micro controller device."""
@@ -667,7 +668,7 @@ class MCULoader(CT6Base):
         # Delete all files from the CT6 device
         self._deleteAllCT6Files(self._serialPort)
         # We now need to reboot the device in order to ensure the WDT is disabled
-        # as there is no way to disable the WDT once enabled and thr WDT runs 
+        # as there is no way to disable the WDT once enabled and the WDT runs 
         # on a CT6 device.
         self._rebootUnit()
         # Regain the python prompt from the CT6 unit.
@@ -872,7 +873,7 @@ class YDevManager(CT6Base):
         for aFile in fileList:
             if os.path.isfile(aFile):
                 os.remove(aFile)
-                self._uio.info("Deleted {}".format(aFile))
+                self._uio.info("Deleted local {}".format(aFile))
 
     def _deleteMPYFiles(self):
         """@brief Delete existing *.mpy files"""
@@ -1186,10 +1187,6 @@ class YDevManager(CT6Base):
         self._uio.info(f"WiFi SSID: {ssid}")
         self._uio.info("The CT6 WiFi interface is now configured.")
         
-    def loadViaSerialPort(self):
-        """@brief Load firmware via a serial port."""
-        self.loadCT6Firmware(self._options.clean)
-        
     def _openFirstAvailableSerialPort(self):
         """@brief Attempt to get the name of the first available serial port."""
         checking = True
@@ -1416,7 +1413,7 @@ def main():
         parser.add_argument("--upgrade",                action='store_true', help="Perform an upgrade of a CT6 unit over the air (OTA) via it's WiFi interface.")
         parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default='app1')
         parser.add_argument("--create_zip",             help="Create an upgrade zip file. The argument is the zip filename.")
-        parser.add_argument("--clean",                  help="Load the firmware and factory configuration to a CT6 device over the Pico W serial port. The argument provided must be the factory config file to load onto the CT6 unit. This options does not reload Micropython onto the unit. Use the ct6_mfg_tool for this.")
+        parser.add_argument("--clean",                  help="Delete all files and reload the firmware onto a CT6 device over the Pico W serial port. The factory.cfg file must be reloaded when this is complete to restore assy/serial number and calibration configuration.", action='store_true')
         parser.add_argument("--status",                 action='store_true', help="Get unit RAM/DISK usage.")
         parser.add_argument("--flist",                  action='store_true', help="Get a list of the files on the unit.")
         parser.add_argument("--mconfig",                action='store_true', help="Get the machine config.")
@@ -1460,7 +1457,7 @@ def main():
             yDevManager.packageApp()
             
         elif options.clean:
-            yDevManager.loadViaSerialPort()
+            yDevManager.loadCT6Firmware(False)
 
         elif options.upgrade:
             yDevManager.upgrade()
