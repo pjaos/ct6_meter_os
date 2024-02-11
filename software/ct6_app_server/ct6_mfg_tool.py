@@ -806,6 +806,8 @@ class FactorySetup(CT6Base):
                 
         self._initLogFile()
 
+        self._recordGitHash()
+                
         self._showUUT()
 
     def _loadCT6Application(self):
@@ -977,7 +979,28 @@ class FactorySetup(CT6Base):
             self._uio.info(f"Power cycle passed: {count}")
             
         self._uio.info(f"Power cycle passed {count} times.")
-        
+                
+    def _recordGitHash(self):
+        """@brief Record the git hash of the test software in the log file."""
+        # Get currently executing file
+        exeFile = sys.argv[0]
+        # Get it's path.
+        pathname = os.path.dirname(exeFile)
+        # Get the git_hash.txt file created when build.sh was executed to create the deb file.
+        assetsFolder = os.path.join(pathname, "assets")
+        gitHashFile = os.path.join(assetsFolder, "git_hash.txt")
+        if os.path.isfile(gitHashFile):
+            lines = []
+            with open(gitHashFile, 'r') as fd:
+                lines = fd.readlines()
+            if len(lines) > 0:
+                gitHash = lines[0].rstrip("\r\n")
+                self._uio.info(f"Test SW git hash: {gitHash}")
+            else:
+                self._uio.error("Failed to read test SW git hash")
+        else:
+            self._uio.error(f"{gitHashFile} file not found.")
+                
     def mfgTest(self):
         """@brief Perform a manufacturing test."""
          # Create all the test cases
