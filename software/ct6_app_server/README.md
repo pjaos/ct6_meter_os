@@ -65,8 +65,10 @@ provide all the functionality required to use, commission and calibrate the CT6 
 
 
 # System Setup
-The following provides the detail necessary to setup the system.
+The following provides the detail necessary to setup the system. Before proceeding with system setup run through the 'Installation of SW' section in the README_MFG.md file.
 
+#### WiFi Setup
+There are two methods to setup the WiFi on the CT6 unit. You can use the Android app as detailed under the Android_App folder. Alternatively you can connect the CT6 board via a serial port to a Linux PC and run the 'ct6_tool -w' command to configure the WiFi.
 
 #### CT6 configuration
 The CT6 unit name and names of each of its ports can be configured as shown below.
