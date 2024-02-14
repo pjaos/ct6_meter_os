@@ -46,6 +46,10 @@ into the hole. Each end is then cut off to create light pipes.
 
 The [case](case) folder contains the FreeCad (0.20.2) design files for this project.
 
+### Dissembling a CT6 unit
+
+Some info on how to take a CT6 unit apart if you want access to the PCB can be found here [here](README_DISSEMBLY.md)
+
 ## Power Supply
 This project requires the use of an AC - AC supply. The CT6 PCB assembly is calibrated using the power supply detailed below.
 
