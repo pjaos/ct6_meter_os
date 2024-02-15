@@ -25,10 +25,10 @@ E.G
 # For customization when using a Version Control System, please read the
 # header note.
 #Thu Feb 15 05:53:03 GMT 2024
-sdk.dir=/home/<USERNAME>/Android/Sdk
+sdk.dir=/home/USERNAME/Android/Sdk
 ```
 
-where <USERNAME> is your username. This is the local path where the Android SDK is installed.
+where USERNAME is your username. This is the local path where the Android SDK is installed.
 
 
 Once this has been done you should be able to open the SetupYDevWifi project from the
