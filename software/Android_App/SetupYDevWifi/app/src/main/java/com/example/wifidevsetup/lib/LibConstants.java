@@ -4,10 +4,14 @@ import android.Manifest;
 
 public class LibConstants {
     // All the permissions required for the app should be detailed here
-    public static String APP_PERMISSION_LIST[] = {  Manifest.permission.ACCESS_COARSE_LOCATION,
+    public static String APP_PERMISSION_LIST[] = {
+            Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.BLUETOOTH,
-            Manifest.permission.BLUETOOTH_ADMIN };
+            Manifest.permission.BLUETOOTH_ADMIN,
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.FOREGROUND_SERVICE};
 
     public static final String DEFAULT_YDEV_WIFI_PASSWORD = "12345678";
     public static final String DEFAULT_YDEV_DEVICE_AP_ADDRESS = "192.168.4.1";

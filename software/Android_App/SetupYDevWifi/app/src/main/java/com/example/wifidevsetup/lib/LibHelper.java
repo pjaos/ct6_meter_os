@@ -39,8 +39,10 @@ public class LibHelper {
         multiplePermissionLauncher = appCompatActivity.registerForActivityResult(multiplePermissionsContract, isGranted -> {
             StaticResources.AppLibHelper.debug("Launcher result: " + isGranted.toString());
             if (isGranted.containsValue(false)) {
-                StaticResources.AppLibHelper.debug("At least one of the permissions was not granted, launching again...");
-                multiplePermissionLauncher.launch(permissions);
+                String msg = "The app was not granted all the permisions it needs. Shutting down.";
+                Toast.makeText(appCompatActivity, msg, Toast.LENGTH_LONG).show();
+                StaticResources.AppLibHelper.error(msg);
+                StaticResources.AppLibHelper.StopApp();
             }
         });
         askPermissions(permissions, multiplePermissionLauncher, appCompatActivity);
