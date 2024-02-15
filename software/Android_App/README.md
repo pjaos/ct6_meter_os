@@ -35,9 +35,9 @@ Once this has been done you should be able to open the SetupYDevWifi project fro
 Android_App folder. 
 
 Connect your Android device (phone or tablet) via a USB cable to the PC running Android studio once you
-have enabled USB debugging under developer options on your Android phone/tablet under developer options.
+have enabled USB debugging under developer options on your Android phone/tablet.
 
-Once the above is complete clicking the Run/Play button in the Android Studio toolbar will compile the app, deploy the app to your Android device and start it running. This will install the app on you android device. Therefore you will be able to launch it by selecting the 'WiFi Device Setup' icon.
+Once the above is complete, clicking the Run/Play button in the Android Studio toolbar will compile the app, deploy the app to your Android device and start it running. This will install the app on you android device. Therefore you will be able to launch it by selecting the 'WiFi Device Setup' icon.
 
 
 # Using the App.
