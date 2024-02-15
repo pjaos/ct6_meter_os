@@ -11,12 +11,33 @@ WiFi as detailed below.
 To install the Android app on your Android device (phone or tablet) you need to
 have Android Studio (https://developer.android.com/studio) installed on your PC.
 
-Once installed you should be able to open the SetupYDevWifi folder. Connect your Android device (phone or tablet) via a USB cable to the PC running Android studio once you
-have enabled developer options and also enabled USB debugging on your
-under developer options.
+Before being able to compile the SetupYDevWifi Android Studio project 
+you need to add the local.properties file to the Android_App/SetupYDevWifi
+folder. This tells AndroidStudio where to find the Android SDK.
 
-Once the above is complete clicking the Run/Play button
-in the Android Studio toolbar will compile the app, deploy the app to your Android device and start it running. This will install the app on you android device. Therefore you will be able to launch it by selecting the 'WiFi Device Setup' icon.
+E.G
+
+```
+## This file must *NOT* be checked into Version Control Systems,
+# as it contains information specific to your local configuration.
+#
+# Location of the SDK. This is only used by Gradle.
+# For customization when using a Version Control System, please read the
+# header note.
+#Thu Feb 15 05:53:03 GMT 2024
+sdk.dir=/home/<USERNAME>/Android/Sdk
+```
+
+where <USERNAME> is your username. This is the local path where the Android SDK is installed.
+
+
+Once this has been done you should be able to open the SetupYDevWifi project from the
+Android_App folder. 
+
+Connect your Android device (phone or tablet) via a USB cable to the PC running Android studio once you
+have enabled USB debugging under developer options on your Android phone/tablet under developer options.
+
+Once the above is complete clicking the Run/Play button in the Android Studio toolbar will compile the app, deploy the app to your Android device and start it running. This will install the app on you android device. Therefore you will be able to launch it by selecting the 'WiFi Device Setup' icon.
 
 
 # Using the App.
