@@ -73,7 +73,8 @@ class CT6Base(BaseConstants):
                                    ASSY_KEY,
                                    CS0_VOLTAGE_GAIN_KEY,
                                    CS4_VOLTAGE_GAIN_KEY,
-                                   LINE_FREQ_HZ_KEY] 
+                                   LINE_FREQ_HZ_KEY]
+    TCP_PORT                    = 80
     
     @staticmethod
     def GetSerialPortList():
@@ -199,7 +200,7 @@ class CT6Base(BaseConstants):
         with open(filename, 'w') as fd:
             json.dump(theDict, fd, ensure_ascii=False)
         
-    
+        
     def _runRShell(self, cmdList, picow=True):
         """@brief Run an rshell command file.
            @param cmdList A list of commands to execute.
@@ -488,7 +489,21 @@ class CT6Base(BaseConstants):
         for key in CT6Base.FACTORY_CONFIG_KEYS:
             if key not in factoryCfgDict:
                 raise Exception(f"The {key} parameter is not defined in the {factoryConfigLogFile} file.")
-        
+            
+        assyStr = factoryCfgDict[CT6Base.ASSY_KEY]
+        # If the ASSY is not set
+        if assyStr.startswith("ASY0197"):
+            # Correct the assembly number from the filename data
+            filename = os.path.basename(factoryConfigLogFile)
+            elems = filename.split("_")
+            if len(elems) > 3:
+                assyStr = elems[0] + "_" + elems[1] + "_" + elems[2]
+                factoryCfgDict[CT6Base.ASSY_KEY] = assyStr
+                self._saveDictToJSONFile(factoryCfgDict, factoryConfigLogFile)
+                self._uio.warn(f"Corrected assembly number in the {factoryConfigLogFile} file.")
+            else:
+                raise Exception(f"{filename} invalid. Should have 'ASY0398_V03.2000_SN00001834_20240211094915_factory.cfg' form.")
+            
         # We've completed the checks required on the contents of the config file.
         return factoryConfigLogFile
         
@@ -512,15 +527,69 @@ class CT6Base(BaseConstants):
             raise Exception("{} file XFER failed.".format(localFile))
         self._uio.info("{} file XFER success.".format(localFile))
 
-    def restoreFactoryConfig(self, factoryConfigFile):
+    def restoreFactoryConfig(self, factoryConfigFile, serialCon = True):
         """@brief Restore the last factory config file to the CT6 unit via it's serial port.
-           @param factoryConfigFile The factory config file."""
+           @param factoryConfigFile The factory config file.
+           @param serialCon If True then the factory config file is loaded to the unit over the CT6 serial port.
+                            If False then it is loaded over the WiFi interface."""
         srcFactoryCfgFile = self._checkFactoryConfFile(factoryConfigFile)
-        # Attempt to connect to the board under test python prompt
-        self._checkMicroPython(closeSerialPort=False)
-        self._runRShell((f"cp {srcFactoryCfgFile} /pyboard/{CT6Base.CT6_FACTORY_CONFIG_FILE}",))
+        
+        if serialCon:
+            # Attempt to connect to the board under test python prompt
+            self._checkMicroPython(closeSerialPort=False)
+            self._runRShell((f"cp {srcFactoryCfgFile} /pyboard/{CT6Base.CT6_FACTORY_CONFIG_FILE}",))
+        else:
+            tmpLocalFile = os.path.join(tempfile.gettempdir(), CT6Base.CT6_FACTORY_CONFIG_FILE)
+            shutil.copyfile(srcFactoryCfgFile, tmpLocalFile)
+            self._sendFileOverWiFi(self._ipAddress, tmpLocalFile, "/")
+            os.remove(tmpLocalFile)
+            
         self._uio.info("Loaded the factory.cfg data to the CT6 board.")
         
+
+    def _runCommand(self, cmd, returnDict = False):
+        """@brief send a command to the device and get response.
+           @return A requests instance."""
+        self._checkAddress()
+        url = 'http://{}:{}{}'.format(self._ipAddress, CT6Base.TCP_PORT, cmd)
+        self._uio.debug(f"CMD: {url}")
+        if returnDict:
+            obj = requests.get(url).json()
+            self._uio.debug(f"CMD RESPONSE: { str(obj) }")
+            if isinstance(obj, dict):
+                return obj
+            else:
+                raise Exception("'{}' failed to return a dict.".format(cmd))
+        else:
+            return requests.get(url)
+        
+    def receiveFile(self, receiveFile, localPath):
+        """@brief Receive a file from the device.
+           @param receiveFile The file to receive.
+           @param The local path to save the file once received."""
+        self._checkAddress()
+        if not os.path.isdir(localPath):
+            raise Exception(f"{localPath} local path not found.")
+
+        self._uio.info("Receiving {} from {}".format(receiveFile, self._ipAddress))
+        requestsInstance = self._runCommand(YDevManager.GET_FILE_CMD + f"?file={receiveFile}")
+        cfgDict = requestsInstance.json()
+        if receiveFile in cfgDict:
+            if os.path.isfile(receiveFile):
+                self._uio.info("The local file {} already exists.".format(receiveFile))
+                if self._uio.getBoolInput("Overwrite y/n: "):
+                    os.remove(receiveFile)
+                    self._uio.info("Removed local {}".format(receiveFile))
+            fileContents=cfgDict[receiveFile]
+            absFile = os.path.join(localPath, receiveFile)
+            with open(absFile, 'w') as fd:
+                fd.write(fileContents)
+            self._uio.info("Created local {}".format(absFile))
+
+        else:
+            if "ERROR" in cfgDict:
+                raise Exception(cfgDict["ERROR"])
+            
 class MCULoader(CT6Base):
     """@brief Responsible for converting .py files in app1 and app1/lib
               to .mpy files and loading them onto the MCU."""
@@ -682,7 +751,6 @@ class MCULoader(CT6Base):
 class YDevManager(CT6Base):
     """@brief Responsible for providing device management functionality."""
 
-    TCP_PORT                = 80
     GET_SYS_STATS           = "/get_sys_stats"
     GET_FILE_LIST           = "/get_file_list"
     GET_MACHINE_CONFIG      = "/get_machine_config"
@@ -1033,22 +1101,6 @@ class YDevManager(CT6Base):
             for line in obj:
                 self._uio.info(line)
 
-    def _runCommand(self, cmd, returnDict = False):
-        """@brief send a command to the device and get response.
-           @return A requests instance."""
-        self._ensureValidAddress()
-        url = 'http://{}:{}{}'.format(self._ipAddress, YDevManager.TCP_PORT, cmd)
-        self._uio.debug(f"CMD: {url}")
-        if returnDict:
-            obj = requests.get(url).json()
-            self._uio.debug(f"CMD RESPONSE: { str(obj) }")
-            if isinstance(obj, dict):
-                return obj
-            else:
-                raise Exception("'{}' failed to return a dict.".format(cmd))
-        else:
-            return requests.get(url)
-
     def _showCmdResponse(self, cmd):
         """@brief Show the response to a command."""
         r = self._runCommand(cmd)
@@ -1152,33 +1204,6 @@ class YDevManager(CT6Base):
         # Ask user if they wish to reboot the unit now its set to default configuration.
         if self._uio.getBoolInput("Reboot unit y/n"):
             self._reboot()
-
-    def receiveFile(self, receiveFile, localPath):
-        """@brief Receive a file from the device.
-           @param receiveFile The file to receeive.
-           @param The local path to save the file once received."""
-        self._checkAddress()
-        if not os.path.isdir(localPath):
-            raise Exception(f"{localPath} local path not found.")
-
-        self._uio.info("Receiving {} from {}".format(receiveFile, self._ipAddress))
-        requestsInstance = self._runCommand(YDevManager.GET_FILE_CMD + f"?file={receiveFile}")
-        cfgDict = requestsInstance.json()
-        if receiveFile in cfgDict:
-            if os.path.isfile(receiveFile):
-                self._uio.info("The local file {} already exists.".format(receiveFile))
-                if self._uio.getBoolInput("Overwrite y/n: "):
-                    os.remove(receiveFile)
-                    self._uio.info("Removed local {}".format(receiveFile))
-            fileContents=cfgDict[receiveFile]
-            absFile = os.path.join(localPath, receiveFile)
-            with open(absFile, 'w') as fd:
-                fd.write(fileContents)
-            self._uio.info("Created local {}".format(absFile))
-
-        else:
-            if "ERROR" in cfgDict:
-                raise Exception(cfgDict["ERROR"])
 
     def configureWiFi(self):
         """@brief configure the CT6 WiFi interface from the house_wifi.cfg file."""
@@ -1422,7 +1447,7 @@ def main():
         parser.add_argument("--sf",                     help="Send a file to the device.")
         parser.add_argument("--sp",                     help="The path to place the above file on the device.", default="/")
         parser.add_argument("--rf",                     help="Receive a file from the device. Only text files are currently supported.")
-        parser.add_argument("--rp",                     help="The local path to place the above file once received.")
+        parser.add_argument("--rp",                     help=f"The local path to place the above file once received (default={tempfile.gettempdir()}).", default=tempfile.gettempdir())
         parser.add_argument("--mkdir",                  help="The path to create on the device.")
         parser.add_argument("--rmdir",                  help="The path to remove from the device.")
         parser.add_argument("--rmfile",                 help="The file to remove from the device.")
