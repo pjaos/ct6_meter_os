@@ -11,6 +11,7 @@ import json
 import traceback
 import select
 import threading
+import tempfile
 
 from   retry import retry
 
@@ -104,17 +105,34 @@ class FactorySetup(CT6Base):
         if not os.path.isdir(self._logPath):
             os.makedirs(self._logPath)
 
-    def _setAssyNumber(self, cfgDict):
-        """@brief Allow the user to set the serial number in the assembly label.
-           @param cfgDict The config dict read from the unit."""
+    def _setAssyNumber(self):
+        """@brief Allow the user to set the serial number in the assembly label."""
         self._uio.info("")
         # Set the unit assembly number hardware version and serial number
+        
+        # Set in this.machine.cfg
         newAssy = f"ASY{self._assyNumber:0>4d}_V{self._boardVersion:0>7.3f}_SN{self._serialNumber:0>8}"
         self._uio.info(f"Setting assembly label to {newAssy}.")
         url=f"http://{self._ipAddress}{FactorySetup.SET_CONFIG_CMD}?{FactorySetup.ASSY_KEY}={newAssy}"
         response = requests.get(url)
         self._checkResponse(response)
-
+        
+        # Set in factory.cfg
+        localFactoryCfgFile = os.path.join(tempfile.gettempdir(), CT6Base.CT6_FACTORY_CONFIG_FILE)
+        if os.path.isfile(localFactoryCfgFile):
+            os.remove(localFactoryCfgFile)
+            self._uio.debug(f"Removed {localFactoryCfgFile}")
+            
+        self.receiveFile(CT6Base.CT6_FACTORY_CONFIG_FILE, tempfile.gettempdir())
+        
+        factoryCfgDict = self._loadJSONFile(localFactoryCfgFile)
+        
+        factoryCfgDict[CT6Base.ASSY_KEY] = newAssy
+        self._saveDictToJSONFile(factoryCfgDict, localFactoryCfgFile)
+        
+        self._sendFileOverWiFi(self._ipAddress, localFactoryCfgFile, "/")
+        
+                
     def _initATM90E32Devs(self):
         url=f"http://{self._ipAddress}/init_atm90e32_devs"
         response = requests.get(url)
@@ -403,9 +421,8 @@ class FactorySetup(CT6Base):
         """@brief Set the serial number of a CT6 device."""
         self._checkAddress()
         self._uio.info(f'Factory setup and calibration of CT6 unit ({self._ipAddress}).')
-        cfgDict = self._getConfigDict()
 
-        self._setAssyNumber(cfgDict)
+        self._setAssyNumber()
 
         self._uio.info("Successfully set the unit serial number.")
 
@@ -743,6 +760,7 @@ class FactorySetup(CT6Base):
         """@brief Scan the board assembly and serial number labels.
            @return A tuple containing the assembly number followed by the serial number."""
         assyNumber = self._uio.getInput("Enter the board assembly number or 'r' to repeat last test")
+        assyNumber = assyNumber.upper()
         if assyNumber.lower() == 'r':
             assyNumber, serialNumber = self._loadLastUnitTested()
             self._validateAssy(assyNumber)
@@ -752,6 +770,7 @@ class FactorySetup(CT6Base):
             self._validateAssy(assyNumber)
             
             serialNumber = self._uio.getInput("Enter the board serial number")
+            serialNumber = serialNumber.upper()
             self._validateSN(serialNumber)
             
             self._saveLastUnitTested(assyNumber, serialNumber)
@@ -1001,6 +1020,14 @@ class FactorySetup(CT6Base):
         else:
             self._uio.error(f"{gitHashFile} file not found.")
                 
+    def setLabelData(self):
+        """@brief Set the CT6 unit label data (ASSY and serial number). This is useful if the board is modified."""
+        self._ensureLogPathExists()
+        
+        self.scanBoardLabels()
+                
+        self._setAssyNumber()
+            
     def mfgTest(self):
         """@brief Perform a manufacturing test."""
          # Create all the test cases
@@ -1056,6 +1083,7 @@ def main():
         parser.add_argument("-w", "--setup_wifi",       action='store_true', help="Alternative to using the Android App to setup the CT6 WiFi interface.")
         parser.add_argument("-a", "--address",          help="The IP address of the unit. This is required for --restore and --power_cycle.", default=None)
         parser.add_argument("-c", "--cal_ports",        help="Ports to calibrate. Default = all. The port number or comma separated list of ports (E.G 1,2,3,4,5,6) may be entered.", default="all")
+        parser.add_argument("-l", "--labels",           action='store_true', help="Set the assembly and serial number label data in the CT6 unit.")
         parser.add_argument("--ac60hz",                 action='store_true', help="Set the AC freq to 60 Hz. The default is 50 Hz.")
         parser.add_argument("-d", "--debug",            action='store_true', help="Enable debugging.")
 
@@ -1071,7 +1099,7 @@ def main():
             
         elif options.restore:
             factorySetup.setIPAddress(options.address)
-            factorySetup.restoreFactoryConfig(options.restore)
+            factorySetup.restoreFactoryConfig(options.restore, serialCon=False)
             
         elif options.cal_only:
             factorySetup.setIPAddress(options.address)
@@ -1083,6 +1111,10 @@ def main():
                        
         elif options.setup_wifi:
             factorySetup.configureWiFi()
+
+        elif options.labels:
+            factorySetup.setIPAddress(options.address)
+            factorySetup.setLabelData()
 
         else:
             factorySetup.mfgTest()
