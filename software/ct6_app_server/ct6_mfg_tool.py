@@ -104,35 +104,33 @@ class FactorySetup(CT6Base):
         """@brief Ensure that the log path exists."""
         if not os.path.isdir(self._logPath):
             os.makedirs(self._logPath)
-
-    def _setAssyNumber(self):
-        """@brief Allow the user to set the serial number in the assembly label."""
+        
+    def _updateAssyAndSN(self):
+        """@brief Allow the user to set the assy and serial numbers in the assembly label."""
         self._uio.info("")
-        # Set the unit assembly number hardware version and serial number
-        
-        # Set in this.machine.cfg
-        newAssy = f"ASY{self._assyNumber:0>4d}_V{self._boardVersion:0>7.3f}_SN{self._serialNumber:0>8}"
-        self._uio.info(f"Setting assembly label to {newAssy}.")
-        url=f"http://{self._ipAddress}{FactorySetup.SET_CONFIG_CMD}?{FactorySetup.ASSY_KEY}={newAssy}"
-        response = requests.get(url)
-        self._checkResponse(response)
-        
-        # Set in factory.cfg
+        # Update the unit assembly number hardware version and serial number
+               
+        # Delete any local factory.cfg
         localFactoryCfgFile = os.path.join(tempfile.gettempdir(), CT6Base.CT6_FACTORY_CONFIG_FILE)
         if os.path.isfile(localFactoryCfgFile):
             os.remove(localFactoryCfgFile)
             self._uio.debug(f"Removed {localFactoryCfgFile}")
             
-        self.receiveFile(CT6Base.CT6_FACTORY_CONFIG_FILE, tempfile.gettempdir())
-        
+        # Get the file from the CT6 unit
+        try:
+            self.receiveFile(CT6Base.CT6_FACTORY_CONFIG_FILE, tempfile.gettempdir())
+        except:
+            raise Exception(f"/{CT6Base.CT6_FACTORY_CONFIG_FILE} not found on CT6 unit. A full test or recal is required.")
         factoryCfgDict = self._loadJSONFile(localFactoryCfgFile)
         
+        # Update the assy/sn number
+        newAssy = f"ASY{self._assyNumber:0>4d}_V{self._boardVersion:0>7.3f}_SN{self._serialNumber:0>8}"
         factoryCfgDict[CT6Base.ASSY_KEY] = newAssy
         self._saveDictToJSONFile(factoryCfgDict, localFactoryCfgFile)
         
         self._sendFileOverWiFi(self._ipAddress, localFactoryCfgFile, "/")
+        os.remove(localFactoryCfgFile)
         
-                
     def _initATM90E32Devs(self):
         url=f"http://{self._ipAddress}/init_atm90e32_devs"
         response = requests.get(url)
@@ -156,6 +154,7 @@ class FactorySetup(CT6Base):
 
         self._uio.info(f"AC Freq = {self._lineFreqHz} Hz")
         url=f"http://{self._ipAddress}/set_config?{FactorySetup.LINE_FREQ_HZ_KEY}={self._lineFreqHz}"
+        response = requests.get(url)
         
         if ct == 1:
             configKey = FactorySetup.CS4_VOLTAGE_GAIN_KEY
@@ -417,15 +416,6 @@ class FactorySetup(CT6Base):
                 break
             sleep(0.4)
 
-    def setCT6SerialNumber(self):
-        """@brief Set the serial number of a CT6 device."""
-        self._checkAddress()
-        self._uio.info(f'Factory setup and calibration of CT6 unit ({self._ipAddress}).')
-
-        self._setAssyNumber()
-
-        self._uio.info("Successfully set the unit serial number.")
-
     def _getPortRange(self):
         """@brief Get a list of the ports to be calibrated.
            @return The port list."""
@@ -475,16 +465,20 @@ class FactorySetup(CT6Base):
     def _stopSerialPortMonitorThread(self):
         """@brief Stop the thread loggin serial port data."""
         self._serialLoggingThreadRunning = False
-        
-    def _waitPingAble(self, timeoutSeconds=120):
-        """@brief Wait for the CT6 device to be pingable."""
- 
+
+    def calibrateAndReboot(self):
+        """@brief Calibrate and reboot a CT6 unit."""
+        self.calibrate()
+        self._powerCycle()
+        self._uio.info("Completed calibration.")
+        self._uio.info("The CT6 unit is now power cycling.")
+         
     def calibrate(self):
         """@brief Perform the user configuration of a CT6 device."""
         self._checkAddress()
         self._uio.info(f'Factory setup and calibration of {self._ipAddress}')
 
-        self._waitForUnitPingable()
+        self._waitForPingSucess(pingHoldSecs=0)
         #Calibrate the AC voltage for both devices first
         self._uio.info("Calibrating U5 VOLTAGE gain.")
         acVoltage = self._calVoltageGain(1)
@@ -500,7 +494,7 @@ class FactorySetup(CT6Base):
         portRange = self._getPortRange()
         # Add prompt for user to connect CT to each channel as its calibrated
         for ct in portRange:
-            self._waitForUnitPingable()
+            self._waitForPingSucess(pingHoldSecs=0)
             self._uio.info("")
             self._uio.info("Ensure no AC load is connected.")
             self._uio.getInput(f"Connect an SCT013_100A current transformer (CT) to port {ct} and press RETURN")    
@@ -542,10 +536,25 @@ class FactorySetup(CT6Base):
         # factory config files to contain data when all calibration has been completed
         # successfully.
                 
+    def calibrateVoltageAndReboot(self):
+        """@brief Perform voltage calibration and reboot afterwards."""
+        self.calibrateVoltage()
+        self._powerCycle()
+        self._uio.info("Completed calibration.")
+        self._uio.info("The CT6 unit is now power cycling.")
+        
     def _saveFactoryConfig(self):
         """@brief Save the factory configuration. Should only be called after
            the unit serial number has been set and the unit is calibrated."""
         self._uio.info("Saving the factory configuration file to the CT6 unit.")
+
+        # Set ASSY/SN value in this.machine.cfg on the CT6 unit
+        newAssy = f"ASY{self._assyNumber:0>4d}_V{self._boardVersion:0>7.3f}_SN{self._serialNumber:0>8}"
+        self._uio.info(f"Setting assembly label to {newAssy}.")
+        url=f"http://{self._ipAddress}{FactorySetup.SET_CONFIG_CMD}?{FactorySetup.ASSY_KEY}={newAssy}"
+        response = requests.get(url)
+        self._checkResponse(response)
+        
         url=f"http://{self._ipAddress}/save_factory_cfg"
         self._runRESTCmd(url)
 
@@ -778,7 +787,7 @@ class FactorySetup(CT6Base):
         return (assyNumber, serialNumber)
         
     def _storeFileContents(self, filename):
-        """@brief Get the contents of a file from the unit.
+        """@brief Get the contents of a file from the unit and save the contents to a local file.
            @param filename The name of the file on the CT6 unit to retrieve."""
         fileContents = self._getFileContentsOverWifi(filename, self._ipAddress)
         self._uio.info(f"Save to {filename} from {self._ipAddress}.")
@@ -1026,7 +1035,11 @@ class FactorySetup(CT6Base):
         
         self.scanBoardLabels()
                 
-        self._setAssyNumber()
+        self._updateAssyAndSN()
+        
+        self._powerCycle()
+        self._uio.info("Completed setting the CT6 unit ASSY and SN numbers.")
+        self._uio.info("The CT6 unit is now power cycling.")
             
     def mfgTest(self):
         """@brief Perform a manufacturing test."""
@@ -1041,7 +1054,7 @@ class FactorySetup(CT6Base):
             ct6Testing.addTestCase(3000, "Erase Pico W flash memory.", self._erasePicoWFlash)
             ct6Testing.addTestCase(4000, "Load MicroPython onto Pico W flash memory.", self._loadMicroPython)
             ct6Testing.addTestCase(5000, "Load the CT6 firmware.", self._loadCT6Application)
-
+        
         if not self._options.test:
             if not self._options.no_cal:
                 # The calibration process tests all the CT interface ports.
@@ -1054,9 +1067,9 @@ class FactorySetup(CT6Base):
         ct6Testing.addTestCase(9000, "Switch test.", self._testSwitches)
         ct6Testing.addTestCase(10000, "Power cycle circuit test.", self._testPowerCycle)
         ct6Testing.addTestCase(11000, "Display test.", self._displayTest)
-        
-        if not self._options.test:
-            ct6Testing.addTestCase(12000, "Set assembly number and serial number.", self.setCT6SerialNumber)
+
+        # 12000 used to be the step that sets the unit assy/serial number. This is now 
+        # done as part of the calibration process.
 
         #This ensures we have a local copy of the CT6 config files.
         ct6Testing.addTestCase(13000, "Store CT6 configuration files.", self._storeConfig)
@@ -1103,11 +1116,11 @@ def main():
             
         elif options.cal_only:
             factorySetup.setIPAddress(options.address)
-            factorySetup.calibrate()
+            factorySetup.calibrateAndReboot()
             
         elif options.voltage_cal_only:
             factorySetup.setIPAddress(options.address)
-            factorySetup.calibrateVoltage()
+            factorySetup.calibrateVoltageAndReboot()
                        
         elif options.setup_wifi:
             factorySetup.configureWiFi()
