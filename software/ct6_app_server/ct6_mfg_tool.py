@@ -21,7 +21,7 @@ from   p3lib.uio import UIO
 from   p3lib.helper import logTraceBack
 from   p3lib.ate import TestCaseBase
 
-from   ct6_tool import CT6Base
+from   ct6_tool import CT6Base, YDevManager
 
 class FactorySetup(CT6Base):
     """@brief Allow the user to setup an calibrate a CT6 device."""
@@ -1041,6 +1041,26 @@ class FactorySetup(CT6Base):
         self._uio.info("Completed setting the CT6 unit ASSY and SN numbers.")
         self._uio.info("The CT6 unit is now power cycling.")
             
+    def upgradeAndCal(self):
+        """@brief Upgrade and calibrate a CT6 unit. This only requires WiFi access to the unit."""
+        class YDevManagerOptions(object):
+            def __init__(self, address):
+                self.check_mpy_cross = False
+                self.address = address
+                self.upgrade_src = "app1"
+        opts = YDevManagerOptions(self._ipAddress)
+                
+        yDevManager = YDevManager(self._uio, opts)
+        self._initTest()
+        self._updateAssyAndSN()
+        yDevManager.upgrade(promptReboot=False)
+        sleep(1)
+        self._powerCycle()
+        self._uio.info("CT6 unit is now power cycling.")
+        self._waitForPingSucess(pingHoldSecs=4)
+        
+        self.calibrateAndReboot()
+        
     def mfgTest(self):
         """@brief Perform a manufacturing test."""
          # Create all the test cases
@@ -1090,6 +1110,7 @@ def main():
         parser.add_argument("--no_default",             action='store_true', help="By default a full MFG test is performed. If this options is used the factory defaults will not be loaded leaving the WiFi config present when testing is complete..")
         parser.add_argument("-t", "--test",             action='store_true', help="By default a full MFG test is performed. This option will not load code onto the CT6 device but will run some test cases. This options does not test the CT ports.")
         parser.add_argument("-o", "--cal_only",         action='store_true', help="Only perform the CT port calibration.")
+        parser.add_argument("-u", "--upcal",            action='store_true', help="Upgrade the CT6 firmware and recal.")
         parser.add_argument("-v", "--voltage_cal_only", action='store_true', help="Only perform the CT voltage calibration.")
         parser.add_argument("-r", "--restore",          help="The filename of the CT6 factory config file to load onto the CT6 unit.")
         parser.add_argument("-p", "--power_cycle",      action='store_true', help="Perform a number of power cycle tests to check the reliability of the power cycling feature.")
@@ -1129,6 +1150,10 @@ def main():
             factorySetup.setIPAddress(options.address)
             factorySetup.setLabelData()
 
+        elif options.upcal:
+            factorySetup.setIPAddress(options.address)
+            factorySetup.upgradeAndCal()
+                        
         else:
             factorySetup.mfgTest()
 
