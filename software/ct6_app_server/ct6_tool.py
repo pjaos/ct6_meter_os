@@ -909,8 +909,9 @@ class YDevManager(CT6Base):
         else:
             self._uio.info(f"Upgrade successful. Switched from {self._orgActiveAppFolder} to {activeApp}")
 
-    def upgrade(self):
-        """@brief Perform an upgrade on the units SW."""
+    def upgrade(self, promptReboot=True):
+        """@brief Perform an upgrade on the units SW.
+           @param promptReboot If True prompt the user to enter 'y' to reboot the unit."""
         startTime = time()
         self._ensureValidAddress()
         appSize = self._checkLocalApp()
@@ -924,17 +925,18 @@ class YDevManager(CT6Base):
         self._uio.info("took {:.1f} seconds to upgrade device.".format(time()-startTime))
         # Don't leave the byte code files
         self._deleteMPYFiles()
-        while True:
-            response = self._uio.getInput("Upgrade complete. Do you wish to reboot the device y/n: ")
-            if response.lower() == 'y':
-                self._reboot()
-                # Reconnect to the device and check the unit is now running the new app
-                self._checkRunningNewApp()
-                break
-
-            if response.lower() == 'n':
-                self._uio.info("The device will run the new software when it is manually restarted.")
-                break
+        if promptReboot:
+            while True:
+                response = self._uio.getInput("Upgrade complete. Do you wish to reboot the device y/n: ")
+                if response.lower() == 'y':
+                    self._reboot()
+                    # Reconnect to the device and check the unit is now running the new app
+                    self._checkRunningNewApp()
+                    break
+    
+                if response.lower() == 'n':
+                    self._uio.info("The device will run the new software when it is manually restarted.")
+                    break
 
     def _deleteFiles(self, fileList):
         """@brief Delete files details in the file list."""
