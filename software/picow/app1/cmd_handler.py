@@ -242,16 +242,16 @@ class CmdHandler(BaseCmdHandler):
         # This causes the MCU to run out of memory and the MCU restarts 
         # during calibration. Therefore this has been disabled.
         # Note that the second channel (B) is CT1,2 & 3 to ease PCB layout
-#        self._debug("Init ATM90E32 Channel B (CT1,CT2 and CT3)")
-#        self._showConfig(self._machineConfig,  (Constants.LINE_FREQ_HZ_KEY,
-#                                                Constants.CS4_VOLTAGE_GAIN_KEY,
-#                                                Constants.CT1_IGAIN_KEY,
-#                                                Constants.CT2_IGAIN_KEY,
-#                                                Constants.CT3_IGAIN_KEY,
-#                                                Constants.CS4_VOLTAGE_OFFSET,
-#                                                Constants.CT1_IOFFSET_KEY,
-#                                                Constants.CT2_IOFFSET_KEY,
-#                                                Constants.CT3_IOFFSET_KEY))
+        self._debug("Init ATM90E32 Channel B (CT1,CT2 and CT3)")
+        self._showConfig(self._machineConfig,  (Constants.LINE_FREQ_HZ_KEY,
+                                                Constants.CS4_VOLTAGE_GAIN_KEY,
+                                                Constants.CT1_IGAIN_KEY,
+                                                Constants.CT2_IGAIN_KEY,
+                                                Constants.CT3_IGAIN_KEY,
+                                                Constants.CS4_VOLTAGE_OFFSET,
+                                                Constants.CT1_IOFFSET_KEY,
+                                                Constants.CT2_IOFFSET_KEY,
+                                                Constants.CT3_IOFFSET_KEY))
         # Create an interface to the first ATM90E32 device.
         self._cs4ATM90E32 = ATM90E32(self._spi,
                             Constants.ATM90E32_CS4_PIN,
@@ -273,16 +273,16 @@ class CmdHandler(BaseCmdHandler):
         # This causes the MCU to run out of memory and the MCU restarts 
         # during calibration. Therefore this has been disabled.
         # Note that the first channel (A) is CT4,5 & 6 to ease PCB layout
-#        self._debug("Init ATM90E32 Channel A (CT4,CT5 and CT6)")
-#        self._showConfig(self._machineConfig,  (Constants.LINE_FREQ_HZ_KEY,
-#                                                Constants.CS0_VOLTAGE_GAIN_KEY,
-#                                                Constants.CT4_IGAIN_KEY,
-#                                                Constants.CT5_IGAIN_KEY,
-#                                                Constants.CT6_IGAIN_KEY,
-#                                                Constants.CS0_VOLTAGE_OFFSET,
-#                                                Constants.CT4_IOFFSET_KEY,
-#                                                Constants.CT5_IOFFSET_KEY,
-#                                                Constants.CT6_IOFFSET_KEY))
+        self._debug("Init ATM90E32 Channel A (CT4,CT5 and CT6)")
+        self._showConfig(self._machineConfig,  (Constants.LINE_FREQ_HZ_KEY,
+                                                Constants.CS0_VOLTAGE_GAIN_KEY,
+                                                Constants.CT4_IGAIN_KEY,
+                                                Constants.CT5_IGAIN_KEY,
+                                                Constants.CT6_IGAIN_KEY,
+                                                Constants.CS0_VOLTAGE_OFFSET,
+                                                Constants.CT4_IOFFSET_KEY,
+                                                Constants.CT5_IOFFSET_KEY,
+                                                Constants.CT6_IOFFSET_KEY))
         # Create an interface to the second ATM90E32 device
         self._cs0ATM90E32 = ATM90E32(self._spi,
                             Constants.ATM90E32_CS0_PIN,
