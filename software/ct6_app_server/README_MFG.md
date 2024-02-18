@@ -115,7 +115,9 @@ The equipment should be connected as per the diagram shown below.
 ### CT6 initialisation and calibration
 
 - The ct6_mfg_tool program will load all code onto the CT6 unit, test it and calibrate each port as shown below.
-  You must run the ct6_mfg_tool in the software/ct6_app_server folder. Note that '<YOUR WIFI SSID>' and '<YOUR WIFI PASSWORD>' should be replaced with your WiFi SSID and password.
+  You must run the ct6_mfg_tool in the software/ct6_app_server folder. Note that '<YOUR WIFI SSID>' and '<YOUR WIFI PASSWORD>' should be replaced with your WiFi SSID and password. You must run this process if you have a new RPi Pico W board as it erases the Pico W flash and loads Micro Python onto it.
+
+Note that if your AC supply is 60 Hz (default = 50 Hz) you'll also need to add the '--ac60hz' command line option to the command below.
 
 ```
 ct6_mfg_tool
@@ -545,6 +547,369 @@ INFO:  Took 422.2 seconds to test.
 The CT6 unit is now ready for use. See the README.md file for more information on this.
 
 
+### CT6 Upgrade and recalibration
+
+To upgrade and recalibrate a CT6 unit the following process can be used using the same test system as detailed above. This process only requires a WiFi connection to the CT6 unit, no serial port connection is required. 
+
+First cd to the ct6_meter_os/software/ct6_app_server git repo folder and then run the following command. Note that if your AC supply is 60 Hz (default = 50 Hz) you'll also need to use the '--ac60hz' command line option.
+
+```
+ct6_mfg_tool -a 192.168.0.76 --upcal
+
+INFO:  Get this.machine.cfg from 192.168.0.76.
+INFO:  ----------------------------------
+INFO:  |         UNIT UNDER TEST |      |
+INFO:  ----------------------------------
+INFO:  |         Assembly Number |  398 |
+INFO:  ----------------------------------
+INFO:  |    CT6 hardware version |  3.2 |
+INFO:  ----------------------------------
+INFO:  | CT6 board serial Number | 1831 |
+INFO:  ----------------------------------
+INPUT: Enter the board assembly number or 'r' to repeat last test: ASY0398V3.2
+INPUT: Enter the board serial number: SN00001831
+INFO:  Test SW git hash: 0a6c856
+INFO:  ----------------------------------
+INFO:  |         UNIT UNDER TEST |      |
+INFO:  ----------------------------------
+INFO:  |         Assembly Number |  398 |
+INFO:  ----------------------------------
+INFO:  |    CT6 hardware version |  3.2 |
+INFO:  ----------------------------------
+INFO:  | CT6 board serial Number | 1831 |
+INFO:  ----------------------------------
+INFO:  
+INFO:  Receiving factory.cfg from 192.168.0.76
+INFO:  Created local /tmp/factory.cfg
+INFO:  Sending /tmp/factory.cfg to /
+INFO:  /tmp/factory.cfg file XFER success.
+INFO:  Peforming an OTA upgrade of 192.168.0.76
+INFO:  Inactive App Folder: /app1
+INFO:  Converting project.py to project.mpy (bytecode).
+INFO:  Sending app1/project.mpy to /app1/
+INFO:  app1/project.mpy file XFER success.
+INFO:  Converting cmd_handler.py to cmd_handler.mpy (bytecode).
+INFO:  Sending app1/cmd_handler.mpy to /app1/
+INFO:  app1/cmd_handler.mpy file XFER success.
+INFO:  Converting vga2_bold_16x16.py to vga2_bold_16x16.mpy (bytecode).
+INFO:  Sending app1/vga2_bold_16x16.mpy to /app1/
+INFO:  app1/vga2_bold_16x16.mpy file XFER success.
+INFO:  Converting uo.py to uo.mpy (bytecode).
+INFO:  Sending app1/lib/uo.mpy to /app1/lib
+INFO:  app1/lib/uo.mpy file XFER success.
+INFO:  Converting bluetooth.py to bluetooth.mpy (bytecode).
+INFO:  Sending app1/lib/bluetooth.mpy to /app1/lib
+INFO:  app1/lib/bluetooth.mpy file XFER success.
+INFO:  Converting __init__.py to __init__.mpy (bytecode).
+INFO:  Sending app1/lib/drivers/__init__.mpy to /app1/lib/drivers
+INFO:  app1/lib/drivers/__init__.mpy file XFER success.
+INFO:  Converting atm90e32.py to atm90e32.mpy (bytecode).
+INFO:  Sending app1/lib/drivers/atm90e32.mpy to /app1/lib/drivers
+INFO:  app1/lib/drivers/atm90e32.mpy file XFER success.
+INFO:  Converting lcd.py to lcd.mpy (bytecode).
+INFO:  Sending app1/lib/drivers/lcd.mpy to /app1/lib/drivers
+INFO:  app1/lib/drivers/lcd.mpy file XFER success.
+INFO:  Converting st7789.py to st7789.mpy (bytecode).
+INFO:  Sending app1/lib/drivers/st7789.mpy to /app1/lib/drivers
+INFO:  app1/lib/drivers/st7789.mpy file XFER success.
+INFO:  Converting ydev.py to ydev.mpy (bytecode).
+INFO:  Sending app1/lib/ydev.mpy to /app1/lib
+INFO:  app1/lib/ydev.mpy file XFER success.
+INFO:  Converting base_cmd_handler.py to base_cmd_handler.mpy (bytecode).
+INFO:  Sending app1/lib/base_cmd_handler.mpy to /app1/lib
+INFO:  app1/lib/base_cmd_handler.mpy file XFER success.
+INFO:  Converting hardware.py to hardware.mpy (bytecode).
+INFO:  Sending app1/lib/hardware.mpy to /app1/lib
+INFO:  app1/lib/hardware.mpy file XFER success.
+INFO:  Converting __init__.py to __init__.mpy (bytecode).
+INFO:  Sending app1/lib/__init__.mpy to /app1/lib
+INFO:  app1/lib/__init__.mpy file XFER success.
+INFO:  Converting config.py to config.mpy (bytecode).
+INFO:  Sending app1/lib/config.mpy to /app1/lib
+INFO:  app1/lib/config.mpy file XFER success.
+INFO:  Converting rest_server.py to rest_server.mpy (bytecode).
+INFO:  Sending app1/lib/rest_server.mpy to /app1/lib
+INFO:  app1/lib/rest_server.mpy file XFER success.
+INFO:  Converting base_machine.py to base_machine.mpy (bytecode).
+INFO:  Sending app1/lib/base_machine.mpy to /app1/lib
+INFO:  app1/lib/base_machine.mpy file XFER success.
+INFO:  Converting base_constants.py to base_constants.mpy (bytecode).
+INFO:  Sending app1/lib/base_constants.mpy to /app1/lib
+INFO:  app1/lib/base_constants.mpy file XFER success.
+INFO:  Converting fs.py to fs.mpy (bytecode).
+INFO:  Sending app1/lib/fs.mpy to /app1/lib
+INFO:  app1/lib/fs.mpy file XFER success.
+INFO:  Converting wifi.py to wifi.mpy (bytecode).
+INFO:  Sending app1/lib/wifi.mpy to /app1/lib
+INFO:  app1/lib/wifi.mpy file XFER success.
+INFO:  Converting io.py to io.mpy (bytecode).
+INFO:  Sending app1/lib/io.mpy to /app1/lib
+INFO:  app1/lib/io.mpy file XFER success.
+INFO:  Converting __init__.py to __init__.mpy (bytecode).
+INFO:  Sending app1/__init__.mpy to /app1/
+INFO:  app1/__init__.mpy file XFER success.
+INFO:  Converting constants.py to constants.mpy (bytecode).
+INFO:  Sending app1/constants.mpy to /app1/
+INFO:  app1/constants.mpy file XFER success.
+INFO:  Converting app.py to app.mpy (bytecode).
+INFO:  Sending app1/app.mpy to /app1/
+INFO:  app1/app.mpy file XFER success.
+INFO:  took 16.8 seconds to upgrade device.
+INFO:  Cleaning up python bytecode files.
+INFO:  Deleted local app1/vga2_bold_16x16.mpy
+INFO:  Deleted local app1/__init__.mpy
+INFO:  Deleted local app1/project.mpy
+INFO:  Deleted local app1/lib/base_cmd_handler.mpy
+INFO:  Deleted local app1/lib/__init__.mpy
+INFO:  Deleted local app1/lib/drivers/lcd.mpy
+INFO:  Deleted local app1/lib/drivers/__init__.mpy
+INFO:  Deleted local app1/lib/drivers/atm90e32.mpy
+INFO:  Deleted local app1/lib/drivers/st7789.mpy
+INFO:  Deleted local app1/lib/base_constants.mpy
+INFO:  Deleted local app1/lib/uo.mpy
+INFO:  Deleted local app1/lib/wifi.mpy
+INFO:  Deleted local app1/lib/config.mpy
+INFO:  Deleted local app1/lib/bluetooth.mpy
+INFO:  Deleted local app1/lib/ydev.mpy
+INFO:  Deleted local app1/lib/fs.mpy
+INFO:  Deleted local app1/lib/io.mpy
+INFO:  Deleted local app1/lib/base_machine.mpy
+INFO:  Deleted local app1/lib/rest_server.mpy
+INFO:  Deleted local app1/lib/hardware.mpy
+INFO:  Deleted local app1/cmd_handler.mpy
+INFO:  Deleted local app1/constants.mpy
+INFO:  Deleted local app1/app.mpy
+INFO:  CT6 unit is now power cycling.
+INFO:  192.168.0.76 ping success.
+INFO:  Factory setup and calibration of 192.168.0.76
+INFO:  192.168.0.76 ping success.
+INFO:  Calibrating U5 VOLTAGE gain.
+INFO:  
+INPUT: Enter the AC RMS voltage as measured by an external meter: 242.4
+INFO:  AC Freq = 50 Hz
+INFO:  Voltage gain = 50000
+INFO:  Checking that CT1 detects at least 100 volts.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected 213.28 volts.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 213.72 Volts (error = 28.68 Volts)
+INFO:  Voltage gain = 56709
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 242.40 Volts (error = 0.00 Volts)
+INFO:  CT1 voltage calibration complete.
+INFO:  Calibrating U4 VOLTAGE gain.
+INFO:  
+INFO:  AC Freq = 50 Hz
+INFO:  Voltage gain = 50000
+INFO:  Checking that CT4 detects at least 100 volts.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected 213.97 volts.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 213.91 Volts (error = 28.49 Volts)
+INFO:  Voltage gain = 56659
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 242.45 Volts (error = 0.05 Volts)
+INFO:  CT4 voltage calibration complete.
+INFO:  192.168.0.76 ping success.
+INFO:  
+INFO:  Ensure no AC load is connected.
+INPUT: Connect an SCT013_100A current transformer (CT) to port 1 and press RETURN: 
+INFO:  Calibrating CT1 CURRENT gain.
+INFO:  
+INPUT: Ensure an AC load drawing at least 5 amps is connected and press RETURN: 
+INFO:  Current gain = 8000
+INFO:  Checking that CT1 detects at least 5 amps.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected 8.567 amps.
+INPUT: Enter the AC RMS current in amps as measured with an external meter: 11.36
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 8.49 Amps (error = 2.87 Amps)
+INFO:  Current gain = 10703
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 11.35 Amps (error = 0.01 Amps)
+INFO:  
+INFO:  CT1 current calibration complete.
+INPUT: DISCONNECT the AC load and press RETURN: 
+INFO:  Calibrating CT1 CURRENT offset.
+INFO:  Checking that CT1 load has been turned off.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Current offset register = 0
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.001 amps.
+INFO:  Current offset register = 64536
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.0 amps.
+INFO:  192.168.0.76 ping success.
+INFO:  
+INFO:  Ensure no AC load is connected.
+INPUT: Connect an SCT013_100A current transformer (CT) to port 2 and press RETURN: 
+INFO:  Calibrating CT2 CURRENT gain.
+INFO:  
+INPUT: Ensure an AC load drawing at least 5 amps is connected and press RETURN: 
+INFO:  Current gain = 8000
+INFO:  Checking that CT2 detects at least 5 amps.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected 8.566 amps.
+INPUT: Enter the AC RMS current in amps as measured with an external meter: 11.35
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 8.49 Amps (error = 2.86 Amps)
+INFO:  Current gain = 10688
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 11.35 Amps (error = 0.00 Amps)
+INFO:  
+INFO:  CT2 current calibration complete.
+INPUT: DISCONNECT the AC load and press RETURN: 
+INFO:  Calibrating CT2 CURRENT offset.
+INFO:  Checking that CT2 load has been turned off.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Current offset register = 0
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.001 amps.
+INFO:  Current offset register = 64536
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.0 amps.
+INFO:  192.168.0.76 ping success.
+INFO:  
+INFO:  Ensure no AC load is connected.
+INPUT: Connect an SCT013_100A current transformer (CT) to port 3 and press RETURN: 
+INFO:  Calibrating CT3 CURRENT gain.
+INFO:  
+INPUT: Ensure an AC load drawing at least 5 amps is connected and press RETURN: 
+INFO:  Current gain = 8000
+INFO:  Checking that CT3 detects at least 5 amps.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected 8.557 amps.
+INPUT: Enter the AC RMS current in amps as measured with an external meter: 11.37
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 8.51 Amps (error = 2.86 Amps)
+INFO:  Current gain = 10693
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 11.36 Amps (error = 0.01 Amps)
+INFO:  
+INFO:  CT3 current calibration complete.
+INPUT: DISCONNECT the AC load and press RETURN: 
+INFO:  Calibrating CT3 CURRENT offset.
+INFO:  Checking that CT3 load has been turned off.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Current offset register = 0
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.001 amps.
+INFO:  Current offset register = 64536
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.0 amps.
+INFO:  192.168.0.76 ping success.
+INFO:  
+INFO:  Ensure no AC load is connected.
+INPUT: Connect an SCT013_100A current transformer (CT) to port 4 and press RETURN: 
+INFO:  Calibrating CT4 CURRENT gain.
+INFO:  
+INPUT: Ensure an AC load drawing at least 5 amps is connected and press RETURN: 
+INFO:  Current gain = 8000
+INFO:  Checking that CT4 detects at least 5 amps.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected 8.487 amps.
+INPUT: Enter the AC RMS current in amps as measured with an external meter: 11.39
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 8.41 Amps (error = 2.98 Amps)
+INFO:  Current gain = 10834
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 11.39 Amps (error = 0.00 Amps)
+INFO:  
+INFO:  CT4 current calibration complete.
+INPUT: DISCONNECT the AC load and press RETURN: 
+INFO:  Calibrating CT4 CURRENT offset.
+INFO:  Checking that CT4 load has been turned off.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Current offset register = 0
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.001 amps.
+INFO:  Current offset register = 64536
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.0 amps.
+INFO:  192.168.0.76 ping success.
+INFO:  
+INFO:  Ensure no AC load is connected.
+INPUT: Connect an SCT013_100A current transformer (CT) to port 5 and press RETURN: 
+INFO:  Calibrating CT5 CURRENT gain.
+INFO:  
+INPUT: Ensure an AC load drawing at least 5 amps is connected and press RETURN: 
+INFO:  Current gain = 8000
+INFO:  Checking that CT5 detects at least 5 amps.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected 0.0 amps.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected 8.564 amps.
+INPUT: Enter the AC RMS current in amps as measured with an external meter: 11.33
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 8.42 Amps (error = 2.91 Amps)
+INFO:  Current gain = 10759
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 11.33 Amps (error = 0.00 Amps)
+INFO:  
+INFO:  CT5 current calibration complete.
+INPUT: DISCONNECT the AC load and press RETURN: 
+INFO:  Calibrating CT5 CURRENT offset.
+INFO:  Checking that CT5 load has been turned off.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Current offset register = 0
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.001 amps.
+INFO:  Current offset register = 64536
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.0 amps.
+INFO:  192.168.0.76 ping success.
+INFO:  
+INFO:  Ensure no AC load is connected.
+INPUT: Connect an SCT013_100A current transformer (CT) to port 6 and press RETURN: 
+INFO:  Calibrating CT6 CURRENT gain.
+INFO:  
+INPUT: Ensure an AC load drawing at least 5 amps is connected and press RETURN: 
+INFO:  Current gain = 8000
+INFO:  Checking that CT6 detects at least 5 amps.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected 8.518 amps.
+INPUT: Enter the AC RMS current in amps as measured with an external meter: 11.38
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 8.48 Amps (error = 2.90 Amps)
+INFO:  Current gain = 10729
+INFO:  Reading configuration from 192.168.0.76
+INFO:  Reading stats from 192.168.0.76
+INFO:  Read 11.38 Amps (error = 0.00 Amps)
+INFO:  
+INFO:  CT6 current calibration complete.
+INPUT: DISCONNECT the AC load and press RETURN: 
+INFO:  Calibrating CT6 CURRENT offset.
+INFO:  Checking that CT6 load has been turned off.
+INFO:  Reading stats from 192.168.0.76
+INFO:  Current offset register = 0
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.001 amps.
+INFO:  Current offset register = 64536
+INFO:  Reading stats from 192.168.0.76
+INFO:  Detected a residual current of 0.0 amps.
+INFO:  Saving the factory configuration file to the CT6 unit.
+INFO:  Setting assembly label to ASY0398_V003.200_SN00001831.
+INFO:  Get factory.cfg from 192.168.0.76.
+INFO:  Save to factory.cfg from 192.168.0.76.
+INFO:  Saved to /home/username/test_logs/ASY0398_V03.2000_SN00001831_20240218202334_factory.cfg
+INFO:  CT6 unit calibration successful.
+INFO:  Completed calibration.
+INFO:  The CT6 unit is now power cycling.
+```
+
+
+
 ## CT6 unit bring up and calibration load.
 
 ### Equipment required
@@ -838,7 +1203,7 @@ The equipment should be connected as per the diagram shown below.
 
 ![alt text](images/calibrate_ac_voltage.png "Test/Voltage Calibration System")
 
-Run the following command to calibrate the AC voltage.
+Run the following command to calibrate the AC voltage. Note that if your AC supply is 60 Hz (default = 50 Hz) you'll also need to add the '--ac60hz' command line option to the command below.
 
 ```
 ct6_mfg_tool --voltage_cal_only -a 192.168.0.19
