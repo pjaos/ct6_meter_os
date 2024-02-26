@@ -719,9 +719,12 @@ class FactorySetup(CT6Base):
                 self._ser = None
         self._uio.info("The WiFi switch is working. Release the WiFi switch.")
         
-        self._uio.info("Press and release the reset switch on the CT6 board.")
-        self._waitForWiFiDisconnect(showMessage=False)
-        self._waitForUnitPingable()
+        # No longer test the reset switch as it is not exposed outside the case 
+        # and therefore if the unit is tested with the case on it can't be pressed 
+        # to check it. In future this may not be fitted.
+        # self._uio.info("Press and release the reset switch on the CT6 board.")
+        # self._waitForWiFiDisconnect(showMessage=False)
+        # self._waitForUnitPingable()
         
     def _waitForUnitPingable(self):
         """@brief Wait for unit to be pingable."""
