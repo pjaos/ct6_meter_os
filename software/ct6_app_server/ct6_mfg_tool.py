@@ -492,16 +492,24 @@ class FactorySetup(CT6Base):
         # self._calVoltageOffset(4)
             
         portRange = self._getPortRange()
-        # Add prompt for user to connect CT to each channel as its calibrated
-        for ct in portRange:
+        portIndex = 0
+        while True:
+            ct = portRange[portIndex]
             self._waitForPingSucess(pingHoldSecs=0)
             self._uio.info("")
             self._uio.info("Ensure no AC load is connected.")
-            self._uio.getInput(f"Connect an SCT013_100A current transformer (CT) to port {ct} and press RETURN")    
+            self._uio.info("At this point you may enter 'B' to jump back to previous port calibration.")
+            response = self._uio.getInput(f"Connect an SCT013_100A current transformer (CT) to port {ct} and press RETURN")
+            if response.upper() == 'B' and portIndex > 0:
+                    portIndex=portIndex-1
+                    continue
+                    
             self._uio.info(f"Calibrating CT{ct} CURRENT gain.")
             self._calCurrentGain(ct)
             self._uio.info(f"Calibrating CT{ct} CURRENT offset.")
             self._calCurrentOffset(ct)
+            
+            portIndex+=1
     
         # This creates the factory.cfg file on the CT6 unit
         self._saveFactoryConfig()
