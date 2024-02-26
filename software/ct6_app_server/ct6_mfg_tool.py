@@ -493,7 +493,7 @@ class FactorySetup(CT6Base):
             
         portRange = self._getPortRange()
         portIndex = 0
-        while True:
+        while portIndex < len(portRange):
             ct = portRange[portIndex]
             self._waitForPingSucess(pingHoldSecs=0)
             self._uio.info("")
