@@ -7,7 +7,7 @@ verify_ssl = true
 
 [packages]
 # Fix security vulnerability reported by github dependabot.
-cryptography = ">=42.0.0"
+cryptography = ">=42.0.4"
 paramiko = ">=2.10.1"
 # requires
 # sudo apt-get install python3-dev default-libmysqlclient-dev build-essential
