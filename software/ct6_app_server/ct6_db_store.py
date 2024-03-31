@@ -48,7 +48,7 @@ import numpy as np
 import pandas as pd
 import MySQLdb
 
-from time import time
+from time import time, sleep
 from datetime import datetime, timedelta
 from tempfile import gettempdir
 
@@ -961,7 +961,19 @@ class CTDBClient(DBHandler):
             for line in lines:
                 self._uio.debug(line)
             self.disconnect()
-            self.connect()           
+            # Enter an loop trying to reconnect with the database server
+            # We keep trying to connect until we are successful.
+            while True:
+                try:
+                    self.connect()
+                    break
+                except Exception as ex:
+                    self._uio.error( str(ex) )
+                    self._uio.error("Failed to reconnect to the database server")
+                    self._uio.error("Trying again in 5 seconds.")
+                    sleep(5)
+                   
+                    
             
 class CTAppServer(object):
     """@brief Responsible for
