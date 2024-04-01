@@ -227,6 +227,8 @@ class GUI(MultiAppServer):
            @param event The button event."""
         today = datetime.today()
         self._startDateTimePicker.value = today.date()
+        # Set resolution to mins to set a good trade off between plot time and resolution
+        self._resRadioButtonGroup.active = 1
         endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
@@ -238,6 +240,8 @@ class GUI(MultiAppServer):
         today = datetime.today()
         yesterday = today - timedelta(days = 1)
         self._startDateTimePicker.value = yesterday.date()
+        # Set resolution to mins to set a good trade off between plot time and resolution
+        self._resRadioButtonGroup.active = 1
         endDateTime = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
        # Kick of a plot attempt to save pressing the power button afterwards
@@ -251,6 +255,8 @@ class GUI(MultiAppServer):
         startOfWeek = today - timedelta(days = dayOfWeek)
         today = datetime.today()
         self._startDateTimePicker.value = startOfWeek.date()
+        # Set resolution to mins to set a good trade off between plot time and resolution
+        self._resRadioButtonGroup.active = 1
         endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
@@ -264,6 +270,8 @@ class GUI(MultiAppServer):
         endOfLastWeek = today - timedelta(days = dayOfWeek+1)
         startOfLastWeek = endOfLastWeek - timedelta(days = 6)
         self._startDateTimePicker.value = startOfLastWeek.date()
+        # Set resolution to mins to set a good trade off between plot time and resolution
+        self._resRadioButtonGroup.active = 1
         endDateTime = endOfLastWeek.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
@@ -276,6 +284,8 @@ class GUI(MultiAppServer):
         dayOfMonth = today.day
         firstDayOfMonth = today - timedelta(days = dayOfMonth-1)
         self._startDateTimePicker.value = firstDayOfMonth.date()
+        # Set resolution to hours to set a good trade off between plot time and resolution
+        self._resRadioButtonGroup.active = 2
         endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
@@ -290,6 +300,8 @@ class GUI(MultiAppServer):
         daysInLastMonth = calendar.monthrange(lastDayOfLastMonth.year, lastDayOfLastMonth.month)[1]
         firstDayOfLastMonth = lastDayOfLastMonth - timedelta(days = daysInLastMonth-1)
         self._startDateTimePicker.value = firstDayOfLastMonth.date()
+        # Set resolution to hours to set a good trade off between plot time and resolution
+        self._resRadioButtonGroup.active = 2   
         endDateTime = lastDayOfLastMonth.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
@@ -301,6 +313,8 @@ class GUI(MultiAppServer):
         today = datetime.today()
         self._startDateTimePicker.value = datetime(today.year, 1, 1, 0, 0 , 0, 0)
         self._stopDateTimePicker.value  = datetime(today.year, 12, 31, 23,59, 39, 999999)
+        # Set resolution to hours to set a good trade off between plot time and resolution
+        self._resRadioButtonGroup.active = 2
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -310,6 +324,8 @@ class GUI(MultiAppServer):
         today = date.today()
         self._startDateTimePicker.value = datetime(today.year-1, 1, 1, 0, 0 , 0, 0)
         self._stopDateTimePicker.value  = datetime(today.year-1, 12, 31, 23,59, 39, 999999)
+        # Set resolution to hours to set a good trade off between plot time and resolution
+        self._resRadioButtonGroup.active = 2
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -1470,7 +1486,8 @@ def main():
         parser.add_argument("-p", "--positive",      action='store_true', help="Display imported electricity (kW) on plots as positive values.")
         parser.add_argument("-n", "--no_gui",       action='store_true', help="Do not display the GUI. By default a local web browser is opend displaying the GUI.")
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
-        parser.add_argument("-m", "--maxpp",        help="The maximum number of plot points (default=10000).", type=int, default=10000)
+        # Default plot points allows 1 week of minute resolution (60*24*7 = 10080)
+        parser.add_argument("-m", "--maxpp",        help="The maximum number of plot points (default=11000).", type=int, default=11000)
 
         options = parser.parse_args()
         uio.enableDebug(options.debug)
