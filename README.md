@@ -60,7 +60,7 @@ I also wrote an Android App that is used to connect the CT6 device to a WiFi net
 More information on this is detailed in the [Android App](software/Android_App/README.md) folder in the software folder.
 
 # Purchasing CT6 units
-If you are interested assembled PCB's and associated parts they are available for sale on Tindie at https://www.tindie.com/products/pausten/ct6-energy-monitor/
+Complete CT6 units or assembled PCB's and associated parts can be purchased on Tindie at https://www.tindie.com/products/pausten/ct6-energy-monitor/
 
 # Discalimer
 This project is designed to use the YHDC SCT013 100A 0-1V split core current transformer. No other current transformer is currently supported. As mains voltage is dangerous it is the users responsibility to connect these current clamps using this hardware.
