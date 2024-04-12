@@ -5,4 +5,4 @@ Architecture: all
 Essential: no
 Maintainer: Paul Austen <pausten.os@gmail.com>
 Description: Applications that allow data from the CT6 device to be read, stored in a database and displayed using a web server interface.
-Version: 6.8
+Version: 6.9
