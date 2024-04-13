@@ -44,9 +44,11 @@ import traceback
 import inspect
 import os
 import psutil
-import numpy as np
 import pandas as pd
 import MySQLdb
+import objgraph
+
+import numpy as np
 
 from time import time, sleep
 from datetime import datetime, timedelta
@@ -776,7 +778,7 @@ class CTDBClient(DBHandler):
             if rowCount > 0:
                 self._dataBaseIF.deleteRows(CTDBClient.CT6_META_TABLE_NAME, rowCount)
             # Init the list and set the time for the next update.
-            self._devDictLis= []
+            self._devDictList = []
             self._metaTableUpdateTime = time()+60
 
     def _updateDerivedTables(self, dbName, thisRecord, historyDicts, dataBaseIF, lowResTableList):
@@ -928,6 +930,12 @@ class CTDBClient(DBHandler):
         usedMB = psutil.virtual_memory()[3]/1000000
         freeMB = psutil.virtual_memory()[4]/1000000
         self._uio.info(f"CPU Load AVG: {loadAvg:.1f}, Used Mem (MB): {usedMB:.1f} Free Mem (MB): {freeMB:.1f}")
+
+        objList = objgraph.most_common_types()
+        for elemList in objList:
+            _type = elemList[0]
+            _count = elemList[1]
+            self._uio.info(f"Found {_count: <8.0f} object of type {_type}")
 
     def hear(self, devDict):
         """@brief Called when data is received from the device.
