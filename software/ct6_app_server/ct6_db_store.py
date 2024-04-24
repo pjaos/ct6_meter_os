@@ -47,6 +47,7 @@ import psutil
 import pandas as pd
 import MySQLdb
 import objgraph
+import json
 
 import numpy as np
 
@@ -940,6 +941,10 @@ class CTDBClient(DBHandler):
     def hear(self, devDict):
         """@brief Called when data is received from the device.
            @param devDict The device dict."""
+        if self._options.show:
+            pretty = json.dumps(devDict, indent=4)
+            self._uio.info(f"JSON DATA START <\n{pretty}\n>JSON DATA STOP")
+
         self._reportMemoryUsage()
         startT = devDict[YView.RX_TIME_SECS]
         try:
