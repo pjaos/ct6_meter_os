@@ -97,7 +97,7 @@ class CT6Base(BaseConstants):
         
         cwd = os.getcwd()
         correctPath = False
-        if cwd.endswith("/software/ct6_app_server") or cwd.endswith("\software\ct6_app_server"):
+        if cwd.endswith("/software/ct6_app_server") or cwd.endswith("\\software\\ct6_app_server"):
             correctPath = True
             
         if not correctPath:
@@ -899,7 +899,7 @@ class YDevManager(CT6Base):
         """@brief Check that the upgrade has been successful and the device is running the updated app."""
         self._waitForWiFiDisconnect()
         self._uio.info(f"The CT6 unit ({self._ipAddress}) has rebooted.")
-        self._uio.info(f"Waiting for it to re register on the WiFi network.")
+        self._uio.info("Waiting for it to re register on the WiFi network.")
         self._waitForPingSucess()
         
         retDict = self._runCommand(YDevManager.GET_ACTIVE_APP_FOLDER, returnDict=True)
