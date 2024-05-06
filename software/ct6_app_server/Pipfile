@@ -9,6 +9,7 @@ verify_ssl = true
 # Fix security vulnerability reported by github dependabot.
 cryptography = ">=42.0.4"
 paramiko = ">=2.10.1"
+numpy = "*"
 # requires (on debian based Linux platforms)
 # sudo apt-get install python3-dev default-libmysqlclient-dev build-essential
 # to install mysqlclient
