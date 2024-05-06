@@ -511,7 +511,7 @@ class MySQLDBClient(BaseConstants):
             if self._lockFile.isLockFilePresent():
                 self._uio.warn(f"The {self._lockFile.getLockFile()} file was found.")
                 self._uio.warn(f"This indicates that another instance of {sys.argv[0]} is running with the '--create_dt' command line option.")
-                self._uio.warn(f"Either wait for this this process to complete or kill the process and delete the above lock file.")
+                self._uio.warn("Either wait for this this process to complete or kill the process and delete the above lock file.")
                 self._uio.error("Unable to start this instance of this program.")
 
             else:
@@ -1056,7 +1056,7 @@ class CTAppServer(object):
             if self._lockFile.isLockFilePresent():
                 self._uio.warn(f"The {self._lockFile.getLockFile()} file was found.")
                 self._uio.warn(f"This indicates that another instance of {sys.argv[0]} is running to collect data from CT6 units.")
-                self._uio.warn(f"Either wait for this this process to complete or kill the process and delete the above lock file.")
+                self._uio.warn("Either wait for this this process to complete or kill the process and delete the above lock file.")
                 self._uio.error("Unable to start this instance of this program.")
 
             else:
