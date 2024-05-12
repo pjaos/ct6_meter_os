@@ -675,8 +675,7 @@ class FactorySetup(CT6Base):
             raise Exception(f"{nukeImage} file not found.")
         return nukeImage
     
-    #PJA
-    #@retry(Exception, tries=3, delay=1)
+    @retry(Exception, tries=3, delay=1)
     def _erasePicoWFlash(self):
         """@brief Erase flash on the microcontroller (Pico W)"""
         self._uio.info("Ensure the USB Pico W is connected to this PC.")
@@ -726,8 +725,7 @@ class FactorySetup(CT6Base):
             raise Exception(f"{microPythonImage} file not found.")
         return microPythonImage
             
-    # PJA
-    #@retry(Exception, tries=3, delay=1)
+    @retry(Exception, tries=3, delay=1)
     def _loadMicroPython(self):
         """@brief Load Micropython image onto the RPi Pico W."""
         self._uio.info("Ensure the USB Pico W is connected to this PC.")
