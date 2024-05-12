@@ -9,13 +9,12 @@ import shutil
 import serial
 import json
 import traceback
-import select
 import threading
 import tempfile
 import string
 
 from   retry import retry
-
+from   queue import Queue
 from   time import sleep, strftime, localtime, time
 
 from   p3lib.uio import UIO
@@ -975,41 +974,45 @@ class FactorySetup(CT6Base):
         """@brief test the LED's on the board."""
         self._testLED(True)
         self._testLED(False)
-        
+
+    def _flashLED(self, cmd, states):
+        """@brief Flash an LED.
+           @param cmd The command to set/reset the LED state.
+           @param states The states of the LED."""
+        while self._stopQueue.empty():
+            url=f"http://{self._ipAddress}/{cmd}?on={states[0]}"
+            self._runRESTCmd(url)
+            sleep(0.25)
+            url=f"http://{self._ipAddress}/{cmd}?on={states[1]}"
+            self._runRESTCmd(url)
+            sleep(0.25)
+        # Remove stop cmd from queue
+        self._stopQueue.get()
+
     def _testLED(self, wifi):
         """@brief Test an LED.
            @param wifi If True test the WiFi LED. If False test the Bluetooth LED."""
         if wifi:
-            self._uio.info("Is the green LED next to the WiFi switch flashing ? y/n")
+            prompt = "Is the green LED next to the WiFi switch flashing ? y/n"
             cmd = 'set_wifi_led'
             states = ["force_on","force_off"]
         else:
-            self._uio.info("Is the blue LED next to the reset switch flashing ? y/n")
+            prompt = "Is the blue LED next to the reset switch flashing ? y/n"
             cmd = 'set_bluetooth_led'
             states = [1, 0]
             
-        read_list = [sys.stdin]
-        timeout = 0.1
-        running = True
-        passed = False
-        while running:
-            url=f"http://{self._ipAddress}/{cmd}?on={states[0]}"
-            self._runRESTCmd(url)
-            sleep(0.5)
-            url=f"http://{self._ipAddress}/{cmd}?on={states[1]}"
-            self._runRESTCmd(url)
-            sleep(0.5)
-            ready = select.select(read_list, [], [], timeout)[0]
-            if ready:
-                line = sys.stdin.readline()
-                line = line.rstrip('\n\r')
-                if line == 'y' or line == 'Y':
-                    passed = True
-                    running = False
-                    
-                elif line == 'n' or line == 'N':
-                    passed = False
-                    running = False
+        self._stopQueue = Queue()
+        flashLedThread = threading.Thread(target=self._flashLED, args=(cmd,states))
+        flashLedThread.start()
+
+        yesEntered = self._uio.getBoolInput(prompt)
+        self._stopQueue.put(True)
+        # Wait for flash thread to stop
+        flashLedThread.join()
+        if yesEntered:
+            passed = True
+        else:
+            passed = False
                     
         if not passed:
             if wifi:
