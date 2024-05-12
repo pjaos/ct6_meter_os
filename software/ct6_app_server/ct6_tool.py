@@ -12,6 +12,7 @@ import shutil
 import traceback
 import platform
 
+from    copy import copy
 from   pyflakes import reporter as modReporter
 from   pyflakes.api import checkRecursive
 
@@ -80,6 +81,7 @@ class CT6Base(BaseConstants):
     # When pipenv is executed on windows the python comand must be executed to ensure the 
     # env is loaded.
     WINDOWS_MPY_CMDLINE_PREFIX = "python -m mpy_cross "
+    MCU_CODE_ROOT_FOLDER = "picow/app1"
     
     @staticmethod
     def GetSerialPortList():
@@ -99,7 +101,8 @@ class CT6Base(BaseConstants):
         self._uio       = uio
         self._options   = options   
         self._ipAddress = None          # The IP address for the UUT
-        
+        self._ser       = None
+
         cwd = os.getcwd()
         correctPath = False
         if cwd.endswith("/software/ct6_app_server") or cwd.endswith("\\software\\ct6_app_server") or cwd.endswith("CT6_apps"):
@@ -113,7 +116,26 @@ class CT6Base(BaseConstants):
             self._mpyCmdLinePrefix = MCULoader.WINDOWS_MPY_CMDLINE_PREFIX
         else:
             self._mpyCmdLinePrefix = MCULoader.LINUX_MPY_CMDLINE_PREFIX
+        self._ensureMCUCodeAvailable()
             
+    def _ensureMCUCodeAvailable(self):
+        """@brief Ensure we have access to the RPI Pico W code."""           
+        requiredFolder = "picow"
+        if not os.path.isdir(requiredFolder):
+            srcFolder = "../picow"
+            if not os.path.isdir(srcFolder):
+                raise Exception(f"{srcFolder} folder not found. This contains the RPi MCU code.")
+
+            # The git picow linux link on windows appears as a file
+            if os.path.isfile(requiredFolder):
+                # Move it out of the way
+                backupFolder = requiredFolder + ".link"
+                if os.path.isfile(backupFolder):
+                    os.remove(backupFolder)
+                os.rename(requiredFolder, backupFolder)
+
+            shutil.copytree(srcFolder, requiredFolder)
+
     def _checkAddress(self):
         """@brief Check that the command line adddress option has been set."""
         if self._ipAddress == None:
@@ -280,7 +302,7 @@ class CT6Base(BaseConstants):
             if len(serialPortList) > 0:
                 break
             if time() > startT+timeout:
-                raise Exception(f"{timeout} second timeout waiting for a serial port ({matchText}) to appear.")
+                raise Exception(f"{timeout} second timeout waiting for a serial port to appear.")
             # Don't spin to fast here
             sleep(0.1)
             
@@ -425,7 +447,11 @@ class CT6Base(BaseConstants):
                 self._openSerialPort()
                 self._ser.write(b"import main\r")
                 while True:
-                    data = self._ser.read_until()
+                    availableByteCount = self._ser.in_waiting
+                    if availableByteCount == 0:
+                        sleep(0.05)
+                        continue
+                    data = self._ser.read(availableByteCount)
                     if len(data) > 0:
                         data=data.decode()
                         if len(data) > 0:
@@ -628,18 +654,14 @@ class MCULoader(CT6Base):
               to .mpy files and loading them onto the MCU."""
 
     VALID_MCU_LIST = ['picow', 'esp32']
-    FOLDERS = ['picow/app1', 'picow/app1/lib', 'picow/app1/lib/drivers']
+    FOLDERS = [f'{CT6Base.MCU_CODE_ROOT_FOLDER}', f'{CT6Base.MCU_CODE_ROOT_FOLDER}/lib', f'{CT6Base.MCU_CODE_ROOT_FOLDER}/lib/drivers']
     MPY_CMDLINE_PREFIX = "python3 -m mpy_cross "
     CMD_LIST = ["mkdir /pyboard/app1",
                 "mkdir /pyboard/app1/lib",
                 "mkdir /pyboard/app1/lib/drivers",
                 "mkdir /pyboard/app2",
                 "mkdir /pyboard/app2/lib",
-                "mkdir /pyboard/app2/lib/drivers",
-                "cp picow/main.py /pyboard/",
-                "cp -r picow/app1/*.mpy /pyboard/app1/",
-                "cp -r picow/app1/lib/*.mpy /pyboard/app1/lib/",
-                "cp -r picow/app1/lib/drivers/*.mpy /pyboard/app1/lib/drivers/"]
+                "mkdir /pyboard/app2/lib/drivers"]
     DEL_ALL_FILES_CMD_LIST = ["rm -r /pyboard/*"]
     CMD_LIST_FILE = "cmd_list.cmd"
     MCU_MP_CACHE_FOLDER = "mcu_app.cache"
@@ -676,7 +698,7 @@ class MCULoader(CT6Base):
         """@brief Run pyflakes3 on the app1 folder code to check for errors before loading it."""
         self._info("Checking python code in the app1 folder using pyflakes")
         reporter = modReporter._makeDefaultReporter()
-        warnings = checkRecursive(('picow/app1',), reporter)
+        warnings = checkRecursive((CT6Base.MCU_CODE_ROOT_FOLDER,), reporter)
         if warnings > 0:
             raise Exception("Fix issues with the code in the app1 folder and then try again.")
         self._info("pyflakes found no issues with the app1 folder code.")
@@ -691,7 +713,9 @@ class MCULoader(CT6Base):
             entries = os.listdir(folder)
             for entry in entries:
                 if entry.endswith(extension):
-                    fileList.append( os.path.join(folder, entry) )
+                    _file = os.path.join(folder, entry)
+                    _file = _file.replace("\\", "/")
+                    fileList.append( _file )
 
         return fileList
     
@@ -742,8 +766,13 @@ class MCULoader(CT6Base):
         """@brief Load files onto the micro controller device.
            @param fileList The list of files to load.
            @param port The serial port to use."""      
-        self._uio.info("Loading CT6 firmware. Please wait...")                      
-        cmdList = MCULoader.CMD_LIST
+        self._uio.info("Loading CT6 firmware. Please wait...")                 
+        cmdList = copy(MCULoader.CMD_LIST)
+        for srcFile in fileList:
+            destFile = srcFile.replace("picow", "/pyboard")
+            cpCmd = f"cp {srcFile} {destFile}"
+            cmdList.append(cpCmd)
+
         fd = open(MCULoader.CMD_LIST_FILE, 'w')
         for l in cmdList:
             fd.write("{}\n".format(l))
@@ -1476,7 +1505,7 @@ def main():
         parser.add_argument("-c", "--config",           action='store_true', help="Configure a CT6 unit.")
         parser.add_argument("-f", "--find",             action='store_true', help="Find/Scan for CT6 devices on the LAN.")
         parser.add_argument("--upgrade",                action='store_true', help="Perform an upgrade of a CT6 unit over the air (OTA) via it's WiFi interface.")
-        parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default='picow/app1')
+        parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default=CT6Base.MCU_CODE_ROOT_FOLDER)
         parser.add_argument("--create_zip",             help="Create an upgrade zip file. The argument is the zip filename.")
         parser.add_argument("--clean",                  help="Delete all files and reload the firmware onto a CT6 device over the Pico W serial port. The factory.cfg file must be reloaded when this is complete to restore assy/serial number and calibration configuration.", action='store_true')
         parser.add_argument("--status",                 action='store_true', help="Get unit RAM/DISK usage.")

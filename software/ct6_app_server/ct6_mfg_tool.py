@@ -1142,8 +1142,8 @@ class FactorySetup(CT6Base):
             ct6Testing.addTestCase(2000, "RMA test initialisation.", self._initTestOnly)
 
         else:
-# PJA            ct6Testing.addTestCase(3000, "Erase Pico W flash memory.", self._erasePicoWFlash)
-#            ct6Testing.addTestCase(4000, "Load MicroPython onto Pico W flash memory.", self._loadMicroPython)
+            ct6Testing.addTestCase(3000, "Erase Pico W flash memory.", self._erasePicoWFlash)
+            ct6Testing.addTestCase(4000, "Load MicroPython onto Pico W flash memory.", self._loadMicroPython)
             ct6Testing.addTestCase(5000, "Load the CT6 firmware.", self._loadCT6Application)
         
         if not self._options.test:
