@@ -10,6 +10,7 @@ import serial
 import tempfile
 import shutil
 import traceback
+import platform
 
 from   pyflakes import reporter as modReporter
 from   pyflakes.api import checkRecursive
@@ -75,6 +76,10 @@ class CT6Base(BaseConstants):
                                    CS4_VOLTAGE_GAIN_KEY,
                                    LINE_FREQ_HZ_KEY]
     TCP_PORT                    = 80
+    LINUX_MPY_CMDLINE_PREFIX = "python3 -m mpy_cross "
+    # When pipenv is executed on windows the python comand must be executed to ensure the 
+    # env is loaded.
+    WINDOWS_MPY_CMDLINE_PREFIX = "python -m mpy_cross "
     
     @staticmethod
     def GetSerialPortList():
@@ -97,12 +102,18 @@ class CT6Base(BaseConstants):
         
         cwd = os.getcwd()
         correctPath = False
-        if cwd.endswith("/software/ct6_app_server") or cwd.endswith("\\software\\ct6_app_server"):
+        if cwd.endswith("/software/ct6_app_server") or cwd.endswith("\\software\\ct6_app_server") or cwd.endswith("CT6_apps"):
             correctPath = True
             
         if not correctPath:
             raise Exception("This tool must be executed from the software/ct6_app_server in the ct6_meter git repo.")
-
+        self._windowsPlatform = any(platform.win32_ver())
+        # Define the prefix for using the micro python X compiler
+        if self._windowsPlatform:
+            self._mpyCmdLinePrefix = MCULoader.WINDOWS_MPY_CMDLINE_PREFIX
+        else:
+            self._mpyCmdLinePrefix = MCULoader.LINUX_MPY_CMDLINE_PREFIX
+            
     def _checkAddress(self):
         """@brief Check that the command line adddress option has been set."""
         if self._ipAddress == None:
@@ -141,6 +152,25 @@ class CT6Base(BaseConstants):
         self._ipAddress = ipAddress
         self._uio.debug(f"self._ipAddress={self._ipAddress}")
 
+    def doPing(self, address):
+        """@brief Attempt to ping the address.
+           @return The time number of seconds it took for the ping packet to be returned or None if no ping packet returned."""
+        pingSec = None
+        if self._windowsPlatform:
+            # On windows we can use the python ping3 module
+            pingSec = ping3.ping(address)
+        else:
+            # On Linux the ping3 module gives 'Permission denied' errors for non root users
+            # so we use the command line ping instead.
+            try:
+                startT = time()
+                cmd = f"/usr/bin/ping -W 1 -c 1 {address} 2>&1 > /dev/null"
+                check_call(cmd, shell=True)
+                pingSec = time()-startT
+            except:
+                pass
+        return pingSec
+            
     def _waitForWiFiDisconnect(self, restartTimeout=60, showMessage=True):
         """@brief Wait for the CT6 unit to disconnect from the WiFi network.
            @param restartTimeout The number of seconds before an exception is thrown if the WiFi does not disconnect.
@@ -149,7 +179,7 @@ class CT6Base(BaseConstants):
             self._uio.info(f"Waiting for the CT6 unit  ({self._ipAddress}) to reboot.")
         startT = time()
         while True:
-            pingSec = ping3.ping(self._ipAddress)
+            pingSec = self.doPing(self._ipAddress)
             if pingSec is None:
                 break
 
@@ -167,7 +197,7 @@ class CT6Base(BaseConstants):
         startT = time()
         pingRestartTime = None
         while True:
-            pingSec = ping3.ping(self._ipAddress)
+            pingSec = self.doPing(self._ipAddress)
             if pingSec is not None:
                 if pingRestartTime is None:
                     pingRestartTime = time()
@@ -239,6 +269,9 @@ class CT6Base(BaseConstants):
            @param timeout The timeout in seconds to wait for a serial port to appear.
            @return The serial device string."""
         self._uio.info("Checking serial connections for CT6 device.")
+        # If windows then force a COM port
+        if self._windowsPlatform:
+            matchText = "COM"
         matchingSerialPortList = []
         # This list of serial ports may be empty while the RPi pico W restarts.
         startT = time()
@@ -589,13 +622,13 @@ class CT6Base(BaseConstants):
         else:
             if "ERROR" in cfgDict:
                 raise Exception(cfgDict["ERROR"])
-            
+
 class MCULoader(CT6Base):
     """@brief Responsible for converting .py files in app1 and app1/lib
               to .mpy files and loading them onto the MCU."""
 
     VALID_MCU_LIST = ['picow', 'esp32']
-    FOLDERS = ['app1', 'app1/lib', 'app1/lib/drivers']
+    FOLDERS = ['picow/app1', 'picow/app1/lib', 'picow/app1/lib/drivers']
     MPY_CMDLINE_PREFIX = "python3 -m mpy_cross "
     CMD_LIST = ["mkdir /pyboard/app1",
                 "mkdir /pyboard/app1/lib",
@@ -603,13 +636,14 @@ class MCULoader(CT6Base):
                 "mkdir /pyboard/app2",
                 "mkdir /pyboard/app2/lib",
                 "mkdir /pyboard/app2/lib/drivers",
-                "cp main.py /pyboard/",
-                "cp -r app1/*.mpy /pyboard/app1/",
-                "cp -r app1/lib/*.mpy /pyboard/app1/lib/",
-                "cp -r app1/lib/drivers/*.mpy /pyboard/app1/lib/drivers/"]
+                "cp picow/main.py /pyboard/",
+                "cp -r picow/app1/*.mpy /pyboard/app1/",
+                "cp -r picow/app1/lib/*.mpy /pyboard/app1/lib/",
+                "cp -r picow/app1/lib/drivers/*.mpy /pyboard/app1/lib/drivers/"]
     DEL_ALL_FILES_CMD_LIST = ["rm -r /pyboard/*"]
     CMD_LIST_FILE = "cmd_list.cmd"
-    
+    MCU_MP_CACHE_FOLDER = "mcu_app.cache"
+        
     def __init__(self, uio, 
                        options,
                        mcu = VALID_MCU_LIST[0]):
@@ -633,11 +667,16 @@ class MCULoader(CT6Base):
            @param msg The message text."""
         self._uio.debug(msg)
         
+    def _error(self, msg):
+        """@brief display an error level message.
+           @param msg The message text."""
+        self._uio.error(msg)
+        
     def _checkApp1(self):
         """@brief Run pyflakes3 on the app1 folder code to check for errors before loading it."""
         self._info("Checking python code in the app1 folder using pyflakes")
         reporter = modReporter._makeDefaultReporter()
-        warnings = checkRecursive(('app1',), reporter)
+        warnings = checkRecursive(('picow/app1',), reporter)
         if warnings > 0:
             raise Exception("Fix issues with the code in the app1 folder and then try again.")
         self._info("pyflakes found no issues with the app1 folder code.")
@@ -675,7 +714,7 @@ class MCULoader(CT6Base):
         mpyFileList = []
         pyFileList = self._getFileList(".py")
         for pyFile in pyFileList:
-            cmd = "{}{}".format(MCULoader.MPY_CMDLINE_PREFIX, pyFile)
+            cmd = "{}{}".format(self._mpyCmdLinePrefix, pyFile)
             check_call(cmd, shell=True)
             mpyFile = pyFile.replace(".py", ".mpy")
             self._info("Generated {} from {}".format(mpyFile, pyFile))
@@ -742,7 +781,7 @@ class MCULoader(CT6Base):
         self._rebootUnit()
         # Regain the python prompt from the CT6 unit.
         self._checkMicroPython()
-        localFileList = ["main.py"]
+        localFileList = ["picow/main.py"]
         mpyFileList = self._convertToMPY()
         filesToLoad = localFileList + mpyFileList
         self._loadFiles(filesToLoad, self._serialPort)
@@ -776,7 +815,6 @@ class YDevManager(CT6Base):
     INACTIVE_APP_FOLDER_KEY = "INACTIVE_APP_FOLDER"
 
     REQUIRED_PYPI_MODULES = ["mpy_cross"]
-    MPY_CMDLINE_PREFIX = "python3 -m mpy_cross "
 
     @staticmethod
     def GetColWidths(theDict, maxWidth0, maxWidth1, keyPrefix):
@@ -988,7 +1026,7 @@ class YDevManager(CT6Base):
 
         self._uio.info("Converting {} to {} (bytecode).".format(os.path.basename(pythonFile), mpyFile))
         outputFile = pythonFile.replace(".py",".mpy")
-        cmd = "{}{}".format(YDevManager.MPY_CMDLINE_PREFIX, pythonFile)
+        cmd = "{}{}".format(self._mpyCmdLinePrefix, pythonFile)
         check_call(cmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
         if not os.path.isfile(outputFile):
             raise Exception("Failed to create {} python bytecode file.".format(outputFile))
@@ -1438,7 +1476,7 @@ def main():
         parser.add_argument("-c", "--config",           action='store_true', help="Configure a CT6 unit.")
         parser.add_argument("-f", "--find",             action='store_true', help="Find/Scan for CT6 devices on the LAN.")
         parser.add_argument("--upgrade",                action='store_true', help="Perform an upgrade of a CT6 unit over the air (OTA) via it's WiFi interface.")
-        parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default='app1')
+        parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default='picow/app1')
         parser.add_argument("--create_zip",             help="Create an upgrade zip file. The argument is the zip filename.")
         parser.add_argument("--clean",                  help="Delete all files and reload the firmware onto a CT6 device over the Pico W serial port. The factory.cfg file must be reloaded when this is complete to restore assy/serial number and calibration configuration.", action='store_true')
         parser.add_argument("--status",                 action='store_true', help="Get unit RAM/DISK usage.")

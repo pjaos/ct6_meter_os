@@ -9,4 +9,5 @@ python -m pip install --upgrade pip
 
 REM install the nsist module the dev needs to build the installer
 pip install pynsist
+pip install pipenv
 

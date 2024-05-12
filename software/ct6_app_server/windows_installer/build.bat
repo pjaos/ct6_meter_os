@@ -1,2 +1,2 @@
 REM python -m nsist --no-makensis installer.cfg
-python -m nsist installer.cfg
+python3 -m nsist installer.cfg

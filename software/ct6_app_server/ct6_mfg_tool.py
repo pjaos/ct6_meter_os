@@ -12,6 +12,7 @@ import traceback
 import select
 import threading
 import tempfile
+import string
 
 from   retry import retry
 
@@ -37,6 +38,8 @@ class FactorySetup(CT6Base):
     TEMPERATURE_RESULT          = "CT6_BOARD_TEMPERATURE"
     SN_KEY                      = "SN"  
     LAST_UUT_CFG_FILE           = ".ct6_mfg_tool_last_uut.cfg"
+    RPI_BOOT_BTN_DWN_FILE_LIST  = ["index.htm", "info_uf2.txt"]
+    PICO_FLASH_PATHLIST         = ("../picow/tools/picow_flash_images/", "picow_flash_images/") 
     
     # We hard code the log path so that the user does not have the option to move them.
     LOG_PATH                    = "test_logs"
@@ -620,19 +623,66 @@ class FactorySetup(CT6Base):
         table.append(["CT6 hardware version",            f"{self._boardVersion}"])
         table.append(["CT6 board serial Number",      f"{self._serialNumber}"])
         self._uio.showTable(table)
-    
+
     def _getPicoPath(self):
         """@brief Get the path of the RPi Pico W device.
            @return The path on this machine where RPi Pico W images can be copied to load them into flash."""
-        return f"/media/{self._username}/RPI-RP2"
+        if self._windowsPlatform:
+            picoDrive = None
+            # Wait for the drive mounted from the RPi over the serial interface. 
+            while not picoDrive:           
+                drives = ['%s:' % d for d in string.ascii_uppercase if os.path.exists('%s:' % d)]
+                for drive in drives:
+                    # Skip the main HDD/SSD
+                    if drive.startswith("C:"):
+                        continue
+                    fileList = os.listdir(drive)
+                    fileCount = 0
+                    for rootFile in fileList:
+                        if rootFile.lower() in FactorySetup.RPI_BOOT_BTN_DWN_FILE_LIST:
+                            fileCount+=1
+                    # If the expected files are in the root of the drive assume it's a RPi in the correct mode.
+                    if fileCount == len(FactorySetup.RPI_BOOT_BTN_DWN_FILE_LIST):
+                        picoDrive = drive
+                        break
+                sleep(0.2)
+                
+            return picoDrive
+        else:
+            return f"/media/{self._username}/RPI-RP2"
+              
+    def _getPicoFlashPath(self):
+        """@brief Get the path in which the RPi Pico W flash images are held.
+                  The path may be in differnet locations relatve to the CWD 
+                  depending upon whether youre running on a Windows or Linux platform.
+           @return the above as a string."""
+        picoFlashPath = None
+        for flashP in FactorySetup.PICO_FLASH_PATHLIST:
+            if os.path.isdir(flashP):
+                picoFlashPath = flashP
+                break
+                
+        if not picoFlashPath:
+            raise Exception("Unable to find the path in which the RPi Pico W flash images are held.")
+            
+        return picoFlashPath
+        
+    def _getPicoFlashNukeImage(self):
+        """@return The image used to wipe the flash on the RPi."""
+        flashP = self._getPicoFlashPath()
+        nukeImage = os.path.join(flashP, "flash_nuke.uf2")
+        if not os.path.isfile(nukeImage):
+            raise Exception(f"{nukeImage} file not found.")
+        return nukeImage
     
-    @retry(Exception, tries=3, delay=1)
+    #PJA
+    #@retry(Exception, tries=3, delay=1)
     def _erasePicoWFlash(self):
         """@brief Erase flash on the microcontroller (Pico W)"""
         self._uio.info("Ensure the USB Pico W is connected to this PC.")
         self._uio.info("Hold the button down on the Pico W and power up the CT6 device.")
         picoPath = self._getPicoPath()
-        sourcePath = "../picow/tools/picow_flash_images/flash_nuke.uf2"
+        sourcePath = self._getPicoFlashNukeImage()
         destinationPath = picoPath
     
         self._waitForPicoPath(exists=True)
@@ -667,13 +717,23 @@ class FactorySetup(CT6Base):
 
             sleep(0.25)
 
-    @retry(Exception, tries=3, delay=1)
+    
+    def _getPicoMicroPythonImage(self):
+        """@return The image containing the Micropython for the RPi."""
+        flashP = self._getPicoFlashPath()
+        microPythonImage = os.path.join(flashP, "firmware.uf2")
+        if not os.path.isfile(microPythonImage):
+            raise Exception(f"{microPythonImage} file not found.")
+        return microPythonImage
+            
+    # PJA
+    #@retry(Exception, tries=3, delay=1)
     def _loadMicroPython(self):
         """@brief Load Micropython image onto the RPi Pico W."""
         self._uio.info("Ensure the USB Pico W is connected to this PC.")
         self._uio.info("Hold the button down on the Pico W and power up the CT6 device.")
         picoPath = self._getPicoPath()
-        sourcePath = "../picow/tools/picow_flash_images/firmware.uf2"
+        sourcePath = self._getPicoMicroPythonImage()
         destinationPath = picoPath
     
         self._waitForPicoPath(exists=True)
@@ -1082,8 +1142,8 @@ class FactorySetup(CT6Base):
             ct6Testing.addTestCase(2000, "RMA test initialisation.", self._initTestOnly)
 
         else:
-            ct6Testing.addTestCase(3000, "Erase Pico W flash memory.", self._erasePicoWFlash)
-            ct6Testing.addTestCase(4000, "Load MicroPython onto Pico W flash memory.", self._loadMicroPython)
+# PJA            ct6Testing.addTestCase(3000, "Erase Pico W flash memory.", self._erasePicoWFlash)
+#            ct6Testing.addTestCase(4000, "Load MicroPython onto Pico W flash memory.", self._loadMicroPython)
             ct6Testing.addTestCase(5000, "Load the CT6 firmware.", self._loadCT6Application)
         
         if not self._options.test:
