@@ -69,8 +69,24 @@ Section "!${PRODUCT_NAME}" sec_app
   SetRegView [[ib.py_bitness]]
   SectionIn RO
   File ${PRODUCT_ICON}
-  SetOutPath "$INSTDIR\pkgs"
-  File /r "pkgs\*.*"
+
+  [% block install_pkgs %]
+    [#
+      Extend this block if you need to remove the pkgs directory if it already
+      exists from previous installations (when upgrading without uninstalling).
+      https://github.com/takluyver/pynsist/issues/66
+
+      Example:
+      [% block install_pkgs %]
+        RMDir /r "$INSTDIR\pkgs"
+        [[ super() ]]
+      [% endblock install_pkgs %]
+    #]
+    ; Copy pkgs data
+    SetOutPath "$INSTDIR\pkgs"
+    File /r "pkgs\*.*"
+  [% endblock install_pkgs %]
+
   SetOutPath "$INSTDIR"
 
   ; Marker file for per-user install
@@ -94,7 +110,7 @@ Section "!${PRODUCT_NAME}" sec_app
     File /r "[[dir]]\*.*"
   [% endfor %]
   [% endblock install_files %]
-  
+
   [% block install_shortcuts %]
   ; Install shortcuts
   ; The output path becomes the working directory for shortcuts
@@ -156,7 +172,7 @@ Section "!${PRODUCT_NAME}" sec_app
                    "NoModify" 1
   WriteRegDWORD SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" \
                    "NoRepair" 1
-  
+
   ; Check if we need to reboot
   IfRebootFlag 0 noreboot
     MessageBox MB_YESNO "A reboot is required to finish the installation. Do you wish to reboot now?" \
