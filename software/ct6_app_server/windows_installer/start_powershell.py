@@ -23,8 +23,11 @@ def main():
     #Start the powershell in the folder where all the python files reside.
     installFolder = Path(scriptdir).parent
  
-    #This path is created from data in the installer.cfg file
-    subprocess.call(['powershell', '-NoExit', '-Command', f'Set-Location \"{installFolder}\"'])
+    #This path is created from data in the installer.cfg file. Need to use wildcard character to fill in spaces.
+    iFolder = str(installFolder)
+    iFolder = iFolder.replace(" ", "*")
+    #subprocess.call(['powershell', '-NoExit', '-Command', 'python3 -m pipenv shell', f'Set-Location -Path "{iFolder}"'])
+    subprocess.call(['powershell', '-NoExit', f'Set-Location -Path "{iFolder}"'])
 
 if __name__ == "__main__":
     main()
