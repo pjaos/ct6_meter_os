@@ -833,8 +833,8 @@ class CT6ConfiguratorGUI(MultiAppServer):
         theme = "dark_minimal"
         tabTextSizeSS = [{'.bk-tab': Styles(font_size='{}'.format(fontSize))}, {'.bk-tab': Styles(background='{}'.format('grey'))}]
         
-        self._lastStatusMsgTextInput = TextInput(value="", disabled=True)
-        self._statusAreaInput = TextAreaInput(title="Log", value="", disabled=True, rows=10)
+        self._lastStatusMsgTextInput = TextInput(title="Message", value="", disabled=True)
+        self._statusAreaInput = TextAreaInput(title="Message Log", value="", disabled=True, rows=10)
 
         # Create address input field. Defined here because we use it on multiple tabs.
         self._ct6IPAddressInput = TextInput(title="CT6 IP Address", placeholder="CT6 IP Address")
