@@ -59,10 +59,14 @@ class YDev(UOBase):
             for key in paramsDict.keys():
                 jsonDict[key] = paramsDict[key]
         
-        jsonDictStr = json.dumps( jsonDict )
-        self._debug("AYT response message: {}".format(jsonDictStr))
-        sock.sendto( jsonDictStr.encode(), remoteAddressPort)
-        self._debug("Sent above message to {}:{}".format(remoteAddressPort[0],remoteAddressPort[1]))
+        active = True
+        if Constants.ACTIVE in jsonDict:
+            active = jsonDict[Constants.ACTIVE]
+        if active:
+            jsonDictStr = json.dumps( jsonDict )
+            self._debug("AYT response message: {}".format(jsonDictStr))
+            sock.sendto( jsonDictStr.encode(), remoteAddressPort)
+            self._debug("Sent above message to {}:{}".format(remoteAddressPort[0],remoteAddressPort[1]))
 
     def setGetParamsMethod(self, getParamsMethod):
         """@brief Set reference to a method that will retrieve parameters to be included in the AYT response message."""

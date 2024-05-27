@@ -50,6 +50,12 @@ class FactorySetup(CT6Base):
            @param bitCount The number of bits in the conversion."""
         return int(value & (2**bitCount - 1))
     
+    @staticmethod
+    def GetTSString():
+        """@return the default timestamp string. Logfiles include the timestamp."""
+        timeStamp=strftime("%Y%m%d%H%M%S", localtime()).lower()
+        return timeStamp
+
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
@@ -703,7 +709,6 @@ class FactorySetup(CT6Base):
     def _waitForPicoPath(self, exists=True):
         """@brief wait for the path that appears when the RPi Pico button is held down
            and the RPi Pico is powered up to no longer be present."""
-        self._uio.info("Waiting for RPi Pico W to restart.")
         picoPath = self._getPicoPath()
         while True:
             if exists:
@@ -745,7 +750,7 @@ class FactorySetup(CT6Base):
 
     def _initLogFile(self):
         """@brief Init the test log file to record the test an calibration of the unit."""
-        timeStamp = timeStamp=strftime("%Y%m%d%H%M%S", localtime()).lower()
+        timeStamp = FactorySetup.GetTSString()
 
         logFileName = f"ASY{self._assyNumber:04}_V{self._boardVersion:07.4f}_SN{self._serialNumber:08d}_{timeStamp}.log"
         self._uio.logAll(True)
@@ -1171,29 +1176,35 @@ class FactorySetup(CT6Base):
             
         ct6Testing.executeTestCases()
                 
+def getFactorySetupCmdOpts():
+    """@brief Get a reference to the command line options.
+       @return The options instance."""
+    parser = argparse.ArgumentParser(description="A tool to perform configuration and calibration functions on a CT6 power monitor.",
+                                        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--no_cal",                 action='store_true', help="By default a full MFG test is performed. If this option is used code is loaded but CT6 ports are not calibrated/tested.")
+    parser.add_argument("--no_default",             action='store_true', help="By default a full MFG test is performed. If this options is used the factory defaults will not be loaded leaving the WiFi config present when testing is complete..")
+    parser.add_argument("-t", "--test",             action='store_true', help="By default a full MFG test is performed. This option will not load code onto the CT6 device but will run some test cases. This options does not test the CT ports.")
+    parser.add_argument("-o", "--cal_only",         action='store_true', help="Only perform the CT port calibration.")
+    parser.add_argument("-u", "--upcal",            action='store_true', help="Upgrade the CT6 firmware and recal.")
+    parser.add_argument("-v", "--voltage_cal_only", action='store_true', help="Only perform the CT voltage calibration.")
+    parser.add_argument("-r", "--restore",          help="The filename of the CT6 factory config file to load onto the CT6 unit.")
+    parser.add_argument("-p", "--power_cycle",      action='store_true', help="Perform a number of power cycle tests to check the reliability of the power cycling feature.")
+    parser.add_argument("-w", "--setup_wifi",       action='store_true', help="Alternative to using the Android App to setup the CT6 WiFi interface.")
+    parser.add_argument("-a", "--address",          help="The IP address of the unit. This is required for --restore and --power_cycle.", default=None)
+    parser.add_argument("-c", "--cal_ports",        help="Ports to calibrate. Default = all. The port number or comma separated list of ports (E.G 1,2,3,4,5,6) may be entered.", default="all")
+    parser.add_argument("-l", "--labels",           action='store_true', help="Set the assembly and serial number label data in the CT6 unit.")
+    parser.add_argument("--ac60hz",                 action='store_true', help="Set the AC freq to 60 Hz. The default is 50 Hz.")
+    parser.add_argument("-d", "--debug",            action='store_true', help="Enable debugging.")
+
+    options = parser.parse_args()
+    return options
+
 def main():
     """@brief Program entry point"""
     uio = UIO()
 
     try:
-        parser = argparse.ArgumentParser(description="A tool to perform configuration and calibration functions on a CT6 power monitor.",
-                                         formatter_class=argparse.RawDescriptionHelpFormatter)
-        parser.add_argument("--no_cal",                 action='store_true', help="By default a full MFG test is performed. If this option is used code is loaded but CT6 ports are not calibrated/tested.")
-        parser.add_argument("--no_default",             action='store_true', help="By default a full MFG test is performed. If this options is used the factory defaults will not be loaded leaving the WiFi config present when testing is complete..")
-        parser.add_argument("-t", "--test",             action='store_true', help="By default a full MFG test is performed. This option will not load code onto the CT6 device but will run some test cases. This options does not test the CT ports.")
-        parser.add_argument("-o", "--cal_only",         action='store_true', help="Only perform the CT port calibration.")
-        parser.add_argument("-u", "--upcal",            action='store_true', help="Upgrade the CT6 firmware and recal.")
-        parser.add_argument("-v", "--voltage_cal_only", action='store_true', help="Only perform the CT voltage calibration.")
-        parser.add_argument("-r", "--restore",          help="The filename of the CT6 factory config file to load onto the CT6 unit.")
-        parser.add_argument("-p", "--power_cycle",      action='store_true', help="Perform a number of power cycle tests to check the reliability of the power cycling feature.")
-        parser.add_argument("-w", "--setup_wifi",       action='store_true', help="Alternative to using the Android App to setup the CT6 WiFi interface.")
-        parser.add_argument("-a", "--address",          help="The IP address of the unit. This is required for --restore and --power_cycle.", default=None)
-        parser.add_argument("-c", "--cal_ports",        help="Ports to calibrate. Default = all. The port number or comma separated list of ports (E.G 1,2,3,4,5,6) may be entered.", default="all")
-        parser.add_argument("-l", "--labels",           action='store_true', help="Set the assembly and serial number label data in the CT6 unit.")
-        parser.add_argument("--ac60hz",                 action='store_true', help="Set the AC freq to 60 Hz. The default is 50 Hz.")
-        parser.add_argument("-d", "--debug",            action='store_true', help="Enable debugging.")
-
-        options = parser.parse_args()
+        options = getFactorySetupCmdOpts()
 
         uio.enableDebug(options.debug)
 

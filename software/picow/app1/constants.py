@@ -4,7 +4,7 @@ class Constants(BaseConstants):
     """@brief Define the constants used by this project.
               This extends BaseContants to make a more specialised configuration for this machine."""
 
-    FIRMWARE_VERSION            = "2.6"
+    FIRMWARE_VERSION            = "2.61"
 
     # Override the BaseConstants GPIO pins to those connected on this hardware
     WIFI_SETUP_BUTTON_PIN       = 14
@@ -104,6 +104,12 @@ class Constants(BaseConstants):
 
     ACTIVE                      = "ACTIVE"
 
+    MQTT_SERVER_ADDRESS         = "MQTT_SERVER_ADDRESS"
+    
+    MQTT_SERVER_PORT            = "MQTT_SERVER_PORT"
+    
+    MQTT_TX_PERIOD_MS           = "MQTT_TX_PERIOD_MS" 
+    
     FACTORY_CONFIG_KEYS = [BaseConstants.ASSY_KEY,
                            
                            CS0_VOLTAGE_GAIN_KEY,
@@ -198,13 +204,16 @@ class Constants(BaseConstants):
         CS0_VOLTAGE_OFFSET:             61440,
         CS4_VOLTAGE_OFFSET:             61440,
 
-        ACTIVE:                         0           # If 1 then the unit is active and ct6_db_store.py will create a database and update
+        ACTIVE:                         0,           # If 1 then the unit is active and ct6_db_store.py will create a database and update
                                                     # the database with data received from this device.
                                                     # The default is set to 0. This is so that databases are not created unless the
                                                     # device has been enabled for this. This allows units to be added to a WiFi
                                                     # network but not cause database updates which is useful for development purposes.
                                                     # ct6_tool.py can be used to set the ACTIVE flag. When set this causes the databases
                                                     # to be created and updated by ct6_db_store.py.
+        MQTT_SERVER_ADDRESS:            "",         # The address of an MQTT server to send data to.
+        MQTT_SERVER_PORT:               1883,        # The TCP port number of an MQTT server to send data to
+        MQTT_TX_PERIOD_MS:              2000        # Default send to the MQTT server every 2000 milliseconds/2 seconds 
 
      }
 
@@ -250,7 +259,10 @@ class Constants(BaseConstants):
                                    CS0_VOLTAGE_OFFSET,
                                    CS4_VOLTAGE_OFFSET,
                                    ACTIVE,
-                                   LINE_FREQ_HZ_KEY
+                                   LINE_FREQ_HZ_KEY,
+                                   MQTT_SERVER_ADDRESS,
+                                   MQTT_SERVER_PORT,
+                                   MQTT_TX_PERIOD_MS
                                    )
 
     # --- END CONFIG SECTION ---

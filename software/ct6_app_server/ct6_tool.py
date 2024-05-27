@@ -33,7 +33,7 @@ from   subprocess import check_output, check_call, DEVNULL, STDOUT
 
 class CT6Base(BaseConstants):
     """@brief Base class for CT6 device operations."""
-    HOUSE_WIFI_CFG_FILE         = "house_wifi.cfg"
+    HOUSE_WIFI_CFG_FILE         = os.path.join(os.path.join(os.path.expanduser('~')), "ct6_house_wifi.cfg" )
     WIFI_CFG_KEY                = "WIFI"
     CT6_MACHINE_CONFIG_FILE     = "this.machine.cfg"
     CT6_FACTORY_CONFIG_FILE     = "factory.cfg"
@@ -290,7 +290,7 @@ class CT6Base(BaseConstants):
            @param matchText The text to match the serial ports.
            @param timeout The timeout in seconds to wait for a serial port to appear.
            @return The serial device string."""
-        self._uio.info("Checking serial connections for CT6 device.")
+        self._uio.info(f"Checking serial connections for CT6 device (timeout = {timeout} seconds).")
         # If windows then force a COM port
         if self._windowsPlatform:
             matchText = "COM"
@@ -309,16 +309,23 @@ class CT6Base(BaseConstants):
         for serialPort in serialPortList:
             if serialPort.device.find(matchText) >= 0:
                 matchingSerialPortList.append(serialPort.device)
-                
+
+        if len(matchingSerialPortList) == 0:
+            raise Exception('No RPi Pico W serial port detected.')
+                        
+        self._uio.info("Checking that only one serial port is connected to this machine.")
+        
         if len(matchingSerialPortList) > 1:
-            raise Exception(f'Multiple serial port found: {",".join(matchingSerialPortList)}')
+            raise Exception(f'Multiple serial ports detected: {",".join(matchingSerialPortList)}')
         
         self._uio.info(f"Found {matchingSerialPortList[0]}")
         return matchingSerialPortList[0]
         
     def _checkMicroPython(self, closeSerialPort=True):
         """@brief Check micropython is loaded.
-           @param closeSerialPort If True then close the serial port on exit."""
+           @param closeSerialPort If True then close the serial port on exit.
+           @return True on success."""
+        success = False
         self._uio.debug("_checkMicroPython(): START")
         try:
             try:
@@ -342,6 +349,7 @@ class CT6Base(BaseConstants):
                             if data.startswith("MicroPython"):
                                 line = data.rstrip("\r\n")
                                 self._uio.info(f"CT6 Unit:  {line}")
+                                success = True
                                 break
                     else:
                         sleep(0.1)
@@ -358,7 +366,19 @@ class CT6Base(BaseConstants):
                 self._ser = None
                 
         self._uio.debug("_checkMicroPython(): STOP")
+        return success
         
+    def restart(self):
+        """@brief Restart the CT6 unit via a machine.reset()"""
+        try:
+            self._checkMicroPython(closeSerialPort=False)
+            self._ser.write(b"import machine ; machine.reset()\r")
+        
+        finally:
+            if self._ser:
+                self._ser.close()
+                self._ser = None
+
     def _getFileContents(self, filename):
         """@brief Get the contents of a text file on the CT6 unit using the serial ports python prompt.
            @param filename The filename of the file to read.
@@ -392,6 +412,7 @@ class CT6Base(BaseConstants):
         thisMachineFileContents = self._getFileContents(CT6Base.CT6_MACHINE_CONFIG_FILE)
         if thisMachineFileContents is None:
             raise Exception(f"The CT6 board does not have a {CT6Base.CT6_MACHINE_CONFIG_FILE} file. Run a MFG test to recover.")
+        self._uio.debug(f"thisMachineFileContents=<{thisMachineFileContents}>")
         thisMachineDict = json.loads(thisMachineFileContents)
         fc = self._getFileContents(CT6Base.CT6_FACTORY_CONFIG_FILE)
         if fc == None:
@@ -425,16 +446,21 @@ class CT6Base(BaseConstants):
            
     def _handleHouseWiFiConfigFileNotFound(self):
         """@brief Called to handle the situation where the CT6Base.HOUSE_WIFI_CFG_FILE file is not present."""
-        HOUSE_WIFI_TEMPLATE = '{"WIFI": {"MODE": "STA", "SSID": "SSID_VALUE", "PASSWD": "PASSWORD_VALUE", "CHANNEL": 3, "WIFI_CFG": 1 } }'
         ssid = self._uio.getInput("The local WiFi SSID: ")
         password = self._uio.getInput("The local WiFi password: ")
+        self._storeWiFiCredentials(ssid, password)
+         
+    def _storeWiFiCredentials(self, ssid, password):
+        """@brief Stroe the WiFi credentials locally.
+           @param ssid The Wifi SSID/network.
+           @param password The WiFi password."""
+        HOUSE_WIFI_TEMPLATE = '{"WIFI": {"MODE": "STA", "SSID": "SSID_VALUE", "PASSWD": "PASSWORD_VALUE", "CHANNEL": 3, "WIFI_CFG": 1 } }'
         HOUSE_WIFI_TEMPLATE = HOUSE_WIFI_TEMPLATE.replace('SSID_VALUE', ssid)
         HOUSE_WIFI_TEMPLATE = HOUSE_WIFI_TEMPLATE.replace('PASSWORD_VALUE', password)
         with open(CT6Base.HOUSE_WIFI_CFG_FILE, 'w') as fd:
             fd.write(HOUSE_WIFI_TEMPLATE)
         self._uio.info(f"Created {CT6Base.HOUSE_WIFI_CFG_FILE}")
-        
-        
+
     def _runApp(self, waitForIPAddress=True):
         """@brief Run the CT6 firmware on the CT6 unit.
            @param waitForIPAddress If True wait for an IP address to be allocated to the unit.
@@ -897,18 +923,23 @@ class YDevManager(CT6Base):
         if len(keyPrefix) == 0:
             uio.info('-'*(width0+width1+7))
 
-    def __init__(self, uio, options):
+    def __init__(self, uio, options, ssid=None, password=None):
         """@brief Constructor
            @param uio A UIO instance for user input output.
-           @param options An instance of the command line options."""
+           @param options An instance of the command line options.
+           @param ssid The WiFi SSID. If left as None the user is prompted to enter it if not previously set.
+           @param password The Wifi password.  If left as None the user is prompted to enter it if not previously set."""
         super().__init__(uio, options)
         self._mpyFileList = []
 
         if self._options.check_mpy_cross:
             self._checkModulesInstalled()
 
-        if not os.path.isfile(CT6Base.HOUSE_WIFI_CFG_FILE):
-            self._handleHouseWiFiConfigFileNotFound()
+        if ssid and password:
+            self._storeWiFiCredentials(ssid, password)
+
+        elif not os.path.isfile(CT6Base.HOUSE_WIFI_CFG_FILE):
+            self._handleHouseWiFiConfigFileNotFound(ssid, password)
             
         self._orgActiveAppFolder = None
 
@@ -966,7 +997,7 @@ class YDevManager(CT6Base):
         """@brief Check that the upgrade has been successful and the device is running the updated app."""
         self._waitForWiFiDisconnect()
         self._uio.info(f"The CT6 unit ({self._ipAddress}) has rebooted.")
-        self._uio.info("Waiting for it to re register on the WiFi network.")
+        self._uio.info("Waiting for the CT6 device to connect to the WiFi network.")
         self._waitForPingSucess()
         
         retDict = self._runCommand(YDevManager.GET_ACTIVE_APP_FOLDER, returnDict=True)
@@ -1398,7 +1429,7 @@ class CT6Scanner(CT6Base):
 class CT6Config(CT6Base):
     """@brief Allow the user to configure a CT6 device."""
 
-    EDITABLE_KEY_LIST = ("YDEV_UNIT_NAME", "CT1_NAME", "CT2_NAME", "CT3_NAME", "CT4_NAME", "CT5_NAME", "CT6_NAME", BaseConstants.ACTIVE)
+    EDITABLE_KEY_LIST = ("YDEV_UNIT_NAME", "CT1_NAME", "CT2_NAME", "CT3_NAME", "CT4_NAME", "CT5_NAME", "CT6_NAME", BaseConstants.ACTIVE, "MQTT_SERVER_ADDRESS", "MQTT_SERVER_PORT", "MQTT_TX_PERIOD_MS")
     USER_PROMPT_LIST  = ("Device name", "Port 1 name", "Port 2 name", "Port 3 name", "Port 4 name", "Port 5 name", "Port 6 name", "Device Active")
 
     def __init__(self, uio, options):
@@ -1493,44 +1524,49 @@ class CT6Config(CT6Base):
         if save:
             self._saveConfigDict(cfgDict)
 
+def getCT6ToolCmdOpts():
+    """@brief Get a reference to the command line options.
+       @return The options instance."""
+    parser = argparse.ArgumentParser(description="A tool to perform configuration and calibration functions on a CT6 power monitor.",
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("-w", "--setup_wifi",       action='store_true', help="Alternative to using the Android App to setup the CT6 WiFi interface.")
+    parser.add_argument("-c", "--config",           action='store_true', help="Configure a CT6 unit.")
+    parser.add_argument("-f", "--find",             action='store_true', help="Find/Scan for CT6 devices on the LAN.")
+    parser.add_argument("--upgrade",                action='store_true', help="Perform an upgrade of a CT6 unit over the air (OTA) via it's WiFi interface.")
+    parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default=CT6Base.MCU_CODE_ROOT_FOLDER)
+    parser.add_argument("--create_zip",             help="Create an upgrade zip file. The argument is the zip filename.")
+    parser.add_argument("--clean",                  help="Delete all files and reload the firmware onto a CT6 device over the Pico W serial port. The factory.cfg file must be reloaded when this is complete to restore assy/serial number and calibration configuration.", action='store_true')
+    parser.add_argument("--status",                 action='store_true', help="Get unit RAM/DISK usage.")
+    parser.add_argument("--flist",                  action='store_true', help="Get a list of the files on the unit.")
+    parser.add_argument("--mconfig",                action='store_true', help="Get the machine config.")
+    parser.add_argument("--get_config",             action='store_true', help="Get the machine configuration file and store it locally.")
+    parser.add_argument("--eia",                    action='store_true', help="Erase the inactive application.")
+    parser.add_argument("--sf",                     help="Send a file to the device.")
+    parser.add_argument("--sp",                     help="The path to place the above file on the device.", default="/")
+    parser.add_argument("--rf",                     help="Receive a file from the device. Only text files are currently supported.")
+    parser.add_argument("--rp",                     help=f"The local path to place the above file once received (default={tempfile.gettempdir()}).", default=tempfile.gettempdir())
+    parser.add_argument("--mkdir",                  help="The path to create on the device.")
+    parser.add_argument("--rmdir",                  help="The path to remove from the device.")
+    parser.add_argument("--rmfile",                 help="The file to remove from the device.")
+    parser.add_argument("--getaaf",                 help="Get the active app folder.", action='store_true')
+    parser.add_argument("--getiaf",                 help="Get the inactive app folder.", action='store_true')
+    parser.add_argument("--reboot",                 help="Reboot the device.", action='store_true')
+    parser.add_argument("--power_cycle",            help="Power cycle the unit.", action='store_true')
+    parser.add_argument("--defaults",               help="Reset a device to the default configuration.", action='store_true')
+    parser.add_argument("--check_mpy_cross",        action='store_true', help="Check that the mpy_cross (bytecode compiler) is installed.")
+    parser.add_argument("-v", "--view",             action='store_true', help="View received data on first /dev/ttyUSB* or /dev/ttyACM* serial port quickly after a Pico W reset.")
+    parser.add_argument("-a", "--address",          help="The address of the CT6 unit.", default=None)
+    parser.add_argument("-d", "--debug",            action='store_true', help="Enable debugging.")
 
+    options = parser.parse_args()
+    return options
+    
 def main():
     """@brief Program entry point"""
     uio = UIO()
 
     try:
-        parser = argparse.ArgumentParser(description="A tool to perform configuration and calibration functions on a CT6 power monitor.",
-                                         formatter_class=argparse.RawDescriptionHelpFormatter)
-        parser.add_argument("-w", "--setup_wifi",       action='store_true', help="Alternative to using the Android App to setup the CT6 WiFi interface.")
-        parser.add_argument("-c", "--config",           action='store_true', help="Configure a CT6 unit.")
-        parser.add_argument("-f", "--find",             action='store_true', help="Find/Scan for CT6 devices on the LAN.")
-        parser.add_argument("--upgrade",                action='store_true', help="Perform an upgrade of a CT6 unit over the air (OTA) via it's WiFi interface.")
-        parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default=CT6Base.MCU_CODE_ROOT_FOLDER)
-        parser.add_argument("--create_zip",             help="Create an upgrade zip file. The argument is the zip filename.")
-        parser.add_argument("--clean",                  help="Delete all files and reload the firmware onto a CT6 device over the Pico W serial port. The factory.cfg file must be reloaded when this is complete to restore assy/serial number and calibration configuration.", action='store_true')
-        parser.add_argument("--status",                 action='store_true', help="Get unit RAM/DISK usage.")
-        parser.add_argument("--flist",                  action='store_true', help="Get a list of the files on the unit.")
-        parser.add_argument("--mconfig",                action='store_true', help="Get the machine config.")
-        parser.add_argument("--get_config",             action='store_true', help="Get the machine configuration file and store it locally.")
-        parser.add_argument("--eia",                    action='store_true', help="Erase the inactive application.")
-        parser.add_argument("--sf",                     help="Send a file to the device.")
-        parser.add_argument("--sp",                     help="The path to place the above file on the device.", default="/")
-        parser.add_argument("--rf",                     help="Receive a file from the device. Only text files are currently supported.")
-        parser.add_argument("--rp",                     help=f"The local path to place the above file once received (default={tempfile.gettempdir()}).", default=tempfile.gettempdir())
-        parser.add_argument("--mkdir",                  help="The path to create on the device.")
-        parser.add_argument("--rmdir",                  help="The path to remove from the device.")
-        parser.add_argument("--rmfile",                 help="The file to remove from the device.")
-        parser.add_argument("--getaaf",                 help="Get the active app folder.", action='store_true')
-        parser.add_argument("--getiaf",                 help="Get the inactive app folder.", action='store_true')
-        parser.add_argument("--reboot",                 help="Reboot the device.", action='store_true')
-        parser.add_argument("--power_cycle",            help="Power cycle the unit.", action='store_true')
-        parser.add_argument("--defaults",               help="Reset a device to the default configuration.", action='store_true')
-        parser.add_argument("--check_mpy_cross",        action='store_true', help="Check that the mpy_cross (bytecode compiler) is installed.")
-        parser.add_argument("-v", "--view",             action='store_true', help="View received data on first /dev/ttyUSB* or /dev/ttyACM* serial port quickly after a Pico W reset.")
-        parser.add_argument("-a", "--address",          help="The address of the CT6 unit.", default=None)
-        parser.add_argument("-d", "--debug",            action='store_true', help="Enable debugging.")
-
-        options = parser.parse_args()
+        options = getCT6ToolCmdOpts()
 
         uio.enableDebug(options.debug)
 
