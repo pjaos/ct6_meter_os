@@ -56,10 +56,12 @@ class FactorySetup(CT6Base):
         timeStamp=strftime("%Y%m%d%H%M%S", localtime()).lower()
         return timeStamp
 
-    def __init__(self, uio, options):
+    def __init__(self, uio, options, ssid=None, password=None):
         """@brief Constructor
            @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
-           @param options An instance of the OptionParser command line options."""
+           @param options An instance of the OptionParser command line options.
+           @param ssid The WiFi SSID. If left as None the user is prompted to enter it if not previously set.
+           @param password The Wifi password.  If left as None the user is prompted to enter it if not previously set."""
         super().__init__(uio, options)
         
         self._assyNumber                    = None
@@ -74,8 +76,11 @@ class FactorySetup(CT6Base):
         self._serialLoggingThread           = None
         self._serialLoggingThreadRunning    = None  
     
-        if not os.path.isfile(FactorySetup.HOUSE_WIFI_CFG_FILE):
-            self._handleHouseWiFiConfigFileNotFound()
+        if ssid and password:
+            self._storeWiFiCredentials(ssid, password)
+
+        elif not os.path.isfile(CT6Base.HOUSE_WIFI_CFG_FILE):
+            self._handleHouseWiFiConfigFileNotFound(ssid, password)
             
         if self._options.ac60hz:
             self._lineFreqHz   = 60
