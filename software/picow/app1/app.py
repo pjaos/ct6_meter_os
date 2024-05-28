@@ -22,7 +22,7 @@ async def start(configFile, activeAppKey, activeApp):
     wdt = WDT(timeout=Constants.WDT_TIMEOUT_MSECS)  # Enable watchdog timer here.
                                                     # If the WiFi goes down then we can
                                                     # drop out to the REPL prompt.
-                                                    # The WDT will then trigger a reboot.
+                                                    # The WDT will then trigger a reboot.      
 
     # Contains the machine specific code in here.
     thisMachine = ThisMachine(uo, configFile, activeAppKey, activeApp, wdt)

@@ -1,4 +1,5 @@
 from machine import SPI, Pin
+from time import sleep
 import st7789
 import vga2_bold_16x16 as font
 
@@ -386,9 +387,9 @@ class ThisMachine(BaseMachine):
         try:
             if self._mqttClient:
                 self._mqttClient.disconnect()
-                self._mqttClient = None
         except Exception as ex:
             self._uo.error('Error shutting down MQTT connection: ' + str(ex))
+        self._mqttClient = None
       
     def _sendToMQTT(self):
         """@brief Send data to the MQTT server."""

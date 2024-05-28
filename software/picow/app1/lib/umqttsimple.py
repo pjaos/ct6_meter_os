@@ -4,6 +4,9 @@ except:
     import socket
 import ustruct as struct
 #from ubinascii import hexlify
+import select
+from constants import Constants
+from utime import ticks_ms, sleep
 
 class MQTTException(Exception):
     pass
@@ -29,6 +32,40 @@ class MQTTClient:
         self.lw_msg = None
         self.lw_qos = 0
         self.lw_retain = False
+
+    def _connect_socket(self, address, port, connectTimeoutMS):
+        """@brief Attempt to connect a socket connection to a server with a timeout.
+                  Due to an issue with the current (1.20) Micropython version the 
+                  settimeout() socket method does not change the connect timeout.
+                  This method is a workaround for this issue.
+           @param address The address to connect to.
+           @param port The port number to connect to.
+           @param connectTimeoutMS The max amount of time (in milli seconds) to wait for the connection."""
+        addr = socket.getaddrinfo(address, port)[0][-1]
+        sock = socket.socket()
+        sock.setblocking(False)
+        poller = select.poll()
+        poller.register(sock, select.POLLIN | select.POLLOUT)
+
+        try:
+            sock.connect(addr)
+        except:
+            pass
+
+        timeoutMS = ticks_ms()+connectTimeoutMS
+        while True:
+            res = poller.poll(connectTimeoutMS)
+            resStr = str(res)
+            # Found that this appears in socket state when connected.
+            if resStr.find(" state=3 ") > 0:
+                break
+            sleep(0.1)
+            if ticks_ms() >= timeoutMS:
+                poller.unregister(sock)
+                raise OSError(f"{connectTimeoutMS} milli second timeout connecting to {address}:{port}")
+        
+        sock.setblocking(True)
+        return sock
 
     def _send_str(self, s):
         self.sock.write(struct.pack("!H", len(s)))
@@ -56,9 +93,9 @@ class MQTTClient:
         self.lw_retain = retain
 
     def connect(self, clean_session=True):
-        self.sock = socket.socket()
-        addr = socket.getaddrinfo(self.server, self.port)[0][-1]
-        self.sock.connect(addr)
+        # We only try to connect for 1/2 the watchtog timeout period or the WDT will fire while attempting to connect.
+        sTimeout = int(Constants.WDT_TIMEOUT_MSECS/2)
+        self.sock = self._connect_socket(self.server, self.port, sTimeout)
         if self.ssl:
             import ussl
             self.sock = ussl.wrap_socket(self.sock, **self.ssl_params)
