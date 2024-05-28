@@ -1429,7 +1429,7 @@ class CT6Scanner(CT6Base):
 class CT6Config(CT6Base):
     """@brief Allow the user to configure a CT6 device."""
 
-    EDITABLE_KEY_LIST = ("YDEV_UNIT_NAME", "CT1_NAME", "CT2_NAME", "CT3_NAME", "CT4_NAME", "CT5_NAME", "CT6_NAME", BaseConstants.ACTIVE, "MQTT_SERVER_ADDRESS", "MQTT_SERVER_PORT", "MQTT_TX_PERIOD_MS")
+    EDITABLE_KEY_LIST = ("YDEV_UNIT_NAME", "CT1_NAME", "CT2_NAME", "CT3_NAME", "CT4_NAME", "CT5_NAME", "CT6_NAME", BaseConstants.ACTIVE, "MQTT_SERVER_ADDRESS", "MQTT_SERVER_PORT", "MQTT_TX_PERIOD_MS", "MQTT_TOPIC", "MQTT_USERNAME", "MQTT_PASSWORD")
     USER_PROMPT_LIST  = ("Device name", "Port 1 name", "Port 2 name", "Port 3 name", "Port 4 name", "Port 5 name", "Port 6 name", "Device Active")
 
     def __init__(self, uio, options):

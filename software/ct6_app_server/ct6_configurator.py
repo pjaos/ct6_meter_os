@@ -11,8 +11,6 @@ import shutil
 from queue import Queue
 from time import time
 
-from serial.tools.list_ports import comports
-
 from p3lib.uio import UIO
 from p3lib.bokeh_gui import MultiAppServer
 from p3lib.helper import logTraceBack
@@ -76,7 +74,10 @@ class CT6ConfiguratorGUI(MultiAppServer):
     MQTT_TX_PERIOD_MS           = "MQTT_TX_PERIOD_MS"
     DEFAULT_MQTT_SERVER_PORT    = 1883    
     DEFAULT_MQTT_TX_PERIOD_MS   = 2000
-        
+    MQTT_TOPIC                  = "MQTT_TOPIC"
+    MQTT_USERNAME               = "MQTT_USERNAME"
+    MQTT_PASSWORD               = "MQTT_PASSWORD"
+
     def __init__(self, uio, options, config):
         """@brief Constructor.
            @param uio A UIO instance responsible for stdout/stdin input output.
@@ -164,7 +165,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
            @param devManager A YDevManager instance.
            @param factoryConfigFile The factory config file to copy."""
         self.info("Restoring factory config to the CT6 device.")
-        if os.path.isfile(factoryConfigFile):
+        if factoryConfigFile and os.path.isfile(factoryConfigFile):
             srcFile = factoryConfigFile
         else:
             # Use the fallback factory config file if available.
@@ -183,6 +184,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
                   CT6 hardware."""
         try:
             try:
+                factoryConfigFile = None
                 options = getCT6ToolCmdOpts()
                 devManager = YDevManager(self, options)
                 try:
@@ -693,14 +695,15 @@ class CT6ConfiguratorGUI(MultiAppServer):
         ipAddresssRow = row(children=[self._ct6IPAddressInput])
         
         self._mqttServerAddressInput = TextInput(title="MQTT Server Address", placeholder="MQTT Server Address")
-        mqttServerAddressRow = row(children=[self._mqttServerAddressInput])
-            
         self._mqttServerPortInput = NumericInput(title="MQTT Server Port", value=CT6ConfiguratorGUI.DEFAULT_MQTT_SERVER_PORT, low= 1, high=65535, mode='int')
-        mqttServerPortRow = row(children=[self._mqttServerPortInput])
-                    
-        self._mqttServerTXPeriodMSInput = NumericInput(title="MQTT TX Period (Milli Seconds)", value=CT6ConfiguratorGUI.DEFAULT_MQTT_TX_PERIOD_MS, low= 200, high=600000, mode='int')
-        mqttTXPeriodMSRow = row(children=[self._mqttServerTXPeriodMSInput])
-                    
+        self._mqttTopicInput = TextInput(title="MQTT Topic", placeholder="MQTT Topic")  
+        row1 = row(children=[self._mqttServerAddressInput, self._mqttServerPortInput, self._mqttTopicInput])
+
+        self._mqttUsernameInput = TextInput(title="MQTT Username", placeholder="MQTT Username")  
+        self._mqttPasswordInput = TextInput(title="MQTT Password", placeholder="MQTT Password") 
+        self._mqttServerTXPeriodMSInput = NumericInput(title="TX Period (Milli Seconds)", placeholder="TX Period (Milli Seconds)", value=CT6ConfiguratorGUI.DEFAULT_MQTT_TX_PERIOD_MS, low= 200, high=600000, mode='int')
+        row2 = row(children=[self._mqttUsernameInput, self._mqttPasswordInput, self._mqttServerTXPeriodMSInput])
+
         self._setMQTTServerButton = Button(label="Set", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
         self._setMQTTServerButton.on_click(self._setMQTTServerButtonHandler)
 
@@ -711,12 +714,11 @@ class CT6ConfiguratorGUI(MultiAppServer):
 
         panel = column(children=[descriptionDiv,
                                  ipAddresssRow,
-                                 mqttServerAddressRow,
-                                 mqttServerPortRow, 
-                                 mqttTXPeriodMSRow,
+                                 row1,
+                                 row2,
                                  buttonRow])
         return TabPanel(child=panel,  title="MQTT Server")
-    
+        
     def _setMQTTServerButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
@@ -725,13 +727,19 @@ class CT6ConfiguratorGUI(MultiAppServer):
         threading.Thread( target=self._setMQTTServer, args=(self._ct6IPAddressInput.value, 
                                                         self._mqttServerAddressInput.value ,
                                                         self._mqttServerPortInput.value,
+                                                        self._mqttTopicInput.value,
+                                                        self._mqttUsernameInput.value,
+                                                        self._mqttPasswordInput.value,
                                                         self._mqttServerTXPeriodMSInput.value )).start()
         
-    def _setMQTTServer(self, ct6IPAddress, address, port, txPeriodMS):
+    def _setMQTTServer(self, ct6IPAddress, address, port, topic, username, password, txPeriodMS):
         """@brief Perform an upgrade of the CT6 unit.
            @param ct6IPAddress The address of the CT6 device.
            @param address The address of the MQTT server.
            @param port The port number of the MQTT server.
+           @param topic The MQTT topic that the CT6 device MQTT client will subsribe to.
+           @param username The MQTT username. Maybe empty for anonymous connection.
+           @param password The MQTT password. Maybe empty fro anonymous connection.
            @param txPeriodMS The period of the data sent to the MQTT server in milli seconds."""
         try:
             try:
@@ -740,13 +748,25 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 cfgDict = self._getConfigDict(ct6IPAddress)    
                 if CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS in cfgDict and \
                    CT6ConfiguratorGUI.MQTT_SERVER_PORT in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in cfgDict:
+                   CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in cfgDict and \
+                   CT6ConfiguratorGUI.MQTT_TOPIC in cfgDict and \
+                   CT6ConfiguratorGUI.MQTT_USERNAME in cfgDict and \
+                   CT6ConfiguratorGUI.MQTT_PASSWORD in cfgDict:
                     
                     #PAJ TODO self._checkReacable(address, port)
                     
+                    # Remove leading and trailing whitespace characters
+                    address=address.strip()
+                    topic=topic.strip()
+                    username=username.strip()
+                    password=password.strip()
+
                     mqttCfgDict = {CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS: address,
                                    CT6ConfiguratorGUI.MQTT_SERVER_PORT: port,
-                                   CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS: txPeriodMS}
+                                   CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS: txPeriodMS,
+                                   CT6ConfiguratorGUI.MQTT_TOPIC: topic,
+                                   CT6ConfiguratorGUI.MQTT_USERNAME: username,
+                                   CT6ConfiguratorGUI.MQTT_PASSWORD: password}
                     print(f"PJA: mqttCfgDict={mqttCfgDict}")
                     response = self._saveConfigDict(ct6IPAddress, mqttCfgDict)
                     if response is not None:
@@ -983,14 +1003,30 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 
         elif CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS in rxDict and \
              CT6ConfiguratorGUI.MQTT_SERVER_PORT in rxDict and \
-             CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in rxDict:   
+             CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in rxDict and \
+             CT6ConfiguratorGUI.MQTT_TOPIC in rxDict and \
+             CT6ConfiguratorGUI.MQTT_USERNAME in rxDict and \
+             CT6ConfiguratorGUI.MQTT_PASSWORD in rxDict:   
             mqttServerAddress = rxDict[CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS]
             mqttServerPort = rxDict[CT6ConfiguratorGUI.MQTT_SERVER_PORT]
             mqttTXPeriodMS = rxDict[CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS]
+            topic = rxDict[CT6ConfiguratorGUI.MQTT_TOPIC]
+            username = rxDict[CT6ConfiguratorGUI.MQTT_USERNAME]
+            password = rxDict[CT6ConfiguratorGUI.MQTT_PASSWORD]
+
+            # Remove any whitespace leading or trailing characters
+            address = address.strip()
+            topic = topic.strip()
+            username = username.strip()
+            password = password.strip()
+
             self._mqttServerAddressInput.value = mqttServerAddress
             self._mqttServerPortInput.value = mqttServerPort
+            self._mqttTopicInput.value = topic
+            self._mqttUsernameInput.value = username
+            self._mqttPasswordInput.value = password
             self._mqttServerTXPeriodMSInput.value = mqttTXPeriodMS
-            
+
     def _sendEnableAllButtons(self, state):
         """@brief Send a message to the GUI to enable/disable all the command buttons.
            @param msg The message to be displayed."""
