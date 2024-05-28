@@ -799,16 +799,25 @@ class CT6ConfiguratorGUI(MultiAppServer):
         try:
             try:
                 self.info(f"Get CT6 device ({ct6IPAddress}) MQTT server configuration.")
-                cfgDict = self._getConfigDict(ct6IPAddress)    
+                cfgDict = self._getConfigDict(ct6IPAddress)
                 if CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS in cfgDict and \
                    CT6ConfiguratorGUI.MQTT_SERVER_PORT in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in cfgDict:
+                   CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in cfgDict and \
+                   CT6ConfiguratorGUI.MQTT_TOPIC in cfgDict and \
+                   CT6ConfiguratorGUI.MQTT_USERNAME in cfgDict and \
+                   CT6ConfiguratorGUI.MQTT_PASSWORD in cfgDict:
                     
                     mqttServerAddress = cfgDict[CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS]
                     mqttServerPort = cfgDict[CT6ConfiguratorGUI.MQTT_SERVER_PORT]
+                    mqttTopic = cfgDict[CT6ConfiguratorGUI.MQTT_TOPIC]
+                    mqttUsername = cfgDict[CT6ConfiguratorGUI.MQTT_USERNAME]
+                    mqttPassword = cfgDict[CT6ConfiguratorGUI.MQTT_PASSWORD]
                     mqttTXPeriodMS = cfgDict[CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS]
                     msgDict = {CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS: mqttServerAddress,
                                CT6ConfiguratorGUI.MQTT_SERVER_PORT: mqttServerPort,
+                               CT6ConfiguratorGUI.MQTT_TOPIC: mqttTopic,
+                               CT6ConfiguratorGUI.MQTT_USERNAME: mqttUsername,
+                               CT6ConfiguratorGUI.MQTT_PASSWORD: mqttPassword,
                                CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS: mqttTXPeriodMS}
                     self.updateGUI(msgDict)
                         
@@ -1020,7 +1029,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
             password = rxDict[CT6ConfiguratorGUI.MQTT_PASSWORD]
 
             # Remove any whitespace leading or trailing characters
-            address = address.strip()
+            mqttServerAddress = mqttServerAddress.strip()
             topic = topic.strip()
             username = username.strip()
             password = password.strip()
