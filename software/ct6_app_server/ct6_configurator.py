@@ -761,6 +761,12 @@ class CT6ConfiguratorGUI(MultiAppServer):
                     username=username.strip()
                     password=password.strip()
 
+                    # Replace spaces with underscores
+                    address=address.replace(" ", "_")
+                    topic=topic.replace(" ", "_")
+                    username=username.replace(" ", "_")
+                    password=password.replace(" ", "_")
+
                     mqttCfgDict = {CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS: address,
                                    CT6ConfiguratorGUI.MQTT_SERVER_PORT: port,
                                    CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS: txPeriodMS,
