@@ -109,6 +109,12 @@ class Constants(BaseConstants):
     MQTT_SERVER_PORT            = "MQTT_SERVER_PORT"
     
     MQTT_TX_PERIOD_MS           = "MQTT_TX_PERIOD_MS" 
+
+    MQTT_TOPIC                  = "MQTT_TOPIC"
+
+    MQTT_USERNAME               = "MQTT_USERNAME"
+
+    MQTT_PASSWORD               = "MQTT_PASSWORD"  
     
     FACTORY_CONFIG_KEYS = [BaseConstants.ASSY_KEY,
                            
@@ -212,7 +218,10 @@ class Constants(BaseConstants):
                                                     # ct6_tool.py can be used to set the ACTIVE flag. When set this causes the databases
                                                     # to be created and updated by ct6_db_store.py.
         MQTT_SERVER_ADDRESS:            "",         # The address of an MQTT server to send data to.
-        MQTT_SERVER_PORT:               1883,        # The TCP port number of an MQTT server to send data to
+        MQTT_SERVER_PORT:               1883,       # The TCP port number of an MQTT server to send data to
+        MQTT_TOPIC:                     "",         # The MQTT topic to which the CT6 MQTT client may subscribe
+        MQTT_USERNAME:                  "",         # The MQTT username. If empty then an anonymous MQTT connection will be attempted.
+        MQTT_PASSWORD:                  "",         # The MQTT password. If empty then an anonymous MQTT connection will be attempted.
         MQTT_TX_PERIOD_MS:              2000        # Default send to the MQTT server every 2000 milliseconds/2 seconds 
 
      }
@@ -262,6 +271,9 @@ class Constants(BaseConstants):
                                    LINE_FREQ_HZ_KEY,
                                    MQTT_SERVER_ADDRESS,
                                    MQTT_SERVER_PORT,
+                                   MQTT_TOPIC,
+                                   MQTT_USERNAME,
+                                   MQTT_PASSWORD,
                                    MQTT_TX_PERIOD_MS
                                    )
 

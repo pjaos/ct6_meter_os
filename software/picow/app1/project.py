@@ -7,8 +7,9 @@ from cmd_handler import CmdHandler
 from constants import Constants
 import utime
 import json
-import socket
+import ubinascii
 
+from lib.umqttsimple import MQTTClient
 from lib.base_machine import BaseMachine
 from lib.config import MachineConfig
 
@@ -303,10 +304,11 @@ class ThisMachine(BaseMachine):
         self._display.setGetIPMethod(self._wifi.getIPAddress)
         self._lastStatsUpdateMS = utime.ticks_ms()
         self._lastMQTTtxMS = utime.ticks_ms()
-        self._mqttServerTCPConnection = None
         self._connectedMQTTAddress = None
         self._connectedMQTTPort = None
-            
+        self._mqttClient = None
+        self._assyStr = self._machineConfig.get(Constants.ASSY_KEY)
+
     def _isFactoryConfigPresent(self):
         """@brief Check if the factory config file is present.
            @return True if the factory config file is present in flash."""
@@ -348,112 +350,80 @@ class ThisMachine(BaseMachine):
             updated = True
         return updated
 
-    def _connectToMQTTServer(self, address, port):
+    def mqttCallBack(self, topic, msg):
+        """@brief show the MQTT callback message."""
+        self._debug(f"{topic}: {msg}")
+
+    def _connectToMQTTServer(self, address, port, mqttUsername, mqttPassword, keepAlive=60):
         """@brief Connect to the MQTT server.
-           @param address The address of the server.
-           @param port The TCP port number of the server."""
+           @param address The address of the MQTT server.
+           @param port The TCP port for the MQTT server connection.
+           @param mqttUsername The MQTT username. If empty an anonymous connection MQTT server connection is attempted.
+           @param mqttPassword The MQTT password. If empty an anonymous connection MQTT server connection is attempted.
+           @param keepAlive The MQTT connection keepalive period in seconds."""
+        mqttClientID = ubinascii.hexlify(self._assyStr)
+        if len(mqttUsername) > 0 and len(mqttPassword) > 0:
+            self._mqttClient = MQTTClient(mqttClientID, 
+                                          address, 
+                                          port=port, 
+                                          user=mqttUsername, 
+                                          password=mqttPassword, 
+                                          keepalive=keepAlive)
+        else:
+            self._mqttClient = MQTTClient(mqttClientID,
+                                          address,
+                                          port=port,
+                                          keepalive=keepAlive)
+        self._mqttClient.set_callback(self.mqttCallBack)
+        self._mqttClient.connect()
+        self._connectedMQTTAddress = address
+        self._connectedMQTTPort = port
+        self._uo.info(f"Conected to MQTT server {address}:{port}")
+
+
+    def _disconnectMQTT(self):
+        """@brief Disconnect from the MQTT server."""
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._uo.info(f"Connecting to MQTT server at {address}:{port}")
-            s.settimeout(2)
-            self._wdt.feed()
-            s.connect((address, port))
-            self._uo.info("Connecting to MQTT server")
-            self._mqttServerTCPConnection = s
-            self._connectedMQTTAddress = address
-            self._connectedMQTTPort = port
-            
+            if self._mqttClient:
+                self._mqttClient.disconnect()
+                self._mqttClient = None
         except Exception as ex:
-            self._uo.error( str(ex) )
-        
-    def _sendOnTCPSocket(self):
-        """@brief Connect to a TCP server and send power usage data to it."""
-        mqttServerAddress = self._machineConfig.get(Constants.MQTT_SERVER_ADDRESS)
-        mqttServerPort = int(self._machineConfig.get(Constants.MQTT_SERVER_PORT))
-        txPeriodMS = self._machineConfig.get(Constants.MQTT_TX_PERIOD_MS)
-        # If we have the required arguments to connect to an MQTT server
-        if mqttServerAddress and \
-           len(mqttServerAddress) > 0 and \
-           mqttServerPort >= 1 and mqttServerPort < 65536 and \
-           txPeriodMS >= 200:
-            self._thisMQTTtxMS = utime.ticks_ms()
-            self._elapsedMS = self._thisMQTTtxMS-self._lastMQTTtxMS
-            if self._elapsedMS >= txPeriodMS:
-                if self._mqttServerTCPConnection is None:
-                    # PJA how often should we attempt to connect to MQTT server as it will block
-                    # for up to the connection timeout period
-                    self._connectToMQTTServer(mqttServerAddress, mqttServerPort)
-                
-                #If connected to the server but the address or port has been changed
-                elif mqttServerAddress != self._connectedMQTTAddress or \
-                     mqttServerPort != self._connectedMQTTPort:
-                    #Drop the connection ready for a reconnect attempt next time round.
-                    self._mqttServerTCPConnection.close()
-                    self._mqttServerTCPConnection = None
-                     
-                #If we have a connection to the MQTT server
-                if self._mqttServerTCPConnection:
-                    try:
-                        # Send json string to the MQTT server
-                        jsonStr = json.dumps( self._statsDict )
-                        self._mqttServerTCPConnection.sendall(jsonStr.encode())
-                        self._uo.info(f"Sent stats to MQTT server ({self._connectedMQTTAddress}:{self._connectedMQTTPort})")
-                        
-                    except:
-                        #If an error occurred sending to the MQTT server drop the connection ready for a reconnect attempt next time round.
-                        self._mqttServerTCPConnection.close()
-                        self._mqttServerTCPConnection = None
-                        
-                if self._mqttServerTCPConnection:
-                    self._uo.info(f"Time since last MQTT TX = {self._elapsedMS} ms.")
-                else:
-                    self._uo.info(f"{mqttServerAddress}:{mqttServerPort}: {self._elapsedMS} ms connection timeout.")
-                    
-                self._lastMQTTtxMS = self._thisMQTTtxMS
-                
-                # PJA Do we need to read from socket to make sure data doesn't fill input buffers ???
-
-
+            self._uo.error('Error shutting down MQTT connection: ' + str(ex))
+      
     def _sendToMQTT(self):
         """@brief Send data to the MQTT server."""
         mqttServerAddress = self._machineConfig.get(Constants.MQTT_SERVER_ADDRESS)
         mqttServerPort = int(self._machineConfig.get(Constants.MQTT_SERVER_PORT))
+        mqttTopic = self._machineConfig.get(Constants.MQTT_TOPIC)
+        mqttUsername = self._machineConfig.get(Constants.MQTT_USERNAME)
+        mqttPassword = self._machineConfig.get(Constants.MQTT_PASSWORD)
         txPeriodMS = self._machineConfig.get(Constants.MQTT_TX_PERIOD_MS)
         # If we have the required arguments to connect to an MQTT server
         if mqttServerAddress and \
            len(mqttServerAddress) > 0 and \
            mqttServerPort >= 1 and mqttServerPort < 65536 and \
-           txPeriodMS >= 200:
+           txPeriodMS >= 200 and \
+           len(mqttTopic) > 0:
             self._thisMQTTtxMS = utime.ticks_ms()
             self._elapsedMS = self._thisMQTTtxMS-self._lastMQTTtxMS
             if self._elapsedMS >= txPeriodMS:
-                if self._mqttServerTCPConnection is None:
-                    # PJA how often should we attempt to connect to MQTT server as it will block
-                    # for up to the connection timeout period
-                    self._connectToMQTTServer(mqttServerAddress, mqttServerPort)
-                
-                #If connected to the server but the address or port has been changed
+                # If we havn't yet connected to the MQTT server
+                if self._mqttClient is None:
+                    self._connectToMQTTServer(mqttServerAddress, mqttServerPort, mqttUsername, mqttPassword)
+
+                #If connected to the server and the MQTT server address or port has changed
                 elif mqttServerAddress != self._connectedMQTTAddress or \
                      mqttServerPort != self._connectedMQTTPort:
                     #Drop the connection ready for a reconnect attempt next time round.
-                    self._mqttServerTCPConnection.close()
-                    self._mqttServerTCPConnection = None
-                     
+                    self._disconnectMQTT()
+                                     
                 #If we have a connection to the MQTT server
-                if self._mqttServerTCPConnection:
-                    try:
-                        # Send json string to the MQTT server
-                        jsonStr = json.dumps( self._statsDict )
-                        self._mqttServerTCPConnection.sendall(jsonStr.encode())
-                        self._uo.info(f"Sent stats to MQTT server ({self._connectedMQTTAddress}:{self._connectedMQTTPort})")
-                        
-                    except:
-                        #If an error occurred sending to the MQTT server drop the connection ready for a reconnect attempt next time round.
-                        self._mqttServerTCPConnection.close()
-                        self._mqttServerTCPConnection = None
-                        
-                if self._mqttServerTCPConnection:
-                    self._uo.info(f"Time since last MQTT TX = {self._elapsedMS} ms.")
+                if self._mqttClient:
+                    # Send json string to the MQTT server
+                    jsonStr = json.dumps( self._statsDict )
+                    self._mqttClient.publish(mqttTopic, jsonStr)
+                    self._uo.info(f"Sent stats to MQTT server ({self._connectedMQTTAddress}:{self._connectedMQTTPort}): {self._elapsedMS} ms.")
+                                               
                 else:
                     self._uo.info(f"{mqttServerAddress}:{mqttServerPort}: {self._elapsedMS} ms connection timeout.")
                     
@@ -475,8 +445,13 @@ class ThisMachine(BaseMachine):
         self._updateStats()
         active = self._machineConfig.get(Constants.ACTIVE)
         if active:
-            self._sendOnTCPSocket()
-            #self._sendToMQTT()
+            # We don't want errors sending to MQTT server to crash the CT6 code.
+            try:
+                self._sendToMQTT()
+
+            except Exception as ex:
+                self._uo.error(f"Error sending to MQTT server: {str(ex)}")
+                self._disconnectMQTT()
 
         # Show the RAM usage on the serial port. This can be useful when debugging.
         self._showRAMInfo()
