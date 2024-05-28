@@ -773,7 +773,6 @@ class CT6ConfiguratorGUI(MultiAppServer):
                                    CT6ConfiguratorGUI.MQTT_TOPIC: topic,
                                    CT6ConfiguratorGUI.MQTT_USERNAME: username,
                                    CT6ConfiguratorGUI.MQTT_PASSWORD: password}
-                    print(f"PJA: mqttCfgDict={mqttCfgDict}")
                     response = self._saveConfigDict(ct6IPAddress, mqttCfgDict)
                     if response is not None:
                         self.info("Set CT6 device MQTT server configuration.")
@@ -974,19 +973,19 @@ class CT6ConfiguratorGUI(MultiAppServer):
             if CT6ConfiguratorGUI.CT1_NAME in rxDict:
                 self._ct1PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT1_NAME])
                 
-            elif CT6ConfiguratorGUI.CT2_NAME in rxDict:
+            if CT6ConfiguratorGUI.CT2_NAME in rxDict:
                 self._ct2PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT2_NAME])
                 
-            elif CT6ConfiguratorGUI.CT3_NAME in rxDict:
+            if CT6ConfiguratorGUI.CT3_NAME in rxDict:
                 self._ct3PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT3_NAME])
                 
-            elif CT6ConfiguratorGUI.CT4_NAME in rxDict:
+            if CT6ConfiguratorGUI.CT4_NAME in rxDict:
                 self._ct4PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT4_NAME])
                 
-            elif CT6ConfiguratorGUI.CT5_NAME in rxDict:
+            if CT6ConfiguratorGUI.CT5_NAME in rxDict:
                 self._ct5PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT5_NAME])
                 
-            elif CT6ConfiguratorGUI.CT6_NAME in rxDict:
+            if CT6ConfiguratorGUI.CT6_NAME in rxDict:
                 self._ct6PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT6_NAME])
                 
             self._enableAllButtons(True)
