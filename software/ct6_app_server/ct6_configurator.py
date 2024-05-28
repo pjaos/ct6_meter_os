@@ -878,8 +878,8 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._tabList.append( self._getUpgradePanel() )
         self._tabList.append( self._getDeviceNamePanel() )
         self._tabList.append( self._getPortNamePanel() )
-        self._tabList.append( self._getEnableDevicePanel() )
         self._tabList.append( self._getMQTTPanel() )
+        self._tabList.append( self._getEnableDevicePanel() )
       
         self._allTabsPanel = Tabs(tabs=self._tabList, sizing_mode="stretch_both", stylesheets=tabTextSizeSS)
             
