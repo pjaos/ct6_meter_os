@@ -140,6 +140,7 @@ class BuiltInCmdHandler(object):
     def _doReboot(self, v):
         """@brief Perform a device restart."""
         print("Rebooting now.")
+        # This does not always work
         machine.reset()
 
     def _swapActiveAppFolder(self):
