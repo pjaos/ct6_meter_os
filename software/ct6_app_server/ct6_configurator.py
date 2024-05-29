@@ -596,101 +596,18 @@ class CT6ConfiguratorGUI(MultiAppServer):
         cfgDict = response.json()
         self._uio.debug(f"cfgDict={cfgDict}")
         return cfgDict
-    
-    def _getEnableDevicePanel(self):
-        """@brief Return the panel used to configure the CT6 devices WiFi network parameters."""
-        descriptionDiv = Div(text="""Activate or deactivate your CT6 device. Your CT6 device will only send data to a database or an MQTT<br>server when it has been set to the active state.""")
-                
-        ipAddresssRow = row(children=[self._ct6IPAddressInput])
-        
-        self._enabledStates = ["enabled", "disabled"]
-        # Select the first serial port in the list
-        self._enabledStateSelect = Select(title="CT6 Device Active", value=self._enabledStates[1], options=self._enabledStates)
-        enabledStateRow = row(children=[self._enabledStateSelect])
-            
-        self._setEnabledStateButton = Button(label="Set", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._setEnabledStateButton.on_click(self._setEnabledStateButtonHandler)
-
-        self._getEnabledStateButton = Button(label="Get", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._getEnabledStateButton.on_click(self._getEnabledStateButtonHandler)
-
-        buttonRow = row(children=[self._getEnabledStateButton, self._setEnabledStateButton])
-        
-        panel = column(children=[descriptionDiv,
-                                 ipAddresssRow,
-                                 enabledStateRow,
-                                 buttonRow])
-        return TabPanel(child=panel,  title="Activate Device")
-    
-    def _setEnabledStateButtonHandler(self, event):
-        """@brief Process button click.
-           @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        if self._enabledStateSelect.value == 'enabled':
-            state=1
-        else:
-            state=0
-        threading.Thread( target=self._enableCT6, args=(self._ct6IPAddressInput.value, state )).start()
-        
-    def _enableCT6(self, ct6IPAddress, enabled):
-        """@brief Enable/Disable the CT6 unit.
-           @param ct6IPAddress The address of the CT6 device.
-           @param enabled True if the CT6 should send data."""
-        try:
-            try:
-                active=0
-                activeStr = "inactive"
-                if enabled:
-                    active=1
-                    activeStr = "active"
-                cfgDict = {}
-                cfgDict[CT6ConfiguratorGUI.ACTIVE] = active
-                response = self._saveConfigDict(ct6IPAddress, cfgDict)
-                if response is not None:         
-                    self.info(f"Set CT6 device ({ct6IPAddress}) the {activeStr} state.")
-                
-            except Exception as ex:
-                self.reportException(ex)
-                
-        finally:
-            self._sendEnableAllButtons(True)
-            
-    def _getEnabledStateButtonHandler(self, event):
-        """@brief Process button click.
-           @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        threading.Thread( target=self._getEnabled, args=(self._ct6IPAddressInput.value,)).start()
-        
-    def _getEnabled(self, ct6IPAddress):
-        """@brief Get the enabled state of the CT6 unit.
-           @param ct6IPAddress The address of the CT6 device."""
-        self.info(f"Get CT6 ({ct6IPAddress}) enabled state.")
-        try:
-            try:
-                self.info(f"Getting CT6 device ({ct6IPAddress}) active state.")
-                cfgDict = self._getConfigDict(ct6IPAddress)
-                if CT6ConfiguratorGUI.ACTIVE in cfgDict:
-                    state = cfgDict[CT6ConfiguratorGUI.ACTIVE]
-                    msgDict = {CT6ConfiguratorGUI.ACTIVE: state}
-                    self.updateGUI(msgDict)
-                        
-                else:
-                    self.error("Failed to read the active state of the CT6 device.")
-
-                
-            except Exception as ex:
-                self.reportException(ex)
-                
-        finally:
-            self._sendEnableAllButtons(True)
-            
+               
     def _getMQTTPanel(self):
         """@brief Return the panel used to configure the MQTT server."""
-        descriptionDiv = Div(text="""If the server address is set then send JSON data periodically on a TCP connection to a TCP server<br>
-                                     Typically the server could be an MQTT server.<br>
-                                     If the server address is empty then any current TCP connection is disconnected.""")
+        descriptionDiv = Div(text="""For use with third party tools such as ioBroker you may wish the CT6 device to<br>
+                                     periodically send data to an MQTT server. This is not required for normal operation<br>
+                                     of the CT6 device and so you may skip the settings on this page if you do not wish<br>
+                                     to send data to an MQTT server.<br>
+                                     To send JSON data to an MQTT server the 'MQTT Server Address' or 'MQTT Topic' fields must<br>
+                                     be set. You may need to complete the 'MQTT Username' and 'MQTT password' fields if your MQTT<br>
+                                     server requires this.<br>
+                                     The CT6 device will not attempt to send JSON data to an MQTT server unless enabled in<br>
+                                     the 'Activate Device' tab.""")
 
         ipAddresssRow = row(children=[self._ct6IPAddressInput])
         
@@ -829,7 +746,96 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 
         finally:
             self._sendEnableAllButtons(True)
+
+    def _getEnableDevicePanel(self):
+        """@brief Return the panel used to configure the CT6 devices WiFi network parameters."""
+        descriptionDiv = Div(text="""Activate or deactivate your CT6 device. Your CT6 device will only send data to a database or an MQTT<br>server when it has been set to the active state.""")
+                
+        ipAddresssRow = row(children=[self._ct6IPAddressInput])
+        
+        self._enabledStates = ["enabled", "disabled"]
+        # Select the first serial port in the list
+        self._enabledStateSelect = Select(title="CT6 Device Active", value=self._enabledStates[1], options=self._enabledStates)
+        enabledStateRow = row(children=[self._enabledStateSelect])
             
+        self._setEnabledStateButton = Button(label="Set", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
+        self._setEnabledStateButton.on_click(self._setEnabledStateButtonHandler)
+
+        self._getEnabledStateButton = Button(label="Get", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
+        self._getEnabledStateButton.on_click(self._getEnabledStateButtonHandler)
+
+        buttonRow = row(children=[self._getEnabledStateButton, self._setEnabledStateButton])
+        
+        panel = column(children=[descriptionDiv,
+                                 ipAddresssRow,
+                                 enabledStateRow,
+                                 buttonRow])
+        return TabPanel(child=panel,  title="Activate Device")
+    
+    def _setEnabledStateButtonHandler(self, event):
+        """@brief Process button click.
+           @param event The button event."""
+        self._enableAllButtons(False)
+        self._clearMessages()
+        if self._enabledStateSelect.value == 'enabled':
+            state=1
+        else:
+            state=0
+        threading.Thread( target=self._enableCT6, args=(self._ct6IPAddressInput.value, state )).start()
+        
+    def _enableCT6(self, ct6IPAddress, enabled):
+        """@brief Enable/Disable the CT6 unit.
+           @param ct6IPAddress The address of the CT6 device.
+           @param enabled True if the CT6 should send data."""
+        try:
+            try:
+                active=0
+                activeStr = "inactive"
+                if enabled:
+                    active=1
+                    activeStr = "active"
+                cfgDict = {}
+                cfgDict[CT6ConfiguratorGUI.ACTIVE] = active
+                response = self._saveConfigDict(ct6IPAddress, cfgDict)
+                if response is not None:         
+                    self.info(f"Set CT6 device ({ct6IPAddress}) the {activeStr} state.")
+                
+            except Exception as ex:
+                self.reportException(ex)
+                
+        finally:
+            self._sendEnableAllButtons(True)
+            
+    def _getEnabledStateButtonHandler(self, event):
+        """@brief Process button click.
+           @param event The button event."""
+        self._enableAllButtons(False)
+        self._clearMessages()
+        threading.Thread( target=self._getEnabled, args=(self._ct6IPAddressInput.value,)).start()
+        
+    def _getEnabled(self, ct6IPAddress):
+        """@brief Get the enabled state of the CT6 unit.
+           @param ct6IPAddress The address of the CT6 device."""
+        self.info(f"Get CT6 ({ct6IPAddress}) enabled state.")
+        try:
+            try:
+                self.info(f"Getting CT6 device ({ct6IPAddress}) active state.")
+                cfgDict = self._getConfigDict(ct6IPAddress)
+                if CT6ConfiguratorGUI.ACTIVE in cfgDict:
+                    state = cfgDict[CT6ConfiguratorGUI.ACTIVE]
+                    msgDict = {CT6ConfiguratorGUI.ACTIVE: state}
+                    self.updateGUI(msgDict)
+                        
+                else:
+                    self.error("Failed to read the active state of the CT6 device.")
+
+                
+            except Exception as ex:
+                self.reportException(ex)
+                
+        finally:
+            self._sendEnableAllButtons(True)
+             
     def _enableAllButtons(self, enabled):
         """@brief Enable/Disable all buttons.
            @param enabled True if button is enabled."""
