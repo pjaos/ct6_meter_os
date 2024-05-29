@@ -1,5 +1,4 @@
 from machine import SPI, Pin
-from time import sleep
 import st7789
 import vga2_bold_16x16 as font
 
