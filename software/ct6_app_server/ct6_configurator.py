@@ -200,7 +200,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 factorySetup._erasePicoWFlash()
                 factorySetup._loadMicroPython()
 
-                mcuLoader = MCULoader(self._uio, factorySetupOptions)
+                mcuLoader = MCULoader(self, factorySetupOptions)
                 mcuLoader.load()
                 self.info("Running the CT6 firmware")
 
