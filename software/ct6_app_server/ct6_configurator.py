@@ -7,6 +7,7 @@ import traceback
 import tempfile
 import os
 import shutil
+import platform
 
 from queue import Queue
 from time import time
@@ -95,7 +96,8 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._tabList           = None
         self._startUpdateTime   = None
         self._logPath           = os.path.join(os.path.expanduser('~'), FactorySetup.LOG_PATH)
-        
+        self._isWindows         = platform.system() == "Windows"
+
         self._ensureLogPathExists()
 
         self._cfgMgr = ConfigManager(self._uio, CT6ConfiguratorGUI.CFG_FILENAME, CT6ConfiguratorGUI.DEFAULT_CONFIG)
@@ -116,7 +118,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
     def _getInstallPanel(self):
         """@brief Return the panel used to wipe the Pico W flash and re install the software."""
         #Add HTML to the page.
-        descriptionDiv = Div(text="""Erase the MCU (Pico W) flash and install CT6 firmware.<br><br>A USB cable must be connected to the CT6 device to use this option.""")
+        descriptionDiv = Div(text="""Erase the all CT6 firmware and configuration and then re load firmware.<br><br>A USB cable must be connected to the CT6 device to install CT6 software.""")
         
         self._installSWButton = Button(label="Install CT6 SW", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
         self._installSWButton.on_click(self._installSWButtonHandler)
@@ -136,6 +138,21 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._saveConfig()
         threading.Thread( target=self._installSW).start()
 
+    def _correctRshellWindowsPath(self, aPath):
+        """@brief Correct for a windows path in an rshell command.
+           @param aPath The path to check.
+           @return The corrected Windows path if on a Windows platform.
+                   If not on a windwos platform aPath is returned unchanged."""
+        mPath = aPath
+        if self._isWindows:
+            # Remove drive
+            if len(mPath) > 2 and mPath[1] == ':':
+                mPath = mPath[1:]
+                mPath=mPath.replace(":\\", "/")
+            # Close in quotes in case of spaces in path.
+            mPath = '"'+mPath+'"'
+        return mPath
+    
     def _getCT6FactoryConfig(self, devManager):
         """@brief Read the factory config from the CT6 unit.
            @param devManager A YDevManager instance.
@@ -150,7 +167,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self.info("Reading CT6 factory configuration.")
         self.debug(f"Copy {YDevManager.CT6_FACTORY_CONFIG_FILE} to {destFile}")
         # Copy the factory config to the temp folder
-        devManager._runRShell((f"cp {srcFile} {destFile}",))
+        devManager._runRShell((f'cp {srcFile} {self._correctRshellWindowsPath(destFile)}',))
         devManager._checkFactoryConfFile(f'{destFile}')
         factoryDict = devManager._loadJSONFile(destFile)
         assyLabel = factoryDict[YDevManager.ASSY_KEY]
@@ -176,7 +193,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
 
         # Copy the factory config to the temp folder
         destFile = f"/pyboard/{YDevManager.CT6_FACTORY_CONFIG_FILE}"
-        devManager._runRShell((f"cp {srcFile} {destFile}",))
+        devManager._runRShell((f"cp {self._correctRshellWindowsPath(srcFile)} {destFile}",))
         self.info("Restored factory config to the CT6 device.")
 
     def _installSW(self):
@@ -192,7 +209,14 @@ class CT6ConfiguratorGUI(MultiAppServer):
                     # from the CT6 device.
                     factoryConfigFile = self._getCT6FactoryConfig(devManager)
                 except:
-                    self.warn("Failed to read the factory config from the CT6 device.")
+                    # If we couldn't read the factory config then we may not be able to restore it 
+                    # at the endof the install process.Therefore this cmd line option should be used with care.
+                    if self._options.skip_factory_config_restore:
+                        self.warn("!!! Failed to read the factory config from the CT6 device !!!")
+                    else:
+                        # Stop the install process to ensure we are not left in a situation where the
+                        # factory calibration config is lost.
+                        raise
 
                 factorySetupOptions = getFactorySetupCmdOpts()
                 factorySetup = FactorySetup(self, factorySetupOptions)
@@ -221,7 +245,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
     def _getSetWifiPanel(self):
         """@brief Return the panel used to configure the CT6 devices WiFi network parameters."""
                 #Add HTML to the page.
-        descriptionDiv = Div(text="""Set the WiFi SSID and password of your CT6 device.<br><br>A USB cable must be connected to the CT6 device to use this option.""")
+        descriptionDiv = Div(text="""Set the WiFi SSID and password of your CT6 device.<br><br>A USB cable must be connected to the CT6 device to setup the WiFi.""")
         
         self._wifiSSIDInput = TextInput(placeholder="WiFi SSID")
         ssidRow = row(children=[self._wifiSSIDInput])
@@ -594,7 +618,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
         url=f"http://{ct6IPAddress}/get_config"
         response = requests.get(url)
         cfgDict = response.json()
-        self._uio.debug(f"cfgDict={cfgDict}")
+        self.debug(f"Config read from CT6 device: cfgDict={cfgDict}")
         return cfgDict
                
     def _getMQTTPanel(self):
@@ -662,7 +686,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
             try:
                 self.info(f"Set CT6 device ({ct6IPAddress}) MQTT server configuration.")
                 # First check that the firmware on the CT6 device contains the MQTT server configuration
-                cfgDict = self._getConfigDict(ct6IPAddress)    
+                cfgDict = self._getConfigDict(ct6IPAddress) 
                 if CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS in cfgDict and \
                    CT6ConfiguratorGUI.MQTT_SERVER_PORT in cfgDict and \
                    CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in cfgDict and \
@@ -1082,7 +1106,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
             self.updateGUI(msgDict)
 
     def getInput(self, prompt):
-        raise Exception("BUG: 1A: getInput() should never be called.")
+        raise Exception("Set the WiFi SSId and password in the WiFi tab and try again.")
             
     def reportException(self, exception):
         """@brief Report an exception."""
@@ -1132,6 +1156,7 @@ def main():
                                     " (default={}).".format(CT6ConfiguratorConfig.GetConfigFile(CT6ConfiguratorConfig.DEFAULT_CONFIG_FILENAME)),
                                     default=CT6ConfiguratorConfig.GetConfigFile(CT6ConfiguratorConfig.DEFAULT_CONFIG_FILENAME))
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
+        parser.add_argument("-s", "--skip_factory_config_restore",action='store_true', help="Skip factory config restore. Use with care.")
 
         options = parser.parse_args()
         uio.enableDebug(options.debug)

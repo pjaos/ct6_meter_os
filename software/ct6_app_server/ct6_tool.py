@@ -597,6 +597,10 @@ class CT6Base(BaseConstants):
            @param address The IP address of the CT6 device.
            @param localFile The local file to be sent.
            @param destPath The path on the device to save the file into."""
+        #If on a windows platform then we need to correct the destination file path
+        if self._windowsPlatform and destPath.find("\\"):
+            destPath=destPath.replace('\\','/')
+
         fn=os.path.basename(localFile)
         with open(localFile, 'rb') as fd:
             encodedData = fd.read()
@@ -939,7 +943,7 @@ class YDevManager(CT6Base):
             self._storeWiFiCredentials(ssid, password)
 
         elif not os.path.isfile(CT6Base.HOUSE_WIFI_CFG_FILE):
-            self._handleHouseWiFiConfigFileNotFound(ssid, password)
+            self._handleHouseWiFiConfigFileNotFound()
             
         self._orgActiveAppFolder = None
 
@@ -1349,7 +1353,7 @@ class YDevManager(CT6Base):
                 except KeyboardInterrupt:
                     running = False
                 except:
-                    pass
+                    sleep(0.1)
                                                 
             finally:
                 if self._ser:
