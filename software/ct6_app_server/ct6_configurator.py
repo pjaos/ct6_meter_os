@@ -1147,6 +1147,7 @@ class CT6ConfiguratorServer(object):
 def main():
     """@brief Program entry point"""
     uio = UIO()
+    options = None
 
     try:
         parser = argparse.ArgumentParser(description="This application provides an GUI that can be used to configure CT6 units.",
@@ -1156,7 +1157,7 @@ def main():
                                     " (default={}).".format(CT6ConfiguratorConfig.GetConfigFile(CT6ConfiguratorConfig.DEFAULT_CONFIG_FILENAME)),
                                     default=CT6ConfiguratorConfig.GetConfigFile(CT6ConfiguratorConfig.DEFAULT_CONFIG_FILENAME))
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
-        parser.add_argument("-s", "--skip_factory_config_restore",action='store_true', help="Skip factory config restore. Use with care.")
+        parser.add_argument("--skip_factory_config_restore",action='store_true', help="Skip factory config restore. Use with care.")
 
         options = parser.parse_args()
         uio.enableDebug(options.debug)
@@ -1179,7 +1180,7 @@ def main():
     except Exception as ex:
         logTraceBack(uio)
 
-        if options.debug:
+        if not options or options.debug:
             raise
         else:
             uio.error(str(ex))
