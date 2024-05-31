@@ -796,7 +796,7 @@ class MCULoader(CT6Base):
         """@brief Load files onto the micro controller device.
            @param fileList The list of files to load.
            @param port The serial port to use."""      
-        self._uio.info("Loading CT6 firmware. Please wait...")                 
+        self._uio.info("Loading CT6 firmware. This may take several minutes...")                 
         cmdList = copy(MCULoader.CMD_LIST)
         for srcFile in fileList:
             destFile = srcFile.replace("picow", "/pyboard")

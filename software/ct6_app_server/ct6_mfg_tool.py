@@ -708,6 +708,7 @@ class FactorySetup(CT6Base):
         self._uio.info(f"Checking {picoPath}")
         while True:
             if os.path.isdir(picoPath):
+                sleep(0.5)
                 break
             sleep(0.25)
                     
@@ -735,10 +736,12 @@ class FactorySetup(CT6Base):
         return microPythonImage
             
     @retry(Exception, tries=3, delay=1)
-    def _loadMicroPython(self):
-        """@brief Load Micropython image onto the RPi Pico W."""
-        self._uio.info("Ensure the USB Pico W is connected to this PC.")
-        self._uio.info("Hold the button down on the Pico W and power up the CT6 device.")
+    def _loadMicroPython(self, showPrompt=True):
+        """@brief Load Micropython image onto the RPi Pico W.
+           @param showPrompt Show the prompt to intruct the user."""
+        if showPrompt:
+            self._uio.info("Ensure the USB Pico W is connected to this PC.")
+            self._uio.info("Hold the button down on the Pico W and power up the CT6 device.")
         picoPath = self._getPicoPath()
         sourcePath = self._getPicoMicroPythonImage()
         destinationPath = picoPath

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import argparse
 import threading
 import requests
@@ -97,6 +98,13 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._startUpdateTime   = None
         self._logPath           = os.path.join(os.path.expanduser('~'), FactorySetup.LOG_PATH)
         self._isWindows         = platform.system() == "Windows"
+
+        self._skipFactoryConfigRestore = False
+        if '--skip_factory_config_restore' in sys.argv:
+            self._skipFactoryConfigRestore = True
+            # We remove this arg as ct6_tool and ct6_mfg_tool do not konw about this arg
+            # and we may re run the cmd line args for each of these later.
+            sys.argv.remove('--skip_factory_config_restore')
 
         self._ensureLogPathExists()
 
@@ -211,7 +219,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 except:
                     # If we couldn't read the factory config then we may not be able to restore it 
                     # at the endof the install process.Therefore this cmd line option should be used with care.
-                    if self._options.skip_factory_config_restore:
+                    if self._skipFactoryConfigRestore:
                         self.warn("!!! Failed to read the factory config from the CT6 device !!!")
                     else:
                         # Stop the install process to ensure we are not left in a situation where the
@@ -222,7 +230,8 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 factorySetup = FactorySetup(self, factorySetupOptions)
 
                 factorySetup._erasePicoWFlash()
-                factorySetup._loadMicroPython()
+                # We don't need to prompt the user as the above method displayed the message.
+                factorySetup._loadMicroPython(showPrompt=False)
 
                 mcuLoader = MCULoader(self, factorySetupOptions)
                 mcuLoader.load()
