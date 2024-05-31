@@ -247,10 +247,10 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 #Add HTML to the page.
         descriptionDiv = Div(text="""Set the WiFi SSID and password of your CT6 device.<br><br>A USB cable must be connected to the CT6 device to setup the WiFi.""")
         
-        self._wifiSSIDInput = TextInput(placeholder="WiFi SSID")
+        self._wifiSSIDInput = TextInput(title="WiFi SSID", placeholder="WiFi SSID")
         ssidRow = row(children=[self._wifiSSIDInput])
             
-        self._wifiPasswordInput = PasswordInput(placeholder="WiFi password")
+        self._wifiPasswordInput = PasswordInput(title="WiFi password",placeholder="WiFi password")
         passwordRow = row(children=[self._wifiPasswordInput])
             
         self._setWiFiNetworkButton = Button(label="Setup WiFi", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
