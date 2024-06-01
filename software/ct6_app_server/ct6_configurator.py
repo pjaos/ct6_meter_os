@@ -748,7 +748,8 @@ class CT6ConfiguratorGUI(MultiAppServer):
     def _getInstallPanel(self):
         """@brief Return the panel used to wipe the Pico W flash and re install the software."""
         #Add HTML to the page.
-        descriptionDiv = Div(text="""Erase the all CT6 firmware and configuration. Micropython and the firmware will then be reloaded before loading the device factory configuration.<br><br>A USB cable must be connected to the CT6 device to install CT6 software.""")
+        descriptionDiv = Div(text="""Erase the all CT6 firmware and configuration. Micropython and the firmware will then be reloaded<br> \
+                                     before loading the device factory configuration. This option allows you to recover a CT6 unit that will not boot.<br><br>A USB cable must be connected to the CT6 device to install CT6 software.""")
         
         ssidRow = row(children=[self._wifiSSIDInput])
             
