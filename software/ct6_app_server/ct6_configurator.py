@@ -123,143 +123,13 @@ class CT6ConfiguratorGUI(MultiAppServer):
         appMethodDict['/']=self._mainApp
         return appMethodDict
 
-    def _getInstallPanel(self):
-        """@brief Return the panel used to wipe the Pico W flash and re install the software."""
-        #Add HTML to the page.
-        descriptionDiv = Div(text="""Erase the all CT6 firmware and configuration and then re load firmware.<br><br>A USB cable must be connected to the CT6 device to install CT6 software.""")
-        
-        self._installSWButton = Button(label="Install CT6 SW", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._installSWButton.on_click(self._installSWButtonHandler)
-
-        buttonRow = row(children=[self._installSWButton])
-        
-        
-        panel = column(children=[descriptionDiv,
-                                 buttonRow])
-        return TabPanel(child=panel,  title="Install")
-
-    def _installSWButtonHandler(self, event):
-        """@brief Process button click.
-           @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        self._saveConfig()
-        threading.Thread( target=self._installSW).start()
-
-    def _correctRshellWindowsPath(self, aPath):
-        """@brief Correct for a windows path in an rshell command.
-           @param aPath The path to check.
-           @return The corrected Windows path if on a Windows platform.
-                   If not on a windwos platform aPath is returned unchanged."""
-        mPath = aPath
-        if self._isWindows:
-            # Remove drive
-            if len(mPath) > 2 and mPath[1] == ':':
-                mPath = mPath[1:]
-                mPath=mPath.replace(":\\", "/")
-            # Close in quotes in case of spaces in path.
-            mPath = '"'+mPath+'"'
-        return mPath
-    
-    def _getCT6FactoryConfig(self, devManager):
-        """@brief Read the factory config from the CT6 unit.
-           @param devManager A YDevManager instance.
-           @return The path to a local copy of the factory config file read from the CT6 device."""
-        self.info("Connecting to CT6 device over it's serial port.")
-        # Attempt to connect to the board under test python prompt
-        if not devManager._checkMicroPython(closeSerialPort=True):
-            raise Exception("Failed to read the CT6 MicroPython version over serial port.")
-        tempPath = tempfile.gettempdir()
-        srcFile = f"/pyboard/{YDevManager.CT6_FACTORY_CONFIG_FILE}"
-        destFile = os.path.join(tempPath, YDevManager.CT6_FACTORY_CONFIG_FILE)
-        self.info("Reading CT6 factory configuration.")
-        self.debug(f"Copy {YDevManager.CT6_FACTORY_CONFIG_FILE} to {destFile}")
-        # Copy the factory config to the temp folder
-        devManager._runRShell((f'cp {srcFile} {self._correctRshellWindowsPath(destFile)}',))
-        devManager._checkFactoryConfFile(f'{destFile}')
-        factoryDict = devManager._loadJSONFile(destFile)
-        assyLabel = factoryDict[YDevManager.ASSY_KEY]
-        tsString = FactorySetup.GetTSString()
-        savedFactoryConfFile = os.path.join(self._logPath, assyLabel + "_" + tsString + "_" + YDevManager.CT6_FACTORY_CONFIG_FILE)
-        shutil.copy(destFile ,savedFactoryConfFile)
-        self.info(f"Created {savedFactoryConfFile}")
-        return savedFactoryConfFile
-
-    def _restoreFactoryConfig(self, devManager, factoryConfigFile):
-        """@brief restore the factory config file to the CT6 device.
-           @param devManager A YDevManager instance.
-           @param factoryConfigFile The factory config file to copy."""
-        self.info("Restoring factory config to the CT6 device.")
-        if factoryConfigFile and os.path.isfile(factoryConfigFile):
-            srcFile = factoryConfigFile
-        else:
-            # Use the fallback factory config file if available.
-            tempPath = tempfile.gettempdir()
-            srcFile = os.path.join(tempPath, YDevManager.CT6_FACTORY_CONFIG_FILE)
-            if not os.path.isfile(srcFile):
-                raise Exception(f"{srcFile} fallback factory config file not found.")
-
-        # Copy the factory config to the temp folder
-        destFile = f"/pyboard/{YDevManager.CT6_FACTORY_CONFIG_FILE}"
-        devManager._runRShell((f"cp {self._correctRshellWindowsPath(srcFile)} {destFile}",))
-        self.info("Restored factory config to the CT6 device.")
-
-    def _installSW(self):
-        """@brief Called to do the work of wiping flash and installing the system software onto
-                  CT6 hardware."""
-        try:
-            try:
-                factoryConfigFile = None
-                options = getCT6ToolCmdOpts()
-                devManager = YDevManager(self, options)
-                try:
-                    # Before erasing and loadin SW we check we have a copy of the factory config file
-                    # from the CT6 device.
-                    factoryConfigFile = self._getCT6FactoryConfig(devManager)
-                except:
-                    # If we couldn't read the factory config then we may not be able to restore it 
-                    # at the endof the install process.Therefore this cmd line option should be used with care.
-                    if self._skipFactoryConfigRestore:
-                        self.warn("!!! Failed to read the factory config from the CT6 device !!!")
-                    else:
-                        # Stop the install process to ensure we are not left in a situation where the
-                        # factory calibration config is lost.
-                        raise
-
-                factorySetupOptions = getFactorySetupCmdOpts()
-                factorySetup = FactorySetup(self, factorySetupOptions)
-
-                factorySetup._erasePicoWFlash()
-                # We don't need to prompt the user as the above method displayed the message.
-                factorySetup._loadMicroPython(showPrompt=False)
-
-                mcuLoader = MCULoader(self, factorySetupOptions)
-                mcuLoader.load()
-                self.info("Running the CT6 firmware")
-
-                self._restoreFactoryConfig(devManager, factoryConfigFile)
-
-                devManager.restart()
-
-                self.info("CT6 software restore complete.")
-                self.info("The blue and green LED's should now be flashing on the CT6 device.")
-                self.info("You may now configure the WiFi on the CT6 device.")
-
-            except Exception as ex:
-                self.error(str(ex))
-                
-        finally:
-            self._sendEnableAllButtons(True)   
-
     def _getSetWifiPanel(self):
         """@brief Return the panel used to configure the CT6 devices WiFi network parameters."""
                 #Add HTML to the page.
         descriptionDiv = Div(text="""Set the WiFi SSID and password of your CT6 device.<br><br>A USB cable must be connected to the CT6 device to setup the WiFi.""")
-        
-        self._wifiSSIDInput = TextInput(title="WiFi SSID", placeholder="WiFi SSID")
+
         ssidRow = row(children=[self._wifiSSIDInput])
             
-        self._wifiPasswordInput = PasswordInput(title="WiFi password",placeholder="WiFi password")
         passwordRow = row(children=[self._wifiPasswordInput])
             
         self._setWiFiNetworkButton = Button(label="Setup WiFi", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
@@ -282,6 +152,19 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._saveConfig()
         threading.Thread( target=self._setWiFiNetwork, args=(self._wifiSSIDInput.value, self._wifiPasswordInput.value)).start()
                 
+    def _setupWiFi(self, wifiSSID, wifiPassword):
+        """@brief Setup the CT6 WiFi interface. This must be called outside the GUI thread.
+           @param wifiSSID The WiFi SSID to set.
+           @param wifiPassword The WiFi password to set."""
+        self.info("Setting the CT6 device WiFi network.")
+        options = getCT6ToolCmdOpts()
+        devManager = YDevManager(self, options, ssid=wifiSSID, password=wifiPassword)
+        devManager.configureWiFi()
+        ipAddress = devManager._runApp()
+        self.info(f"The CT6 device is now connected to {wifiSSID} (IP address = {ipAddress})")
+        # Send a message to set the CT6 device IP address in the GUI
+        self._setCT6IPAddress(ipAddress)
+
     def _setWiFiNetwork(self, wifiSSID, wifiPassword):
         """@brief Set the Wifi network.
            @param wifiSSID The WiFi SSID to set.
@@ -295,14 +178,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
                     self.info("A WiFi password is required.")
                     
                 else:
-                    self.info("Setting the CT6 device WiFi network.")
-                    options = getCT6ToolCmdOpts()
-                    devManager = YDevManager(self, options, ssid=wifiSSID, password=wifiPassword)
-                    devManager.configureWiFi()
-                    ipAddress = devManager._runApp()
-                    self.info(f"The CT6 device is now connected to {wifiSSID} (IP address = {ipAddress})")
-                    # Send a message to set the CT6 device IP address in the GUI
-                    self._setCT6IPAddress(ipAddress)
+                    self._setupWiFi(wifiSSID, wifiPassword)
                     
             except Exception as ex:
                 self.error(str(ex))
@@ -868,7 +744,143 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 
         finally:
             self._sendEnableAllButtons(True)
-             
+
+    def _getInstallPanel(self):
+        """@brief Return the panel used to wipe the Pico W flash and re install the software."""
+        #Add HTML to the page.
+        descriptionDiv = Div(text="""Erase the all CT6 firmware and configuration. Micropython and the firmware will then be reloaded before loading the device factory configuration.<br><br>A USB cable must be connected to the CT6 device to install CT6 software.""")
+        
+        ssidRow = row(children=[self._wifiSSIDInput])
+            
+        passwordRow = row(children=[self._wifiPasswordInput])
+
+        self._installSWButton = Button(label="Install CT6 SW", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
+        self._installSWButton.on_click(self._installSWButtonHandler)
+
+        buttonRow = row(children=[self._installSWButton])
+        
+        panel = column(children=[descriptionDiv,
+                                 ssidRow,
+                                 passwordRow,
+                                 buttonRow])
+
+        return TabPanel(child=panel,  title="Install")
+
+    def _installSWButtonHandler(self, event):
+        """@brief Process button click.
+           @param event The button event."""
+        self._enableAllButtons(False)
+        self._clearMessages()
+        self._saveConfig()
+        threading.Thread( target=self._installSW, args=(self._wifiSSIDInput.value, self._wifiPasswordInput.value)).start()
+
+    def _correctRshellWindowsPath(self, aPath):
+        """@brief Correct for a windows path in an rshell command.
+           @param aPath The path to check.
+           @return The corrected Windows path if on a Windows platform.
+                   If not on a windwos platform aPath is returned unchanged."""
+        mPath = aPath
+        if self._isWindows:
+            # Remove drive
+            if len(mPath) > 2 and mPath[1] == ':':
+                mPath = mPath[1:]
+                mPath=mPath.replace(":\\", "/")
+            # Close in quotes in case of spaces in path.
+            mPath = '"'+mPath+'"'
+        return mPath
+    
+    def _getCT6FactoryConfig(self, devManager):
+        """@brief Read the factory config from the CT6 unit.
+           @param devManager A YDevManager instance.
+           @return The path to a local copy of the factory config file read from the CT6 device."""
+        self.info("Connecting to CT6 device over it's serial port.")
+        # Attempt to connect to the board under test python prompt
+        if not devManager._checkMicroPython(closeSerialPort=True):
+            raise Exception("Failed to read the CT6 MicroPython version over serial port.")
+        tempPath = tempfile.gettempdir()
+        srcFile = f"/pyboard/{YDevManager.CT6_FACTORY_CONFIG_FILE}"
+        destFile = os.path.join(tempPath, YDevManager.CT6_FACTORY_CONFIG_FILE)
+        self.info("Reading CT6 factory configuration.")
+        self.debug(f"Copy {YDevManager.CT6_FACTORY_CONFIG_FILE} to {destFile}")
+        # Copy the factory config to the temp folder
+        devManager._runRShell((f'cp {srcFile} {self._correctRshellWindowsPath(destFile)}',))
+        devManager._checkFactoryConfFile(f'{destFile}')
+        factoryDict = devManager._loadJSONFile(destFile)
+        assyLabel = factoryDict[YDevManager.ASSY_KEY]
+        tsString = FactorySetup.GetTSString()
+        savedFactoryConfFile = os.path.join(self._logPath, assyLabel + "_" + tsString + "_" + YDevManager.CT6_FACTORY_CONFIG_FILE)
+        shutil.copy(destFile ,savedFactoryConfFile)
+        self.info(f"Created {savedFactoryConfFile}")
+        return savedFactoryConfFile
+
+    def _restoreFactoryConfig(self, devManager, factoryConfigFile):
+        """@brief restore the factory config file to the CT6 device.
+           @param devManager A YDevManager instance.
+           @param factoryConfigFile The factory config file to copy."""
+        self.info("Restoring factory config to the CT6 device.")
+        if factoryConfigFile and os.path.isfile(factoryConfigFile):
+            srcFile = factoryConfigFile
+        else:
+            # Use the fallback factory config file if available.
+            tempPath = tempfile.gettempdir()
+            srcFile = os.path.join(tempPath, YDevManager.CT6_FACTORY_CONFIG_FILE)
+            if not os.path.isfile(srcFile):
+                raise Exception(f"{srcFile} fallback factory config file not found.")
+
+        # Copy the factory config to the temp folder
+        destFile = f"/pyboard/{YDevManager.CT6_FACTORY_CONFIG_FILE}"
+        devManager._runRShell((f"cp {self._correctRshellWindowsPath(srcFile)} {destFile}",))
+        self.info("Restored factory config to the CT6 device.")
+
+    def _installSW(self, wifiSSID, wifiPassword):
+        """@brief Called to do the work of wiping flash and installing the system software onto
+                  CT6 hardware.
+           @param wifiSSID The WiFi SSID to set.
+           @param wifiPassword The WiFi password to set."""
+        try:
+            try:
+                factoryConfigFile = None
+                options = getCT6ToolCmdOpts()
+                devManager = YDevManager(self, options, ssid=wifiSSID, password=wifiPassword)
+                try:
+                    # Before erasing and loadin SW we check we have a copy of the factory config file
+                    # from the CT6 device.
+                    factoryConfigFile = self._getCT6FactoryConfig(devManager)
+                except:
+                    # If we couldn't read the factory config then we may not be able to restore it 
+                    # at the endof the install process.Therefore this cmd line option should be used with care.
+                    if self._skipFactoryConfigRestore:
+                        self.warn("!!! Failed to read the factory config from the CT6 device !!!")
+                    else:
+                        # Stop the install process to ensure we are not left in a situation where the
+                        # factory calibration config is lost.
+                        raise
+
+                factorySetupOptions = getFactorySetupCmdOpts()
+                factorySetup = FactorySetup(self, factorySetupOptions)
+
+                factorySetup._erasePicoWFlash()
+                # We don't need to prompt the user as the above method displayed the message.
+                factorySetup._loadMicroPython(showPrompt=False)
+
+                mcuLoader = MCULoader(self, factorySetupOptions)
+                mcuLoader.load()
+                self.info("Running the CT6 firmware")
+
+                self._restoreFactoryConfig(devManager, factoryConfigFile)
+
+                devManager.restart()
+
+                self.info("CT6 software restore complete.")
+                self.info("The blue and green LED's should now be flashing on the CT6 device.")
+                self.info("You may now configure the WiFi on the CT6 device.")
+
+            except Exception as ex:
+                self.error(str(ex))
+                
+        finally:
+            self._sendEnableAllButtons(True)   
+
     def _enableAllButtons(self, enabled):
         """@brief Enable/Disable all buttons.
            @param enabled True if button is enabled."""
@@ -905,21 +917,24 @@ class CT6ConfiguratorGUI(MultiAppServer):
         fontSize='1rem'
         theme = "dark_minimal"
         tabTextSizeSS = [{'.bk-tab': Styles(font_size='{}'.format(fontSize))}, {'.bk-tab': Styles(background='{}'.format('grey'))}]
-        
+
+        self._wifiSSIDInput = TextInput(title="WiFi SSID", placeholder="WiFi SSID")
+        self._wifiPasswordInput = PasswordInput(title="WiFi password",placeholder="WiFi password")
+
         self._lastStatusMsgTextInput = TextInput(title="Message", value="", disabled=True)
         self._statusAreaInput = TextAreaInput(title="Message Log", value="", disabled=True, rows=10)
 
         # Create address input field. Defined here because we use it on multiple tabs.
         self._ct6IPAddressInput = TextInput(title="CT6 IP Address", placeholder="CT6 IP Address")
 
-        self._tabList.append( self._getInstallPanel() )
         self._tabList.append( self._getSetWifiPanel() )
         self._tabList.append( self._getUpgradePanel() )
         self._tabList.append( self._getDeviceNamePanel() )
         self._tabList.append( self._getPortNamePanel() )
         self._tabList.append( self._getMQTTPanel() )
         self._tabList.append( self._getEnableDevicePanel() )
-      
+        self._tabList.append( self._getInstallPanel() )
+
         self._allTabsPanel = Tabs(tabs=self._tabList, sizing_mode="stretch_both", stylesheets=tabTextSizeSS)
             
         pageWidthPanel = column(children=[self._allTabsPanel], sizing_mode="stretch_both")
@@ -1115,7 +1130,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
             self.updateGUI(msgDict)
 
     def getInput(self, prompt):
-        raise Exception("Set the WiFi SSId and password in the WiFi tab and try again.")
+        raise Exception("Set your WiFi SSID and password and try again.")
             
     def reportException(self, exception):
         """@brief Report an exception."""
