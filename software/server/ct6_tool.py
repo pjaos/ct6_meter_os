@@ -105,7 +105,7 @@ class CT6Base(BaseConstants):
 
         cwd = os.getcwd()
         correctPath = False
-        if cwd.endswith("/software/ct6_app_server") or cwd.endswith("\\software\\ct6_app_server") or cwd.endswith("CT6"):
+        if cwd.endswith("/software/server") or cwd.endswith("\\software\\server") or cwd.endswith("CT6"):
             correctPath = True
             
         if not correctPath:
