@@ -6,3 +6,6 @@ packages
 .venv
 fwd_mysql.sh
 TODO.txt
+t.py
+tcp_server.py
+test_mqtt.py
