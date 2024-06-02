@@ -102,14 +102,14 @@ class CT6Base(BaseConstants):
         self._options   = options   
         self._ipAddress = None          # The IP address for the UUT
         self._ser       = None
+        self._installFolder = os.path.dirname(__file__)
+        self._picowFolder = os.path.join(self._installFolder, 'picow')
+        self._uio.info(f"Install Folder:  {self._installFolder}")
+        self._uio.info(f"MCU Code Folder: {self._picowFolder}")
 
-        cwd = os.getcwd()
-        correctPath = False
-        if cwd.endswith("/software/server") or cwd.endswith("\\software\\server") or cwd.endswith("CT6"):
-            correctPath = True
-            
-        if not correctPath:
-            raise Exception("This tool must be executed from the install folder.")
+        if not os.path.isdir(self._picowFolder):
+            raise Exception(f"{self._picowFolder} folder not found.")
+        
         self._windowsPlatform = any(platform.win32_ver())
         # Define the prefix for using the micro python X compiler
         if self._windowsPlatform:
@@ -120,11 +120,11 @@ class CT6Base(BaseConstants):
             
     def _ensureMCUCodeAvailable(self):
         """@brief Ensure we have access to the RPI Pico W code."""           
-        requiredFolder = "picow"
+        requiredFolder = self._picowFolder
         if not os.path.isdir(requiredFolder):
-            srcFolder = "../picow"
+            srcFolder = requiredFolder
             if not os.path.isdir(srcFolder):
-                raise Exception(f"{srcFolder} folder not found. This contains the RPi MCU code.")
+                raise Exception(f"{srcFolder} folder not found. This contains the RPi Pico W MCU code.")
 
             # The git picow linux link on windows appears as a file
             if os.path.isfile(requiredFolder):
