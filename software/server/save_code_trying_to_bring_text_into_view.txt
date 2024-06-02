@@ -1,0 +1,69 @@
+# CustomJS callback to scroll the TextAreaInput into view
+callback = CustomJS(args=dict(text_area=text_area), code="""
+    // Log the Bokeh model to understand its structure
+    console.log(text_area);
+
+    // Use the ID to select the element
+    const text_area_el = document.getElementById(text_area.id);
+    console.log("text_area_el="+text_area_el);
+
+    if (text_area_el) {
+        text_area_el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+""")
+text_area.js_on_change('value', callback)
+
+
+
+
+
+
+setTimeout(function() {
+            const textarea_el = document.querySelector('#' + text_area.id);
+            if (textarea_el) {
+                textarea_el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            console.log("PJA: JAVASCRIPT CALLED")
+            }, 500);  // 500 milliseconds = 0.5 seconds delay
+
+
+            if (textarea_el) {
+                textarea_el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                console.log("PJA: textarea_el.scrollIntoView CALLED");
+            }
+
+
+            self._setWiFiNetworkButton.js_on_click(self._scrollIntoViewCallBack)
+
+                    
+        self._scrollIntoViewCallBack = CustomJS(args=dict(text_area=self._statusAreaInput), code="""
+        // Log the Bokeh model to understand its structure
+        console.log(text_area);
+
+        // Find the TextAreaInput DOM element
+        const text_area_el = document.querySelector(`textarea.bk-input`);
+        console.log(text_area_el);
+    
+        if (text_area_el) {
+            text_area_el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    """)
+#        self._statusAreaInputDummyDiv = Div(text="", visible=False)
+#        self._statusAreaInputDummyDiv.js_on_change('text', self._scrollIntoViewCallBack)
+
+        
+text_area = self._statusAreaInput
+# JavaScript code to scroll the TextAreaInput into view with a delay
+scroll_js = """
+    
+    console.log(text_area);
+
+    console.log('PJA: text_area.id      ='+text_area.id);
+    console.log('PJA: text_area.input_el='+text_area.input_el);
+    console.log('PJA: text_area.document='+text_area.document);
+    console.log('PJA: text_area.input_el='+text_area.input_el);
+
+"""
+# Create a CustomJS callback
+callback = CustomJS(args=dict(text_area=text_area), code=scroll_js)
+self._statusAreaInput.js_on_change('value', callback)
