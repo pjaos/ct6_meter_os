@@ -38,7 +38,6 @@ class CT6Base(BaseConstants):
     CT6_MACHINE_CONFIG_FILE     = "this.machine.cfg"
     CT6_FACTORY_CONFIG_FILE     = "factory.cfg"
     RSHELL_CMD_LIST_FILE        = "cmd_list.cmd"
-    APP_PATH                    = 'app1'
     BLUETOOTH_ON_KEY            = 'BLUETOOTH_ON_KEY'
     GET_FILE_CMD                = "/get_file"
     SEND_FILE_CMD               = "/send_file"
@@ -104,11 +103,15 @@ class CT6Base(BaseConstants):
         self._ser       = None
         self._installFolder = os.path.dirname(__file__)
         self._picowFolder = os.path.join(self._installFolder, 'picow')
+        self._app1Folder = os.path.join(self._picowFolder, 'app1')
         self._uio.info(f"Install Folder:  {self._installFolder}")
         self._uio.info(f"MCU Code Folder: {self._picowFolder}")
 
         if not os.path.isdir(self._picowFolder):
             raise Exception(f"{self._picowFolder} folder not found.")
+        
+        if not os.path.isdir(self._app1Folder):
+            raise Exception(f"{self._app1Folder} folder not found.")
         
         self._windowsPlatform = any(platform.win32_ver())
         # Define the prefix for using the micro python X compiler
@@ -972,7 +975,7 @@ class YDevManager(CT6Base):
 
     def packageApp(self):
         """@brief Package an app for OTA upgrade.
-                  This involves zipping up all files in the CT6Base.APP_PATH folder into a zip package file."""
+                  This involves zipping up all files in the self._app1Folder folder into a zip package file."""
         appZipFile = self._getAppZipFile()
         if os.path.isfile(appZipFile):
             self._uio.info("{} already exists.".format(appZipFile))
@@ -982,20 +985,20 @@ class YDevManager(CT6Base):
             else:
                 return
 
-        if os.path.isdir(CT6Base.APP_PATH):
+        if os.path.isdir(self._app1Folder):
             opFile = appZipFile
-            directory = CT6Base.APP_PATH
+            directory = self._app1Folder
             with ZipFile(opFile, 'w') as zip:
                for path, directories, files in os.walk(directory):
                    for file in files:
                        file_name = os.path.join(path, file)
-                       archName = os.path.join(path.replace(CT6Base.APP_PATH, ""), file)
+                       archName = os.path.join(path.replace(self._app1Folder, ""), file)
                        zip.write(file_name, arcname=archName) # In archive the names are all relative to root
                        self._uio.info("Added: {}".format(file_name))
             self._uio.info('Created {}'.format(opFile))
 
         else:
-            raise Exception("{} path not found.".format(CT6Base.APP_PATH))
+            raise Exception("{} path not found.".format(self._app1Folder))
 
     def _checkRunningNewApp(self, restartTimeout=120):
         """@brief Check that the upgrade has been successful and the device is running the updated app."""
