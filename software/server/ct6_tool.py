@@ -80,7 +80,6 @@ class CT6Base(BaseConstants):
     # When pipenv is executed on windows the python comand must be executed to ensure the 
     # env is loaded.
     WINDOWS_MPY_CMDLINE_PREFIX = "python -m mpy_cross "
-    MCU_CODE_ROOT_FOLDER = "picow/app1"
     
     @staticmethod
     def GetSerialPortList():
@@ -93,6 +92,32 @@ class CT6Base(BaseConstants):
                 portList.append(port)
         return portList
     
+    @staticmethod
+    def GetInstallFolder():
+        """@return The folder where the apps are installed."""
+        installFolder = os.path.dirname(__file__)
+        if not os.path.isdir(installFolder):
+            raise Exception(f"{installFolder} folder not found.")
+        return installFolder
+    
+    @staticmethod
+    def GetPicoWFolder():
+        """@return The folder containing the RPi Pico W MCU firmware."""
+        installFolder = CT6Base.GetInstallFolder()
+        picowFolder = os.path.join(installFolder, 'picow')
+        if not os.path.isdir(picowFolder):
+            raise Exception(f"{picowFolder} folder not found.")
+        return picowFolder
+    
+    @staticmethod
+    def GetApp1Folder():
+        """@return The folder containing the RPi Pico W MCU app1 firmware."""
+        picowFolder = CT6Base.GetPicoWFolder()
+        app1Folder = os.path.join(picowFolder, 'app1')
+        if not os.path.isdir(app1Folder):
+            raise Exception(f"{app1Folder} folder not found.")
+        return app1Folder
+
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
@@ -101,9 +126,9 @@ class CT6Base(BaseConstants):
         self._options   = options   
         self._ipAddress = None          # The IP address for the UUT
         self._ser       = None
-        self._installFolder = os.path.dirname(__file__)
-        self._picowFolder = os.path.join(self._installFolder, 'picow')
-        self._app1Folder = os.path.join(self._picowFolder, 'app1')
+        self._installFolder = CT6Base.GetInstallFolder()
+        self._picowFolder = CT6Base.GetPicoWFolder()
+        self._app1Folder = CT6Base.GetApp1Folder()
         self._uio.info(f"Install Folder:  {self._installFolder}")
         self._uio.info(f"MCU Code Folder: {self._picowFolder}")
 
@@ -687,7 +712,6 @@ class MCULoader(CT6Base):
               to .mpy files and loading them onto the MCU."""
 
     VALID_MCU_LIST = ['picow', 'esp32']
-    FOLDERS = [f'{CT6Base.MCU_CODE_ROOT_FOLDER}', f'{CT6Base.MCU_CODE_ROOT_FOLDER}/lib', f'{CT6Base.MCU_CODE_ROOT_FOLDER}/lib/drivers']
     MPY_CMDLINE_PREFIX = "python3 -m mpy_cross "
     CMD_LIST = ["mkdir /pyboard/app1",
                 "mkdir /pyboard/app1/lib",
@@ -711,6 +735,7 @@ class MCULoader(CT6Base):
         if mcu not in MCULoader.VALID_MCU_LIST:
             raise Exception(f"{mcu} is an unsupported MCU ({','.join(MCULoader.VALID_MCU_LIST)} are valid).")
         self._mcu = mcu
+        self._mcuCodeFolders = [self._app1Folder, os.path.join(self._app1Folder, 'lib'), os.path.join(self._app1Folder, 'lib/drivers')]
         
     def _info(self, msg):
         """@brief display an info level message.
@@ -731,7 +756,7 @@ class MCULoader(CT6Base):
         """@brief Run pyflakes3 on the app1 folder code to check for errors before loading it."""
         self._info("Checking python code in the app1 folder using pyflakes")
         reporter = modReporter._makeDefaultReporter()
-        warnings = checkRecursive((CT6Base.MCU_CODE_ROOT_FOLDER,), reporter)
+        warnings = checkRecursive((self._mcuCodeFolders[0],), reporter)
         if warnings > 0:
             raise Exception("Fix issues with the code in the app1 folder and then try again.")
         self._info("pyflakes found no issues with the app1 folder code.")
@@ -742,7 +767,7 @@ class MCULoader(CT6Base):
         if not extension.startswith("."):
             extension = ".{}".format(extension)
 
-        for folder in MCULoader.FOLDERS:
+        for folder in self._mcuCodeFolders:
             entries = os.listdir(folder)
             for entry in entries:
                 if entry.endswith(extension):
@@ -1540,7 +1565,7 @@ def getCT6ToolCmdOpts():
     parser.add_argument("-c", "--config",           action='store_true', help="Configure a CT6 unit.")
     parser.add_argument("-f", "--find",             action='store_true', help="Find/Scan for CT6 devices on the LAN.")
     parser.add_argument("--upgrade",                action='store_true', help="Perform an upgrade of a CT6 unit over the air (OTA) via it's WiFi interface.")
-    parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default=CT6Base.MCU_CODE_ROOT_FOLDER)
+    parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default=CT6Base.GetApp1Folder())
     parser.add_argument("--create_zip",             help="Create an upgrade zip file. The argument is the zip filename.")
     parser.add_argument("--clean",                  help="Delete all files and reload the firmware onto a CT6 device over the Pico W serial port. The factory.cfg file must be reloaded when this is complete to restore assy/serial number and calibration configuration.", action='store_true')
     parser.add_argument("--status",                 action='store_true', help="Get unit RAM/DISK usage.")
