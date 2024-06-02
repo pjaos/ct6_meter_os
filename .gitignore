@@ -2,3 +2,4 @@
 cmd_list.txt
 get_cfg.cmd
 Pipfile.lock
+.vscode
