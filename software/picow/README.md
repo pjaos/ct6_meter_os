@@ -9,7 +9,7 @@ I decided to use the Raspberry Pi Pico W microcontroller. I also decided to use 
 The CT6 hardware was designed against the requirements detailed in the top level readme. This involved schematic design, PCB layout and PCB manufacture. The PCB was fabricated, assembled, tested and a 3D printed case was produced. This took several iterations before I was happy with the design. The [hardware](hardware) folder contains details of the schematic and also the design for the 3D printed case.
 
 ## Tools
-The tools folder contains several development tools. Some of the tools also support ESP32 microcontrollers which would ease the process of changing the microcontroller if it should be needed in future. The ct6_tool.py and ct6_mfg_tool.py (in the software/ct6_app_server) contain functionality that is useful when developing the software and hardware. This includes over the air upgrade functionality. See the command line help on these tools for more information.
+The tools folder contains several development tools. Some of the tools also support ESP32 microcontrollers which would ease the process of changing the microcontroller if it should be needed in future. The ct6_tool.py and ct6_mfg_tool.py (in the software/server) contain functionality that is useful when developing the software and hardware. This includes over the air upgrade functionality. See the command line help on these tools for more information.
 
 ### picow_erase_flash.sh
 Allows the user to erase the contents of the Pico W flash. To do this the button on the Pico W module should be held

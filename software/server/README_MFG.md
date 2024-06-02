@@ -11,20 +11,20 @@ python3 -m pip install pipenv2deb
 INFO:  Using existing create_pip_env.sh file.
 INFO:  Created build/DEBIAN
 INFO:  Created build/usr/local/bin/python-ct6-apps.pipenvpkg
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/assets to build/usr/local/bin/python-ct6-apps.pipenvpkg/assets
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/app1 to build/usr/local/bin/python-ct6-apps.pipenvpkg/app1
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/images to build/usr/local/bin/python-ct6-apps.pipenvpkg/images
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/lib to build/usr/local/bin/python-ct6-apps.pipenvpkg/lib
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/assets to build/usr/local/bin/python-ct6-apps.pipenvpkg/assets
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/app1 to build/usr/local/bin/python-ct6-apps.pipenvpkg/app1
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/images to build/usr/local/bin/python-ct6-apps.pipenvpkg/images
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/lib to build/usr/local/bin/python-ct6-apps.pipenvpkg/lib
 INFO:  Copied Pipfile to build/usr/local/bin/python-ct6-apps.pipenvpkg
 INFO:  Copied Pipfile.lock to build/usr/local/bin/python-ct6-apps.pipenvpkg
 INFO:  Copied create_pip_env.sh to build/usr/local/bin/python-ct6-apps.pipenvpkg
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/ct6_dash.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/ct6_mfg_tool.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/ct6_db_store.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/ct6_dash_mgr.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/ct6_tool.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/main.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
-INFO:  Copied /scratch/git_repos/ct6_meter/software/ct6_app_server/t.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/ct6_dash.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/ct6_mfg_tool.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/ct6_db_store.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/ct6_dash_mgr.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/ct6_tool.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/main.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
+INFO:  Copied /scratch/git_repos/ct6_meter/software/server/t.py to build/usr/local/bin/python-ct6-apps.pipenvpkg
 INFO:  Creating build/DEBIAN/postinst
 INFO:  Set executable attribute: build/DEBIAN/postinst
 INFO:  Set executable attribute: build/DEBIAN/control
@@ -115,7 +115,7 @@ The equipment should be connected as per the diagram shown below.
 ### CT6 initialisation and calibration
 
 - The ct6_mfg_tool program will load all code onto the CT6 unit, test it and calibrate each port as shown below.
-  You must run the ct6_mfg_tool in the software/ct6_app_server folder. Note that '<YOUR WIFI SSID>' and '<YOUR WIFI PASSWORD>' should be replaced with your WiFi SSID and password. You must run this process if you have a new RPi Pico W board as it erases the Pico W flash and loads Micro Python onto it.
+  You must run the ct6_mfg_tool in the software/server folder. Note that '<YOUR WIFI SSID>' and '<YOUR WIFI PASSWORD>' should be replaced with your WiFi SSID and password. You must run this process if you have a new RPi Pico W board as it erases the Pico W flash and loads Micro Python onto it.
 
 Note that if your AC supply is 60 Hz (default = 50 Hz) you'll also need to add the '--ac60hz' command line option to the command below.
 
@@ -551,7 +551,7 @@ The CT6 unit is now ready for use. See the README.md file for more information o
 
 To upgrade and recalibrate a CT6 unit the following process can be used using the same test system as detailed above. This process only requires a WiFi connection to the CT6 unit, no serial port connection is required. 
 
-First cd to the ct6_meter_os/software/ct6_app_server git repo folder and then run the following command. Note that if your AC supply is 60 Hz (default = 50 Hz) you'll also need to use the '--ac60hz' command line option.
+First cd to the ct6_meter_os/software/server git repo folder and then run the following command. Note that if your AC supply is 60 Hz (default = 50 Hz) you'll also need to use the '--ac60hz' command line option.
 
 ```
 ct6_mfg_tool -a 192.168.0.76 --upcal
@@ -927,7 +927,7 @@ The equipment should be connected as per the diagram shown below.
 
 This section details how to fully wipe and reload the code on the Pico W and then reload the factory configuration file.
 
-- The steps below show will load all code onto the CT6 unit and test it. You must run the ct6_mfg_tool in the software/ct6_app_server folder. Note that '<YOUR WIFI SSID>' and '<YOUR WIFI PASSWORD>' should be replaced with your WiFi SSID and password.
+- The steps below show will load all code onto the CT6 unit and test it. You must run the ct6_mfg_tool in the software/server folder. Note that '<YOUR WIFI SSID>' and '<YOUR WIFI PASSWORD>' should be replaced with your WiFi SSID and password.
 
 ```
 ct6_mfg_tool --no_cal

@@ -49,9 +49,9 @@ The images below show the CT6 unit.
 
 This project also includes a web server that provides a useful user interface to access to the data provided by the above hardware. An example of this interface is shown below.
 
-![alt text](software/ct6_app_server/images/ct6_dash.png "ct6_dash")
+![alt text](software/server/images/ct6_dash.png "ct6_dash")
 
-More information on this is detailed in the [CT6 App Server](software/ct6_app_server) folder in the software folder.
+More information on this is detailed in the [CT6 App Server](software/server) folder in the software folder.
 
 I also wrote an Android App that is used to connect the CT6 device to a WiFi network. An example of this interface is shown below. This can be used for other projects in the future as it interfaces to the generic micropython libraries (via bluetooth) I wrote for the CT6 project.
 
