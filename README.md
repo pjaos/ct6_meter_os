@@ -33,7 +33,7 @@ I also added an several requirements at this point.
 - Single unit will have 6 ports rather than 4.
 - If possible it would be useful to have the ability to stack units so that up to 24 ports could be monitored.
 
-The development of this hardware involved schematic design, PCB layout, PCB manufacture and case design of this unit. The PCB was fabricated, assembled, tested and a 3D printed case was produced. The [hardware](hardware) folder contains details of the schematic/ PCB and  also the design for the 3D printed case. The [software](software) folder contains the source code for the CT6 unit firmware along with the other software required.
+The development of this hardware involved schematic design, PCB layout, PCB manufacture and case design of this unit. The PCB was fabricated, assembled, tested and a 3D printed case was produced. The [hardware](hardware) folder contains details of the schematic/ PCB and  also the design for the 3D printed case. The [software](software) folder contains the source code for the CT6 unit firmware along with the server side tools and the manufacturing test software.
 
 The images below show the CT6 unit.
 
@@ -61,6 +61,12 @@ More information on this is detailed in the [Android App](software/Android_App/R
 
 # Purchasing CT6 units
 Complete CT6 units or assembled PCB's and associated parts can be purchased on Tindie at https://www.tindie.com/products/pausten/ct6-energy-monitor/
+
+## Installing the software applications
+Details of how to install the required CT6 software onto a Windows or Linux machine can be found [here](software/server/installers/README.md)
+
+## Using the installed software applications
+Details of how to setup your CT6 unit can be found [here](software/server/setting_up_ct6_units.md)
 
 # Discalimer
 This project is designed to use the YHDC SCT013 100A 0-1V split core current transformer. No other current transformer is currently supported. As mains voltage is dangerous it is the users responsibility to connect these current clamps using this hardware.
