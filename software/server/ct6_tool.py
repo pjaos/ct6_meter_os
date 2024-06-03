@@ -95,7 +95,11 @@ class CT6Base(BaseConstants):
     @staticmethod
     def GetInstallFolder():
         """@return The folder where the apps are installed."""
-        installFolder = os.path.dirname(__file__)
+        # On Windows we use relative paths
+        if any(platform.win32_ver()):
+            installFolder = "."
+        else:
+            installFolder = os.path.dirname(__file__)
         if not os.path.isdir(installFolder):
             raise Exception(f"{installFolder} folder not found.")
         return installFolder
@@ -103,8 +107,12 @@ class CT6Base(BaseConstants):
     @staticmethod
     def GetPicoWFolder():
         """@return The folder containing the RPi Pico W MCU firmware."""
-        installFolder = CT6Base.GetInstallFolder()
-        picowFolder = os.path.join(installFolder, 'picow')
+        # On Windows we use relative paths
+        if any(platform.win32_ver()):
+            picowFolder = "picow"
+        else:
+            installFolder = CT6Base.GetInstallFolder()
+            picowFolder = os.path.join(installFolder, 'picow')
         if not os.path.isdir(picowFolder):
             raise Exception(f"{picowFolder} folder not found.")
         return picowFolder
@@ -112,8 +120,12 @@ class CT6Base(BaseConstants):
     @staticmethod
     def GetApp1Folder():
         """@return The folder containing the RPi Pico W MCU app1 firmware."""
-        picowFolder = CT6Base.GetPicoWFolder()
-        app1Folder = os.path.join(picowFolder, 'app1')
+        # On Windows we use relative paths
+        if any(platform.win32_ver()):
+            app1Folder = "picow/app1"
+        else:
+            picowFolder = CT6Base.GetPicoWFolder()
+            app1Folder = os.path.join(picowFolder, 'app1')
         if not os.path.isdir(app1Folder):
             raise Exception(f"{app1Folder} folder not found.")
         return app1Folder
