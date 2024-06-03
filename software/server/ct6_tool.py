@@ -154,6 +154,7 @@ class CT6Base(BaseConstants):
 
         self._picowFolder = destPicoWFolder
         self._app1Folder =  os.path.join(destPicoWFolder, "app1")
+        self._upgradeAppRoot = self._app1Folder
         if not os.path.isdir(self._app1Folder):
             raise Exception(f"{self._app1Folder} folder not found.")
         
@@ -475,11 +476,12 @@ class CT6Base(BaseConstants):
         # Ensure bluetooth is turned off now we have configured the WiFi.
         thisMachineDict[CT6Base.BLUETOOTH_ON_KEY] = 0
         #Save the machine config to a local file.
-        self._saveDictToJSONFile(thisMachineDict, CT6Base.CT6_MACHINE_CONFIG_FILE)
+        localMachineCfgFile = os.path.join(tempfile.gettempdir(), CT6Base.CT6_MACHINE_CONFIG_FILE)
+        self._saveDictToJSONFile(thisMachineDict, localMachineCfgFile)
         if self._ser:
            self._ser.close()
            self._ser = None
-        self._runRShell((f"cp {CT6Base.CT6_MACHINE_CONFIG_FILE} /pyboard/",) )
+        self._runRShell((f"cp {localMachineCfgFile} /pyboard/",) )
         return thisMachineDict[CT6Base.WIFI_CFG_KEY]['SSID']
         
     def _rebootUnit(self):
@@ -1007,17 +1009,6 @@ class YDevManager(CT6Base):
             check_call(cmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
             self._uio.info(f"The {module} python module is installed.")
 
-    def _getAppZipFile(self, checkExists=False):
-        """@brief Get the app zip file.
-           @param checkExists If True check if the app zip file exists.
-           @return The app zip file."""
-        appZipFile = self._options.create_zip
-
-        if checkExists and not os.path.isfile(appZipFile):
-            raise Exception("{} file not found.".format(appZipFile))
-
-        return appZipFile
-
     def _ensureValidAddress(self):
         """@brief Ensure the units address is valid."""
         self._checkAddress()
@@ -1068,7 +1059,7 @@ class YDevManager(CT6Base):
            @param promptReboot If True prompt the user to enter 'y' to reboot the unit."""
         startTime = time()
         self._ensureValidAddress()
-        appSize = self._checkLocalApp()
+        appSize = self._getSize(self._picowFolder)
         self._uio.info(f"Peforming an OTA upgrade of {self._ipAddress}")
 
         # We need to erase any data in the inactive partition to see if we have space for the new app
@@ -1173,26 +1164,6 @@ class YDevManager(CT6Base):
             zip_ref.extractall(packagePath)
         return packagePath
     
-    def _checkLocalApp(self):
-        """@brief Check the app on the local disk before attempting to upgrade the device.
-           @return The amount of disk space required to store all the app files."""
-        appZipFile = self._options.upgrade_src
-        if os.path.isfile(appZipFile):
-            self._upgradeAppRoot = self._unzipPackage(appZipFile)
-        else:
-            self._upgradeAppRoot = self._options.upgrade_src
-
-        if not os.path.isdir(self._upgradeAppRoot):
-            raise Exception("{} app folder not found.".format(self._upgradeAppRoot))
-
-        mainFile = os.path.join(self._upgradeAppRoot, "app.py")
-        if not os.path.isfile(mainFile):
-            mainFile = os.path.join(self._upgradeAppRoot, "app.mpy")
-            if not os.path.isfile(mainFile):
-                raise Exception("{} app.py or app.mpy file not found.".format(mainFile))
-
-        return self._getSize(self._upgradeAppRoot)
-
     def _checkDiskSpace(self, appSize):
         """@brief Check that there is sufficient space to store the new app. This should
            take a maximum of 1/2 the available disk space."""
@@ -1278,7 +1249,7 @@ class YDevManager(CT6Base):
         """@brief Get the machine configuration from the unit."""
         requestsInstance = self._runCommand(YDevManager.GET_MACHINE_CONFIG)
         cfgDict = requestsInstance.json()
-        configFilename = "this.machine.cfg"
+        configFilename = os.path.join(tempfile.gettempdir(), "this.machine.cfg")
         if os.path.isfile(configFilename):
             self._uio.info("{} already exists.".format(configFilename))
             if self._uio.getBoolInput("Overwrite y/n: "):
@@ -1589,8 +1560,6 @@ def getCT6ToolCmdOpts():
     parser.add_argument("-c", "--config",           action='store_true', help="Configure a CT6 unit.")
     parser.add_argument("-f", "--find",             action='store_true', help="Find/Scan for CT6 devices on the LAN.")
     parser.add_argument("--upgrade",                action='store_true', help="Perform an upgrade of a CT6 unit over the air (OTA) via it's WiFi interface.")
-    parser.add_argument("--upgrade_src",            help="The source for an upgrade. The argument is either the the app path or a zip filename created using --create_zip (default = app1).", default=CT6Base.GetApp1Folder())
-    parser.add_argument("--create_zip",             help="Create an upgrade zip file. The argument is the zip filename.")
     parser.add_argument("--clean",                  help="Delete all files and reload the firmware onto a CT6 device over the Pico W serial port. The factory.cfg file must be reloaded when this is complete to restore assy/serial number and calibration configuration.", action='store_true')
     parser.add_argument("--status",                 action='store_true', help="Get unit RAM/DISK usage.")
     parser.add_argument("--flist",                  action='store_true', help="Get a list of the files on the unit.")
@@ -1639,9 +1608,6 @@ def main():
         elif options.find:
             ct6Scanner.scan()
 
-        elif options.create_zip:
-            yDevManager.packageApp()
-            
         elif options.clean:
             yDevManager.loadCT6Firmware(False)
 
