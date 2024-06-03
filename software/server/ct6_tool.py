@@ -101,44 +101,66 @@ class CT6Base(BaseConstants):
         return installFolder
     
     @staticmethod
-    def GetPicoWFolder():
-        """@return The folder containing the RPi Pico W MCU firmware."""
-        picoWFolder = "picow"
-        if not os.path.isdir(picoWFolder):
-            raise Exception(f"{picoWFolder} folder not found.")
-        return picoWFolder
-    
+    def GetSrcPicoWFolder():
+        """@return The folder where the MCU code is held."""
+        installFolder = CT6Base.GetInstallFolder()
+        picowFolder = os.path.join(installFolder, "picow")
+        if not os.path.isdir(picowFolder):
+            raise Exception(f"{picowFolder} folder not found.")
+        return picowFolder
+
     @staticmethod
     def GetApp1Folder():
-        """@return The folder containing the RPi Pico W MCU app1 firmware."""
-        app1Folder = "picow/app1"
+        """@return the picow/app1 folder/"""
+        picowFolder = CT6Base.GetSrcPicoWFolder()
+        app1Folder = os.path.join(picowFolder, 'app1')
         if not os.path.isdir(app1Folder):
             raise Exception(f"{app1Folder} folder not found.")
         return app1Folder
-    
-    @staticmethod
-    def GetUF2ImageFolder():
-        """@return The folder containing the RPi Pico W MCU images that wipe the flash and and boot micro python."""
-        uf2ImageFolder = "picow/tools/picow_flash_images/"
-        if not os.path.isdir(uf2ImageFolder):
-            raise Exception(f"{uf2ImageFolder} folder not found PJA.")
-        return uf2ImageFolder
 
     def __init__(self, uio, options):
+        """@brief Constructor
+           @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
+           @param options An instance of the OptionParser command line options."""
         """@brief Constructor
            @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
            @param options An instance of the OptionParser command line options."""
         self._uio       = uio
         self._options   = options   
         self._ipAddress = None          # The IP address for the UUT
-        self._ser       = None
+        self._ser       = None      
+        self._windowsPlatform = any(platform.win32_ver())
+        # Define the prefix for using the micro python X compiler
+        if self._windowsPlatform:
+            self._mpyCmdLinePrefix = MCULoader.WINDOWS_MPY_CMDLINE_PREFIX
+        else:
+            self._mpyCmdLinePrefix = MCULoader.LINUX_MPY_CMDLINE_PREFIX
+        self._initFolders()
+        self._ensureMCUCodeAvailable()
+
+    def _initFolders(self):
+        """@brief Init the folders used by various tools."""
         self._installFolder = CT6Base.GetInstallFolder()
-        # Make this out current dir
-        os.chdir(self._installFolder)
-        # Check we can find the MCU code folders.
-        self._picowFolder = CT6Base.GetPicoWFolder()
-        self._app1Folder = CT6Base.GetApp1Folder()
-        self._uf2ImagePath = CT6Base.GetUF2ImageFolder()
+        srcPicoWFolder = CT6Base.GetSrcPicoWFolder()
+        if not os.path.isdir(srcPicoWFolder):
+            raise Exception(f"{srcPicoWFolder} folder not found.")
+        
+        # The picow folder must be writable as we create .mpy files alongside the .py MCU files.
+        destPicoWFolder = os.path.join(tempfile.gettempdir(), "picow")
+        if os.path.isdir(destPicoWFolder):
+            shutil.rmtree(destPicoWFolder)
+
+        shutil.copytree(srcPicoWFolder, destPicoWFolder)
+
+        self._picowFolder = destPicoWFolder
+        self._app1Folder =  os.path.join(destPicoWFolder, "app1")
+        if not os.path.isdir(self._app1Folder):
+            raise Exception(f"{self._app1Folder} folder not found.")
+        
+        tPath = os.path.join(destPicoWFolder, "tools")
+        self._uf2ImagePath = os.path.join(tPath, "picow_flash_images")
+        if not os.path.isdir(self._uf2ImagePath):
+            raise Exception(f"{self._uf2ImagePath} folder not found.")
 
         self._uio.info(f"Install Folder:  {self._installFolder}")
         self._uio.info(f"MCU Code Folder: {self._picowFolder}")
@@ -149,14 +171,6 @@ class CT6Base(BaseConstants):
         if not os.path.isdir(self._app1Folder):
             raise Exception(f"{self._app1Folder} folder not found.")
         
-        self._windowsPlatform = any(platform.win32_ver())
-        # Define the prefix for using the micro python X compiler
-        if self._windowsPlatform:
-            self._mpyCmdLinePrefix = MCULoader.WINDOWS_MPY_CMDLINE_PREFIX
-        else:
-            self._mpyCmdLinePrefix = MCULoader.LINUX_MPY_CMDLINE_PREFIX
-        self._ensureMCUCodeAvailable()
-            
     def _ensureMCUCodeAvailable(self):
         """@brief Ensure we have access to the RPI Pico W code."""           
         requiredFolder = self._picowFolder
@@ -731,7 +745,6 @@ class MCULoader(CT6Base):
                 "mkdir /pyboard/app2/lib",
                 "mkdir /pyboard/app2/lib/drivers"]
     DEL_ALL_FILES_CMD_LIST = ["rm -r /pyboard/*"]
-    CMD_LIST_FILE = "cmd_list.cmd"
     MCU_MP_CACHE_FOLDER = "mcu_app.cache"
         
     def __init__(self, uio, 
@@ -838,15 +851,15 @@ class MCULoader(CT6Base):
         self._uio.info("Loading CT6 firmware. This may take several minutes...")                 
         cmdList = copy(MCULoader.CMD_LIST)
         for srcFile in fileList:
-            destFile = srcFile.replace("picow", "/pyboard")
+            destFile = srcFile.replace(self._picowFolder, "/pyboard")
             cpCmd = f"cp {srcFile} {destFile}"
             cmdList.append(cpCmd)
 
-        fd = open(MCULoader.CMD_LIST_FILE, 'w')
+        fd = open(MCULoader.RSHELL_CMD_LIST_FILE, 'w')
         for l in cmdList:
             fd.write("{}\n".format(l))
         fd.close()
-        cmdOutput = self._runCmd(port, MCULoader.CMD_LIST_FILE)
+        cmdOutput = self._runCmd(port, MCULoader.RSHELL_CMD_LIST_FILE)
         for _file in fileList:
             if cmdOutput.find(_file) == -1:
                 lines = cmdOutput.split("\n")
@@ -859,11 +872,11 @@ class MCULoader(CT6Base):
         """@brief Delete all files from the CT6 device.
            @param port The serial port to use."""
         cmdList = MCULoader.DEL_ALL_FILES_CMD_LIST
-        fd = open(MCULoader.CMD_LIST_FILE, 'w')
+        fd = open(MCULoader.RSHELL_CMD_LIST_FILE, 'w')
         for l in cmdList:
             fd.write("{}\n".format(l))
         fd.close()
-        self._runCmd(port, MCULoader.CMD_LIST_FILE)
+        self._runCmd(port, MCULoader.RSHELL_CMD_LIST_FILE)
         self._info("Deleted all files from CT6 unit.")
         
     def load(self):
@@ -879,7 +892,7 @@ class MCULoader(CT6Base):
         self._rebootUnit()
         # Regain the python prompt from the CT6 unit.
         self._checkMicroPython()
-        localFileList = ["picow/main.py"]
+        localFileList = [os.path.join(self._picowFolder, "main.py")]
         mpyFileList = self._convertToMPY()
         filesToLoad = localFileList + mpyFileList
         self._loadFiles(filesToLoad, self._serialPort)
