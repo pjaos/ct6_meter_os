@@ -37,7 +37,7 @@ class CT6Base(BaseConstants):
     WIFI_CFG_KEY                = "WIFI"
     CT6_MACHINE_CONFIG_FILE     = "this.machine.cfg"
     CT6_FACTORY_CONFIG_FILE     = "factory.cfg"
-    RSHELL_CMD_LIST_FILE        = "cmd_list.cmd"
+    RSHELL_CMD_LIST_FILE        = os.path.join( tempfile.gettempdir(), "cmd_list.cmd")
     BLUETOOTH_ON_KEY            = 'BLUETOOTH_ON_KEY'
     GET_FILE_CMD                = "/get_file"
     SEND_FILE_CMD               = "/send_file"
@@ -95,11 +95,7 @@ class CT6Base(BaseConstants):
     @staticmethod
     def GetInstallFolder():
         """@return The folder where the apps are installed."""
-        # On Windows we use relative paths
-        if any(platform.win32_ver()):
-            installFolder = "."
-        else:
-            installFolder = os.path.dirname(__file__)
+        installFolder = os.path.dirname(__file__)
         if not os.path.isdir(installFolder):
             raise Exception(f"{installFolder} folder not found.")
         return installFolder
@@ -107,29 +103,19 @@ class CT6Base(BaseConstants):
     @staticmethod
     def GetPicoWFolder():
         """@return The folder containing the RPi Pico W MCU firmware."""
-        # On Windows we use relative paths
-        if any(platform.win32_ver()):
-            picowFolder = "picow"
-        else:
-            installFolder = CT6Base.GetInstallFolder()
-            picowFolder = os.path.join(installFolder, 'picow')
-        if not os.path.isdir(picowFolder):
-            raise Exception(f"{picowFolder} folder not found.")
-        return picowFolder
+        picoWFolder = "picow"
+        if not os.path.isdir(picoWFolder):
+            raise Exception(f"{picoWFolder} folder not found.")
+        return picoWFolder
     
     @staticmethod
     def GetApp1Folder():
         """@return The folder containing the RPi Pico W MCU app1 firmware."""
-        # On Windows we use relative paths
-        if any(platform.win32_ver()):
-            app1Folder = "picow/app1"
-        else:
-            picowFolder = CT6Base.GetPicoWFolder()
-            app1Folder = os.path.join(picowFolder, 'app1')
-        if not os.path.isdir(app1Folder):
-            raise Exception(f"{app1Folder} folder not found.")
-        return app1Folder
-
+        ap1Folder = "picow/app1"
+        if not os.path.isdir(ap1Folder):
+            raise Exception(f"{ap1Folder} folder not found.")
+        return ap1Folder
+    
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
@@ -139,8 +125,12 @@ class CT6Base(BaseConstants):
         self._ipAddress = None          # The IP address for the UUT
         self._ser       = None
         self._installFolder = CT6Base.GetInstallFolder()
+        # Make this out current dir
+        os.chdir(self._installFolder)
+        # Check we can find the MCU code folders.
         self._picowFolder = CT6Base.GetPicoWFolder()
         self._app1Folder = CT6Base.GetApp1Folder()
+
         self._uio.info(f"Install Folder:  {self._installFolder}")
         self._uio.info(f"MCU Code Folder: {self._picowFolder}")
 
