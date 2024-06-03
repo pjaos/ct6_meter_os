@@ -28,7 +28,7 @@ from bokeh.models import TextInput, PasswordInput, TextAreaInput
 from bokeh.layouts import layout
 from bokeh.models.widgets import Select
 
-from ct6_tool import YDevManager, getCT6ToolCmdOpts, CT6Config, MCULoader
+from ct6_tool import YDevManager, getCT6ToolCmdOpts, CT6Config, MCULoader, CT6Base
 from ct6_mfg_tool import FactorySetup, getFactorySetupCmdOpts
 
 class CT6ConfiguratorConfig(ConfigBase):
@@ -98,6 +98,9 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._startUpdateTime   = None
         self._logPath           = os.path.join(os.path.expanduser('~'), FactorySetup.LOG_PATH)
         self._isWindows         = platform.system() == "Windows"
+        self._installFolder     = CT6Base.GetInstallFolder()
+        # Make this out current dir
+        os.chdir(self._installFolder)
 
         self._skipFactoryConfigRestore = False
         if '--skip_factory_config_restore' in sys.argv:
