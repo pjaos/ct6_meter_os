@@ -111,11 +111,19 @@ class CT6Base(BaseConstants):
     @staticmethod
     def GetApp1Folder():
         """@return The folder containing the RPi Pico W MCU app1 firmware."""
-        ap1Folder = "picow/app1"
-        if not os.path.isdir(ap1Folder):
-            raise Exception(f"{ap1Folder} folder not found.")
-        return ap1Folder
+        app1Folder = "picow/app1"
+        if not os.path.isdir(app1Folder):
+            raise Exception(f"{app1Folder} folder not found.")
+        return app1Folder
     
+    @staticmethod
+    def GetUF2ImageFolder():
+        """@return The folder containing the RPi Pico W MCU images that wipe the flash and and boot micro python."""
+        uf2ImageFolder = "picow/tools/picow_flash_images/"
+        if not os.path.isdir(uf2ImageFolder):
+            raise Exception(f"{uf2ImageFolder} folder not found PJA.")
+        return uf2ImageFolder
+
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
@@ -130,6 +138,7 @@ class CT6Base(BaseConstants):
         # Check we can find the MCU code folders.
         self._picowFolder = CT6Base.GetPicoWFolder()
         self._app1Folder = CT6Base.GetApp1Folder()
+        self._uf2ImagePath = CT6Base.GetUF2ImageFolder()
 
         self._uio.info(f"Install Folder:  {self._installFolder}")
         self._uio.info(f"MCU Code Folder: {self._picowFolder}")

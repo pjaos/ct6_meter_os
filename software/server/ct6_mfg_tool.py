@@ -38,8 +38,7 @@ class FactorySetup(CT6Base):
     SN_KEY                      = "SN"  
     LAST_UUT_CFG_FILE           = ".ct6_mfg_tool_last_uut.cfg"
     RPI_BOOT_BTN_DWN_FILE_LIST  = ["index.htm", "info_uf2.txt"]
-    PICO_FLASH_PATHLIST         = ("../picow/tools/picow_flash_images/", "picow_flash_images/") 
-    
+     
     # We hard code the log path so that the user does not have the option to move them.
     LOG_PATH                    = "test_logs"
     
@@ -660,26 +659,10 @@ class FactorySetup(CT6Base):
             return picoDrive
         else:
             return f"/media/{self._username}/RPI-RP2"
-              
-    def _getPicoFlashPath(self):
-        """@brief Get the path in which the RPi Pico W flash images are held.
-                  The path may be in differnet locations relatve to the CWD 
-                  depending upon whether youre running on a Windows or Linux platform.
-           @return the above as a string."""
-        picoFlashPath = None
-        for flashP in FactorySetup.PICO_FLASH_PATHLIST:
-            if os.path.isdir(flashP):
-                picoFlashPath = flashP
-                break
-                
-        if not picoFlashPath:
-            raise Exception("Unable to find the path in which the RPi Pico W flash images are held.")
-            
-        return picoFlashPath
-        
+                     
     def _getPicoFlashNukeImage(self):
         """@return The image used to wipe the flash on the RPi."""
-        flashP = self._getPicoFlashPath()
+        flashP = self._uf2ImagePath
         nukeImage = os.path.join(flashP, "flash_nuke.uf2")
         if not os.path.isfile(nukeImage):
             raise Exception(f"{nukeImage} file not found.")
@@ -729,7 +712,7 @@ class FactorySetup(CT6Base):
     
     def _getPicoMicroPythonImage(self):
         """@return The image containing the Micropython for the RPi."""
-        flashP = self._getPicoFlashPath()
+        flashP = self._uf2ImagePath
         microPythonImage = os.path.join(flashP, "firmware.uf2")
         if not os.path.isfile(microPythonImage):
             raise Exception(f"{microPythonImage} file not found.")
