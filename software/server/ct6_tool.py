@@ -33,11 +33,59 @@ from   subprocess import check_output, check_call, DEVNULL, STDOUT
 
 class CT6Base(BaseConstants):
     """@brief Base class for CT6 device operations."""
+
+    
+    @staticmethod
+    def GetSerialPortList():
+        """@brief Get a list of the serial numbers of each serial port.
+           @return A list of serial ports."""
+        portList = []
+        comPortList = comports()
+        for port in comPortList:
+            if port.vid is not None:
+                portList.append(port)
+        return portList
+    
+    @staticmethod
+    def GetInstallFolder():
+        """@return The folder where the apps are installed."""
+        installFolder = os.path.dirname(__file__)
+        if not os.path.isdir(installFolder):
+            raise Exception(f"{installFolder} folder not found.")
+        return installFolder
+    
+    @staticmethod
+    def GetSrcPicoWFolder():
+        """@return The folder where the MCU code is held."""
+        installFolder = CT6Base.GetInstallFolder()
+        picowFolder = os.path.join(installFolder, "picow")
+        if not os.path.isdir(picowFolder):
+            raise Exception(f"{picowFolder} folder not found.")
+        return picowFolder
+
+    @staticmethod
+    def GetApp1Folder():
+        """@return the picow/app1 folder/"""
+        picowFolder = CT6Base.GetSrcPicoWFolder()
+        app1Folder = os.path.join(picowFolder, 'app1')
+        if not os.path.isdir(app1Folder):
+            raise Exception(f"{app1Folder} folder not found.")
+        return app1Folder
+
+    @staticmethod
+    def GetTempFolder():
+        """@return The temp storage folder."""
+        tempFolder = tempfile.gettempdir()
+        if any(platform.win32_ver()):
+            # On Windows we use the install folder as it should be writable
+            tempFolder = os.path.dirname(__file__)
+        return tempFolder
+    
     HOUSE_WIFI_CFG_FILE         = os.path.join(os.path.join(os.path.expanduser('~')), "ct6_house_wifi.cfg" )
     WIFI_CFG_KEY                = "WIFI"
     CT6_MACHINE_CONFIG_FILE     = "this.machine.cfg"
     CT6_FACTORY_CONFIG_FILE     = "factory.cfg"
-    RSHELL_CMD_LIST_FILE        = os.path.join( tempfile.gettempdir(), "cmd_list.cmd")
+    RSHELL_CMD_LIST_FILE        = os.path.join( GetTempFolder(), "cmd_list.cmd")
     BLUETOOTH_ON_KEY            = 'BLUETOOTH_ON_KEY'
     GET_FILE_CMD                = "/get_file"
     SEND_FILE_CMD               = "/send_file"
@@ -80,43 +128,6 @@ class CT6Base(BaseConstants):
     # When pipenv is executed on windows the python comand must be executed to ensure the 
     # env is loaded.
     WINDOWS_MPY_CMDLINE_PREFIX = "python -m mpy_cross "
-    
-    @staticmethod
-    def GetSerialPortList():
-        """@brief Get a list of the serial numbers of each serial port.
-           @return A list of serial ports."""
-        portList = []
-        comPortList = comports()
-        for port in comPortList:
-            if port.vid is not None:
-                portList.append(port)
-        return portList
-    
-    @staticmethod
-    def GetInstallFolder():
-        """@return The folder where the apps are installed."""
-        installFolder = os.path.dirname(__file__)
-        if not os.path.isdir(installFolder):
-            raise Exception(f"{installFolder} folder not found.")
-        return installFolder
-    
-    @staticmethod
-    def GetSrcPicoWFolder():
-        """@return The folder where the MCU code is held."""
-        installFolder = CT6Base.GetInstallFolder()
-        picowFolder = os.path.join(installFolder, "picow")
-        if not os.path.isdir(picowFolder):
-            raise Exception(f"{picowFolder} folder not found.")
-        return picowFolder
-
-    @staticmethod
-    def GetApp1Folder():
-        """@return the picow/app1 folder/"""
-        picowFolder = CT6Base.GetSrcPicoWFolder()
-        app1Folder = os.path.join(picowFolder, 'app1')
-        if not os.path.isdir(app1Folder):
-            raise Exception(f"{app1Folder} folder not found.")
-        return app1Folder
 
     def __init__(self, uio, options):
         """@brief Constructor
@@ -140,19 +151,27 @@ class CT6Base(BaseConstants):
 
     def _initFolders(self):
         """@brief Init the folders used by various tools."""
+        self._tempFolder = CT6Base.GetTempFolder()
         self._installFolder = CT6Base.GetInstallFolder()
         srcPicoWFolder = CT6Base.GetSrcPicoWFolder()
         if not os.path.isdir(srcPicoWFolder):
             raise Exception(f"{srcPicoWFolder} folder not found.")
-        
-        # The picow folder must be writable as we create .mpy files alongside the .py MCU files.
-        destPicoWFolder = os.path.join(tempfile.gettempdir(), "picow")
-        if os.path.isdir(destPicoWFolder):
-            shutil.rmtree(destPicoWFolder)
-
-        shutil.copytree(srcPicoWFolder, destPicoWFolder)
-
-        self._picowFolder = destPicoWFolder
+     
+        if self._windowsPlatform:
+            # On windows platforms the src folder should be writable.
+            # Therefore just remove the drive as if this is left in rshell commands fail.
+            self._tempFolder = '/' + self._tempFolder[3:]
+            destPicoWFolder = '/' + srcPicoWFolder[3:]
+            self._picowFolder = destPicoWFolder
+        else:
+            # The picow folder must be writable as we create .mpy files alongside the .py MCU files.
+            # On Linux platform this may not be writable so we use a temp folder.
+            destPicoWFolder = os.path.join(self._tempFolder, "picow")
+            if os.path.isdir(destPicoWFolder):
+                shutil.rmtree(destPicoWFolder)
+            shutil.copytree(srcPicoWFolder, destPicoWFolder)
+            self._picowFolder = destPicoWFolder
+            
         self._app1Folder =  os.path.join(destPicoWFolder, "app1")
         self._upgradeAppRoot = self._app1Folder
         if not os.path.isdir(self._app1Folder):
@@ -306,21 +325,28 @@ class CT6Base(BaseConstants):
         with open(filename, 'w') as fd:
             json.dump(theDict, fd, ensure_ascii=False)
         
-        
-    def _runRShell(self, cmdList, picow=True):
-        """@brief Run an rshell command file.
-           @param cmdList A list of commands to execute.
+    def _getRShellCmd(self, port, cmdFile, picow=True):
+        """@brief Get the RSHell command line.
+           @param port The serial port to use.
+           @param cmdFile The rshell command to execute.
            @param picow True if loading a Pico W MSU. False for ESP32."""
+        if picow:
+            rshellCmd = f'rshell --rts 1 --dtr 1 --timing -p {port} --buffer-size 512 -f "{cmdFile}"'
+        else:
+            rshellCmd = f'rshell --rts 0 --dtr 0 --timing -p {port} --buffer-size 512 -f "{cmdFile}"'
+        return rshellCmd
+
+    def _runRShell(self, cmdList):
+        """@brief Run an rshell command file.
+           @param cmdList A list of commands to execute."""
         cmdFile = CT6Base.RSHELL_CMD_LIST_FILE
+        self._uio.debug(f"Creating {cmdFile}")
         # Create the rshell cmd file.
         fd = open(cmdFile, 'w')
         for line in cmdList:
             fd.write(f"{line}\n")
         fd.close()
-        if picow:
-            rshellCmd = "rshell --rts 1 --dtr 1 --timing -p {} --buffer-size 512 -f {}".format(self._serialPort, cmdFile)
-        else:
-            rshellCmd = "rshell --rts 0 --dtr 0 --timing -p {} --buffer-size 512 -f {}".format(self._serialPort, cmdFile)
+        rshellCmd = self._getRShellCmd(self._serialPort, cmdFile)
         self._uio.debug(f"EXECUTING: {rshellCmd}")
         check_call(rshellCmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
         
@@ -476,12 +502,12 @@ class CT6Base(BaseConstants):
         # Ensure bluetooth is turned off now we have configured the WiFi.
         thisMachineDict[CT6Base.BLUETOOTH_ON_KEY] = 0
         #Save the machine config to a local file.
-        localMachineCfgFile = os.path.join(tempfile.gettempdir(), CT6Base.CT6_MACHINE_CONFIG_FILE)
+        localMachineCfgFile = os.path.join(self._tempFolder, CT6Base.CT6_MACHINE_CONFIG_FILE)
         self._saveDictToJSONFile(thisMachineDict, localMachineCfgFile)
         if self._ser:
            self._ser.close()
            self._ser = None
-        self._runRShell((f"cp {localMachineCfgFile} /pyboard/",) )
+        self._runRShell((f'cp "{localMachineCfgFile}" /pyboard/',) )
         return thisMachineDict[CT6Base.WIFI_CFG_KEY]['SSID']
         
     def _rebootUnit(self):
@@ -681,9 +707,9 @@ class CT6Base(BaseConstants):
         if serialCon:
             # Attempt to connect to the board under test python prompt
             self._checkMicroPython(closeSerialPort=False)
-            self._runRShell((f"cp {srcFactoryCfgFile} /pyboard/{CT6Base.CT6_FACTORY_CONFIG_FILE}",))
+            self._runRShell((f'cp "{srcFactoryCfgFile}" /pyboard/{CT6Base.CT6_FACTORY_CONFIG_FILE}',))
         else:
-            tmpLocalFile = os.path.join(tempfile.gettempdir(), CT6Base.CT6_FACTORY_CONFIG_FILE)
+            tmpLocalFile = os.path.join(self._tempFolder, CT6Base.CT6_FACTORY_CONFIG_FILE)
             shutil.copyfile(srcFactoryCfgFile, tmpLocalFile)
             self._sendFileOverWiFi(self._ipAddress, tmpLocalFile, "/")
             os.remove(tmpLocalFile)
@@ -739,7 +765,6 @@ class MCULoader(CT6Base):
               to .mpy files and loading them onto the MCU."""
 
     VALID_MCU_LIST = ['picow', 'esp32']
-    MPY_CMDLINE_PREFIX = "python3 -m mpy_cross "
     CMD_LIST = ["mkdir /pyboard/app1",
                 "mkdir /pyboard/app1/lib",
                 "mkdir /pyboard/app1/lib/drivers",
@@ -822,7 +847,7 @@ class MCULoader(CT6Base):
         mpyFileList = []
         pyFileList = self._getFileList(".py")
         for pyFile in pyFileList:
-            cmd = "{}{}".format(self._mpyCmdLinePrefix, pyFile)
+            cmd = f'{self._mpyCmdLinePrefix} "{pyFile}"'
             check_call(cmd, shell=True)
             mpyFile = pyFile.replace(".py", ".mpy")
             self._info("Generated {} from {}".format(mpyFile, pyFile))
@@ -837,12 +862,7 @@ class MCULoader(CT6Base):
            @param port The serial port to run the command over.
            @param cmdFile The rshell command file to execute.
            @return the output from the command executed as a string."""
-        # If pciow
-        if self._mcu == MCULoader.VALID_MCU_LIST[0]:
-            rshellCmd = "rshell --rts 1 --dtr 1 --timing -p {} --buffer-size 512 -f {}".format(port, cmdFile)
-        # If esp32
-        else:
-            rshellCmd = "rshell --rts 0 --dtr 0 --timing -p {} --buffer-size 512 -f {}".format(port, cmdFile)
+        rshellCmd = self._getRShellCmd(port, cmdFile)
         self._debug(f"EXECUTING: {rshellCmd}")   
         return check_output(rshellCmd, shell=True).decode()
 
@@ -853,9 +873,15 @@ class MCULoader(CT6Base):
         self._uio.info("Loading CT6 firmware. This may take several minutes...")                 
         cmdList = copy(MCULoader.CMD_LIST)
         for srcFile in fileList:
-            destFile = srcFile.replace(self._picowFolder, "/pyboard")
-            cpCmd = f"cp {srcFile} {destFile}"
-            cmdList.append(cpCmd)
+            picoWPos = srcFile.find("picow")
+            if picoWPos >= 0:
+                destFile = "/pyboard" + srcFile[picoWPos+5:]
+                # The dest path must use unix file sep characters
+                destFile=destFile.replace('\\','/')
+                cpCmd = f'cp "{srcFile}" {destFile}'
+                cmdList.append(cpCmd)
+            else:
+                raise Exception(f"picow not found in {srcFile}")
 
         fd = open(MCULoader.RSHELL_CMD_LIST_FILE, 'w')
         for l in cmdList:
@@ -1133,7 +1159,7 @@ class YDevManager(CT6Base):
 
         self._uio.info("Converting {} to {} (bytecode).".format(os.path.basename(pythonFile), mpyFile))
         outputFile = pythonFile.replace(".py",".mpy")
-        cmd = "{}{}".format(self._mpyCmdLinePrefix, pythonFile)
+        cmd = f'{self._mpyCmdLinePrefix} "{pythonFile}"'
         check_call(cmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
         if not os.path.isfile(outputFile):
             raise Exception("Failed to create {} python bytecode file.".format(outputFile))
@@ -1154,7 +1180,7 @@ class YDevManager(CT6Base):
 
     def _unzipPackage(self, zipFile):
         """@brief Decompress a zip file and return the folder it was decompressed into."""
-        packagePath = os.path.join(tempfile.gettempdir(), "ct6_lool_package")
+        packagePath = os.path.join(self._tempFolder, "ct6_lool_package")
         if os.path.isdir(packagePath):
             shutil.rmtree(packagePath)
         os.mkdir(packagePath)
@@ -1249,7 +1275,7 @@ class YDevManager(CT6Base):
         """@brief Get the machine configuration from the unit."""
         requestsInstance = self._runCommand(YDevManager.GET_MACHINE_CONFIG)
         cfgDict = requestsInstance.json()
-        configFilename = os.path.join(tempfile.gettempdir(), "this.machine.cfg")
+        configFilename = os.path.join(self._tempFolder, "this.machine.cfg")
         if os.path.isfile(configFilename):
             self._uio.info("{} already exists.".format(configFilename))
             if self._uio.getBoolInput("Overwrite y/n: "):
@@ -1569,7 +1595,7 @@ def getCT6ToolCmdOpts():
     parser.add_argument("--sf",                     help="Send a file to the device.")
     parser.add_argument("--sp",                     help="The path to place the above file on the device.", default="/")
     parser.add_argument("--rf",                     help="Receive a file from the device. Only text files are currently supported.")
-    parser.add_argument("--rp",                     help=f"The local path to place the above file once received (default={tempfile.gettempdir()}).", default=tempfile.gettempdir())
+    parser.add_argument("--rp",                     help=f"The local path to place the above file once received (default={CT6Base.GetTempFolder()}).", default=CT6Base.GetTempFolder())
     parser.add_argument("--mkdir",                  help="The path to create on the device.")
     parser.add_argument("--rmdir",                  help="The path to remove from the device.")
     parser.add_argument("--rmfile",                 help="The file to remove from the device.")

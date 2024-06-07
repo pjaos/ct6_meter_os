@@ -879,9 +879,10 @@ class CT6ConfiguratorGUI(MultiAppServer):
 
                 self.info("CT6 software restore complete.")
                 self.info("The blue and green LED's should now be flashing on the CT6 device.")
-                self.info("Install Success. You may now configure the WiFi on the CT6 device.")
+                self.info("Install Success. You may now configure the WiFi on the CT6 device using the WiFi tab.")
 
             except Exception as ex:
+                self.debug(traceback.format_exc())
                 self.error(str(ex))
                 
         finally:
