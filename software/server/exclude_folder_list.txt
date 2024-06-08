@@ -1,5 +1,6 @@
 tmp
 packages
 debian
-Pipfile.lock
-mqtt_listen.sh
+build_windows_installer
+installers
+todel
