@@ -494,8 +494,8 @@ class GUI(MultiAppServer):
         leftButtonPanel = column(children=[self._todayButton, self._thisWeekButton, self._thisMonthButton, self._thisYearButton])
         rightButtonPanel = column(children=[self._yesterdayButton, self._lastWeekButton, self._lastMonthButton, self._lastYearButton])
         buttonPanel0 = row(children=[leftButtonPanel, rightButtonPanel])
-        buttonPanel1 = row(children=[subtractStartDaybutton, self._startDateTimePicker, addStartDaybutton], width=370)
-        buttonPanel2 = row(children=[subtractStopDaybutton, self._stopDateTimePicker, addStopDaybutton], width=370)
+        buttonPanel1 = row(children=[subtractStartDaybutton, self._startDateTimePicker, addStartDaybutton])
+        buttonPanel2 = row(children=[subtractStopDaybutton, self._stopDateTimePicker, addStopDaybutton])
         self._line0StatusDiv = Div()
         self._line1StatusDiv = Div()
         self._line2StatusDiv = Div()
@@ -641,7 +641,7 @@ class GUI(MultiAppServer):
                                  columns=columns,
                                  index_position = None,
                                  height=180,
-                                 width=300,
+                                 width=340,
                                  )
 
         table_style = InlineStyleSheet(css="""
