@@ -287,12 +287,26 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._saveConfig()
         threading.Thread( target=self._setDevName, args=(self._ct6IPAddressInput.value,self._ct6DeviceNameInput.value)).start()
         
+    def _removeWhiteSpace(self, aString, replacementChar='_'):
+        """@brief Get a string that has whitespace characters replaced.
+           @param aString The source string to replace whitespace characters in.
+           @param replacementChar The character to replace whitespace characters with.
+           @return A string with the whitespace characters replaced."""
+        #Ensure the string has no tab characters
+        if aString.find("\t") >= 0:
+           aString=aString.replace('\t', '_')
+        #Ensure the string has no space characters
+        if aString.find(" ") >= 0:
+            aString=aString.replace(' ', '_')
+        return aString
+        
     def _setDevName(self, ct6IPAddress, devName):
         """@brief Set the CT6 device name.
            @param ct6IPAddress The address of the CT6 device.
            @param devName The name of the device."""
         try:
             try:
+                devName = self._removeWhiteSpace(devName)
                 self.info(f"Setting CT6 device ({ct6IPAddress}) name.")
                 cfgDict = {}
                 cfgDict[CT6ConfiguratorGUI.DEV_NAME] = devName
@@ -403,12 +417,12 @@ class CT6ConfiguratorGUI(MultiAppServer):
             try:
                 self.info(f"Setting CT6 device ({ct6IPAddress}) port names.")
                 cfgDict = {}
-                cfgDict[CT6ConfiguratorGUI.CT1_NAME] = portNames[0]
-                cfgDict[CT6ConfiguratorGUI.CT2_NAME] = portNames[1]
-                cfgDict[CT6ConfiguratorGUI.CT3_NAME] = portNames[2]
-                cfgDict[CT6ConfiguratorGUI.CT4_NAME] = portNames[3]
-                cfgDict[CT6ConfiguratorGUI.CT5_NAME] = portNames[4]
-                cfgDict[CT6ConfiguratorGUI.CT6_NAME] = portNames[5]
+                cfgDict[CT6ConfiguratorGUI.CT1_NAME] = self._removeWhiteSpace(portNames[0])
+                cfgDict[CT6ConfiguratorGUI.CT2_NAME] = self._removeWhiteSpace(portNames[1])
+                cfgDict[CT6ConfiguratorGUI.CT3_NAME] = self._removeWhiteSpace(portNames[2])
+                cfgDict[CT6ConfiguratorGUI.CT4_NAME] = self._removeWhiteSpace(portNames[3])
+                cfgDict[CT6ConfiguratorGUI.CT5_NAME] = self._removeWhiteSpace(portNames[4])
+                cfgDict[CT6ConfiguratorGUI.CT6_NAME] = self._removeWhiteSpace(portNames[5])
                 response = self._saveConfigDict(ct6IPAddress, cfgDict)
                 if response is not None:
                     msgDict = {CT6ConfiguratorGUI.PORT_NAMES_UPDATED: True}
