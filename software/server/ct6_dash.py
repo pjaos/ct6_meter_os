@@ -179,9 +179,10 @@ class GUI(MultiAppServer):
                     if len(responseTuple) > 0:
                         cmd = "select * from {} limit 1;".format(GUI.DB_META_TABLE_NAME)
                         responseTuple = self._dbIF.executeSQL(cmd)
-                        # The key in this dict will be the database name.
-                        # The value is the contents of the first row in the table.
-                        dbDict[dbName]=responseTuple[0]
+                        if responseTuple and len(responseTuple) > 0:
+                            # The key in this dict will be the database name.
+                            # The value is the contents of the first row in the table.
+                            dbDict[dbName]=responseTuple[0]
         return dbDict
 
     def _updateEnabledState(self, newState, field, enabledText):
