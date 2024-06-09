@@ -2,198 +2,46 @@
 The CT6 hardware is responsible for measuring the bi directional power from
 up to 6 CT sensors. The hardware allows CT6 units to be stacked to provide up
 to 24 bi directional CT ports. However the software does not currently support
-more than 6 ports per unit. The applications are all written in python and have the
-following functionality.
+more than 6 ports per unit. A CT6 device can operate in two modes. 
 
-## ct6_db_store
-This application is responsible for sending are you there (AYT) broadcast messages to
-CT6 modules. The modules then respond with the data from each port. This
-includes
+- Mode 1
+This is the normal operating mode when the ct6_db_store app is used to save data to
+a database and the ct6_dash app is used to start a webserver that allows access to
+the CT6 data. A CT6 device will be in Mode 1 if no MQTT server is configured on 
+the CT6 device. Details of how to configure a CT6 device can be 
+found [here](setting_up_ct6_units.md).
 
-- The RMS power (watts) from each port.
-- The Apparent power (watts) from each port.
-- The reactive power (watts) from each port.
-- The RMS current (amps) from each port.
-- The Peak current (amps) from each port.
-- The power factor for the power on each port.
-- The direction of the power from each port.
-- The RMS AC voltage.
-- The AC Frequency (Hz).
-- The module temperature (°C).
-- The WiFi RSSI (dBm).
-
-When this information is received the ct6_db_store app is responsible for storing it in a mysql database.
-
-## ct6_dash
-This app is responsible for presenting a web server interface that displays a dashboard which reports the
-bi directional power. An example of this dashboard is shown below.
-
-![alt text](images/ct6_dash.png "ct6_dash")
-
-This dashboard allows the user to examine the data from CT6 hardware units. Each CT6 unit is displayed in a separate tab.
-
- - The Today/Yesterday, This Week/Last Week, This Month/Last Month and This Year/Last Year green buttons populate the start and stop date fields and trigger a new power plot of the data. The '>' and '<' buttons either side of the start and stop fields can be used to increment or decrement the fields by one day for each press. The Start and Stop fields can also be updated directly. The buttons at the bottom of the dash can then be selected to plot the data.
-
- - The grey Sec, Min, Hour and Day buttons set the resolution of the data to plot (default = Min). It may be necessary for the user to reduce the resolution when plotting over long time periods.
-
- - The grey Active, Reactive and Apparent buttons select the type of AC power to be displayed (default = Active). The active power is the power that electricity suppliers normally charge for.
-
- - The grey 'Import is positive' and 'Import is negative' buttons set the imported power to be plotted as either negative or positive values (default = Import is negative).
-
-Below this the green buttons allow the user to plot the data of interest.
-
- - Power: 			Plot the AC power measured on each sensor.
- - Power Factor:	Plot the AC power factor measured on each sensor.
- - AC Voltage:		Plot the AC voltage measured by the CT6 unit.
- - AC Frequency:	Plot the AC frequency measured by the CT6 unit.
- - Temperature:		Plot the temperature of the CT6 unit.
- - WiFi RSSI:		Plot the WiFi signal strenght measured by the CT6 unit.
-
-For graphs that show data for each sensor, each name is that which the user gives to each CT port on the CT6 hardware unit.
-
-If the user hovers their mouse over data points on the graph the values at these data points are displayed in popup menus.
-
-The user can select the legend for each trace to toggle it on/off.
-
-## ct6_tool
-This is responsible for providing the features needed to manage CT6 hardware.
-This includes upgrading the micropython firmware on CT6 units over the air.
-
-Each of the above tools can be executed on the command line. These three apps
-provide all the functionality required to use, commission and calibrate the CT6 hardware.
+- Mode 2
+Send data to an MQTT server. In this case the CT6 device must be configured to
+send data to an MQTT server. Details of how to configure a CT6 device can be 
+found [here](setting_up_ct6_units.md). The ability to send data to an MQTT server
+allows integration with other systems (E.G [ioBroker](https://www.iobroker.net/)).
 
 
+# Using the built in server apps.
+The server apps may be installed onto a Linux or Windows machine as 
+detailed [here](installers/README.md). The CT6 device must be configured as detailed
+[here](setting_up_ct6_units.md) not to send data to an MQTT server (no MQTT Server 
+Address configured). In this mode the following apps can be used.
 
-# System Setup
-The following provides the detail necessary to setup the system. Before proceeding with system setup run through the 'Installation of SW' section in the README_MFG.md file.
+## Setup a MYSQL server
+Before starting the apps a MYSQL database is required to store the data from CT6 units. Details of how the MYSQL 
+database can be setup on windows and Linux platforms can be found [here](install_docker_and_mysql.md).
 
-#### WiFi Setup
-There are two methods to setup the WiFi on the CT6 unit. You can use the Android app as detailed under the Android_App folder. Alternatively you can connect the CT6 board via a serial port to a Linux PC and run the 'ct6_tool -w' command to configure the WiFi.
+## ct6_db_store app
+This application is responsible for sending messages to CT6 devices on your LAN and saving the responses from CT6 devices to the MYSQL database.
 
-#### CT6 configuration
-The CT6 unit name and names of each of its ports can be configured as shown below.
+The ct6_db_store app can be started from the command line on Windows (Powershell window) and 
+Linux (terminal window) platforms. 
 
-```
-ct6_tool -a 192.168.0.34 --config
-INFO:  Configure 192.168.0.34
-INFO:  Reading configuration from 192.168.0.34
-INFO:  ID Description    Value
-INFO:  1  Device name     
-INFO:  2  Port 1 name     
-INFO:  3  Port 2 name     
-INFO:  4  Port 3 name     
-INFO:  5  Port 4 name     
-INFO:  6  Port 5 name     
-INFO:  7  Port 6 name     
-INFO:  8  Device Active   0
-INPUT: Enter the ID to change, S to store or Q to quit: 1
-INPUT: Enter the Device name value: Meter Cupboard
-INFO:  ID Description    Value
-INFO:  1  Device name     Meter_Cupboard
-INFO:  2  Port 1 name     
-INFO:  3  Port 2 name     
-INFO:  4  Port 3 name     
-INFO:  5  Port 4 name     
-INFO:  6  Port 5 name     
-INFO:  7  Port 6 name     
-INFO:  8  Device Active   0
-INPUT: Enter the ID to change, S to store or Q to quit: 2
-INPUT: Enter the Port 1 name value: Grid
-INFO:  ID Description    Value
-INFO:  1  Device name     Meter_Cupboard
-INFO:  2  Port 1 name     Grid
-INFO:  3  Port 2 name     
-INFO:  4  Port 3 name     
-INFO:  5  Port 4 name     
-INFO:  6  Port 5 name     
-INFO:  7  Port 6 name     
-INFO:  8  Device Active   0
-INPUT: Enter the ID to change, S to store or Q to quit: 3
-INPUT: Enter the Port 2 name value: Solar
-INFO:  ID Description    Value
-INFO:  1  Device name     Meter_Cupboard
-INFO:  2  Port 1 name     Grid
-INFO:  3  Port 2 name     Solar
-INFO:  4  Port 3 name     
-INFO:  5  Port 4 name     
-INFO:  6  Port 5 name     
-INFO:  7  Port 6 name     
-INFO:  8  Device Active   0
-INPUT: Enter the ID to change, S to store or Q to quit: 4
-INPUT: Enter the Port 3 name value: Battery
-INFO:  ID Description    Value
-INFO:  1  Device name     Meter_Cupboard
-INFO:  2  Port 1 name     Grid
-INFO:  3  Port 2 name     Solar
-INFO:  4  Port 3 name     Battery
-INFO:  5  Port 4 name     
-INFO:  6  Port 5 name     
-INFO:  7  Port 6 name     
-INFO:  8  Device Active   0
-INPUT: Enter the ID to change, S to store or Q to quit: 5
-INPUT: Enter the Port 4 name value: Aircon
-INFO:  ID Description    Value
-INFO:  1  Device name     Meter_Cupboard
-INFO:  2  Port 1 name     Grid
-INFO:  3  Port 2 name     Solar
-INFO:  4  Port 3 name     Battery
-INFO:  5  Port 4 name     Aircon
-INFO:  6  Port 5 name     
-INFO:  7  Port 6 name     
-INFO:  8  Device Active   0
-INPUT: Enter the ID to change, S to store or Q to quit: 6
-INPUT: Enter the Port 5 name value: House
-INFO:  ID Description    Value
-INFO:  1  Device name     Meter_Cupboard
-INFO:  2  Port 1 name     Grid
-INFO:  3  Port 2 name     Solar
-INFO:  4  Port 3 name     Battery
-INFO:  5  Port 4 name     Aircon
-INFO:  6  Port 5 name     House
-INFO:  7  Port 6 name     
-INFO:  8  Device Active   0
-INPUT: Enter the ID to change, S to store or Q to quit: s
-INFO:  Saved parameters to CT6 device.
-```
-
-
-## Storing CT6 data
-Once the CT6 unit has been configured as detailed above the ct6_db_store tool saves data from the CT6 unit to a database.
-
-### Setup a MYSQL database using docker
-- [Install docker on the Ubuntu machine.](https://docs.docker.com/engine/install/ubuntu/)
-- Install the mysql docker container
-
-```
-docker pull mysql
-```
-
-- Run the mysql docker container.
-
-```
-docker run --name mysql-iot -v PATH TO STORE MYSQL DATABASE:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=<MYSQL PASSWORD> -d -p 3306:3306 mysql
-```
-
-Where
-
-PATH TO STORE MYSQL DATABASE = The path on the Ubuntu machine to store the CT6 data.
-
-MYSQL PASSWORD = The root password for the mysql database.
-
-- Check the mysql database is running. The output should be similar to that shown below to indicate the docker container is running.
-
-```
-# docker ps
-# CONTAINER ID   IMAGE     COMMAND                  CREATED       STATUS       PORTS                                                  NAMES
-# 55b31fffed72   mysql     "docker-entrypoint.s…"   12 days ago   Up 12 days   0.0.0.0:3306->3306/tcp, :::3306->3306/tcp, 33060/tcp   mysql-iot
-```
-
-
-### Save CT6 data to the above database.
-The ct6_db_store tool should be executed on the Ubuntu machine that has access to the WiFi network on which the CT6 unit is registered.
+Before using the ct6_db_store app it must be configured to connect to the MYSQL database.
+Start the ct6_db_store app with the -c command line option as shown below to configure
+the required settings.
 
 ```
 ct6_db_store -c
+
+
 INFO:  Loaded config from /home/username/.ct6DBStore.cfg
 INFO:  Saved config to /home/username/.ct6DBStore.cfg
 INFO:  ID  PARAMETER           VALUE
@@ -213,19 +61,20 @@ ID's  1,2,3 and 4 can be left at the default values or unset. They are not curre
 
 ID 5  Should be set to 'HOME/#'.
 
-ID 6  Should be set to the IP address of the Ubuntu machine on the LAN.
+ID 6  Should be set to the IP address of the Windows or Linux machine on your LAN.
 
-ID 7  This can be left at 3306 unless the docker container is setup for a different port.
+ID 7  This can be left at 3306 unless the MYSQL docker container is setup for a different port.
 
 ID 8  The database username can be left as root
 
-ID 9  Ensure the password is set to the password used when the mysql docker container was started.
+ID 9  Ensure the password is set to the password used when the mysql docker container was created.
 
-Once this has been completed 'Q' should be entered to quit the ct6_db_tool.
+Once this has been completed 'Q' should be entered to quit the ct6_db_tool app.
 
-Repeat 'CT6 configuration' (from above system setup section) and use option (ID) 8 to set the device as active. This causes the ct6_db_store tool to start saving it's data to the database.
 
-Start the ct6_db_tool without arguments. This causes messages to be sent to CT6 units which return data to be stored in the database as shown below.
+
+Once the above configuration is complete the ct6_db_store app must be started without the -c 
+command line argument as shown below.
 
 ```
 ct6_db_store
@@ -256,12 +105,17 @@ INFO:  Listening on UDP port 29340
 INFO:  Found device on 192.168.0.34
 ```
 
-The ct6_db_store is now storing data it receives from CT6 units. If multiple units are found they will be stored in different databases.
+The ct6_db_store is now storing data it receives from CT6 units. If multiple units are found they will be 
+stored in different databases. The name of each database will be the configured name of the CT6 device.
 
-## Displaying CT6 data
-The CT6 data can be displayed using the ct6_dash app. This app starts a web server which uses the python bokeh module to present a user interface shown near the top of this document.
 
-The command line shown below allows the user to configure the parameters needed by the app.
+## ct6_dash app
+Once the ct6_db_store app is running the ct6_dash (dashboard) app can be used to start a webserver that
+provides GUI access to the data.
+
+Before using the ct6_dash app it must be configured to connect to the MYSQL database.
+Start the ct6_dash app with the -c command line options as shown below to configure
+the required settings.
 
 ```
 ct6_dash -c
@@ -277,7 +131,7 @@ INFO:  6   LOCAL_GUI_SERVER_PORT     10000
 INPUT: Enter 'E' to edit a parameter, or 'Q' to quit:
 ```
 
-1 = The host address of the machine running the ct6_db_store program.
+1 = The host address of the machine running the MYSQL database.
 
 2 = The TCP port number to connect to the database.
 
@@ -285,11 +139,17 @@ INPUT: Enter 'E' to edit a parameter, or 'Q' to quit:
 
 4 = The password for access to the database.
 
-5 = The address of the local machine on the LAN.
+5 = The address of the local machine on your LAN.
 
-6 = The port number to present the web server on.
+6 = The TCP port number to present the web server on.
 
-To start the web server enter the following command.
+
+Once this has been completed 'Q' should be entered to quit the ct6_dash app.
+
+
+
+Once the above configuration is complete the ct6_dash app must be started without the -c 
+command line argument as shown below.
 
 ```
 ct6_dash
@@ -298,9 +158,8 @@ INFO:  Saved config to /home/username/.ct6Dash.cfg
 INFO:  Connected to MySQL server.
 ```
 
-If executed from an Ubuntu desktop machine the above command will also launch a browser session. If a browser session is started for the above configuration then the URL http://192.168.0.23:10000 will connect to the server.
+When the above command issued a local web browser will be automatically started and connected to the ct6_dash webserver. 
+
+![alt text](images/ct6_dash.png "ct6_dash")
 
 
-## Bringing Up A CT6 unit.
-
-More information can be found on this [here](README_MFG.md)
