@@ -936,7 +936,7 @@ class CTDBClient(DBHandler):
         for elemList in objList:
             _type = elemList[0]
             _count = elemList[1]
-            self._uio.info(f"Found {_count: <8.0f} object of type {_type}")
+            self._uio.debug(f"Found {_count: <8.0f} object of type {_type}")
 
     def hear(self, devDict):
         """@brief Called when data is received from the device.
