@@ -812,21 +812,6 @@ class MCULoader(CT6Base):
         self._mcu = mcu
         self._mcuCodeFolders = [self._app1Folder, os.path.join(self._app1Folder, 'lib'), os.path.join(self._app1Folder, 'lib/drivers')]
         
-    def _info(self, msg):
-        """@brief display an info level message.
-           @param msg The message text."""
-        self._info(msg)
-
-    def _debug(self, msg):
-        """@brief display an info level message.
-           @param msg The message text."""
-        self._debug(msg)
-        
-    def _error(self, msg):
-        """@brief display an error level message.
-           @param msg The message text."""
-        self._error(msg)
-        
     def _checkApp1(self):
         """@brief Run pyflakes3 on the app1 folder code to check for errors before loading it."""
         self._info("Checking python code in the app1 folder using pyflakes")
