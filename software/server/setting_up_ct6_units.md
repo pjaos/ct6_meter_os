@@ -97,9 +97,32 @@ CT6 {"CT2": {"PRMS": 0.0, "PAPPARENT": 0.0, "PF": -1.0, "PREACT": 0.0, "VRMS": 2
  ## Activating a CT6 device
  A CT6 device will not send stats data until it is enabled. A CT6 device may send data to the ct6_db_store
  app when it receives broadcast messages from the ct6_db_store app or when configured to send data to an MQTT
- server. The 'Activate Device' tab allows you to set a CT6 device as active/inactive. To 
+ server. The 'Activate Device' tab allows you to set a CT6 device as active/inactive.
 
  ![alt text](images/ct6_configurator_7.png "CT6 Configurator Activate Device")
+
+ ## Install SW onto a CT6 device
+ The Install tab allows the user to read the factory configuration from the CT6 flash.
+ The flash will then be erased, MicroPython will be reloaded followed by the CT6 firmware.
+ This options allows the user to recover a CT6 unit if required.
+
+ When the 'Install CT6 SW' button is selected the CT6 factory configuration. A USB cable must be connected 
+ to the CT6 device to use this option. During the process of loading the CT6 firmware you will be
+ instructed to power down and then power up the CT6 device while holding the button on the Pico W device. 
+ The hole next to the C on the CT6 on the front of the CT6 case allows you hold this button down without
+ removing the Pico W from the CT6 case.
+
+ ![alt text](images/ct6_configurator_8.png "CT6 Configurator Install")
+
+ ## Scan for CT6 devices
+ The Scan tab allows you to check your LAN for any CT6 devices that may be present. Select the Scan button 
+ to start the scanning process. The dropdown list of CT6 Devices is then populated with those that are found.
+
+  ![alt text](images/ct6_configurator_9.png "CT6 Configurator Scan")
+
+If a device is selected and the 'Power Cycle CT6 Device' button is selected the CT6 device will power off and
+after 4 or 5 seconds power back on again to reconnect to the WiFi network.  
+
 
 
 
