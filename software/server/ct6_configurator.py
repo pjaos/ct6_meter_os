@@ -9,6 +9,7 @@ import tempfile
 import os
 import shutil
 import platform
+import json
 
 from queue import Queue
 from time import time, strftime, localtime
@@ -28,7 +29,7 @@ from bokeh.models import TextInput, PasswordInput, TextAreaInput
 from bokeh.layouts import layout
 from bokeh.models.widgets import Select
 
-from ct6_tool import YDevManager, getCT6ToolCmdOpts, CT6Config, MCULoader, CT6Base
+from ct6_tool import YDevManager, getCT6ToolCmdOpts, CT6Config, MCULoader, CT6Base, CT6Scanner
 from ct6_mfg_tool import FactorySetup, getFactorySetupCmdOpts
 
 class CT6ConfiguratorConfig(ConfigBase):
@@ -910,6 +911,105 @@ class CT6ConfiguratorGUI(MultiAppServer):
         finally:
             self._sendEnableAllButtons(True)   
 
+    def _getScanPanel(self):
+        """@brief Return the panel used to scan for CT6 devices on the LAN."""
+        #Add HTML to the page.
+        descriptionDiv = Div(text="""Scan for CT6 devices on the LAN.""")
+
+        self._ct6Select = Select(title="CT6 Device")
+        ct6DevRow = row(children=[self._ct6Select])
+
+        self._scanSecondsInput = NumericInput(title="Scan Period (Seconds)", value=3, low= 1, high=60, mode='int')
+        scanSecondsRow = row(children=[self._scanSecondsInput])
+
+        self._scanButton = Button(label="Scan", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
+        self._scanButton.on_click(self._scanButtonHandler)
+
+        self._rebootButton = Button(label="Power Cycle CT6 Device", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
+        self._rebootButton.on_click(self._rebootButtonHandler)
+
+        buttonRow = row(children=[self._scanButton, self._rebootButton])
+        
+        panel = column(children=[descriptionDiv,
+                                 ct6DevRow,
+                                 scanSecondsRow,
+                                 buttonRow])
+
+        return TabPanel(child=panel,  title="Scan")
+    
+    def _scanButtonHandler(self, event):
+        """@brief Process button click.
+           @param event The button event."""
+        self._enableAllButtons(False)
+        self._clearMessages()
+        self._saveConfig()
+        threading.Thread( target=self._scanForCT6Devices, args=(self._scanSecondsInput.value,)).start()
+
+    def _rebootButtonHandler(self, event):
+        """@brief Process button click.
+           @param event The button event."""
+        self._enableAllButtons(False)
+        self._clearMessages()
+        self._saveConfig()
+        inputOptions = self._ct6Select.options
+        inputStr = self._ct6Select.value
+        # If not selected, select the first in the list as this appears to the user
+        # that it is the one selected.
+        if len(inputStr) == 0 and len(inputOptions) > 0:
+            inputStr = inputOptions[0]
+        ipAddress = None
+        ct6Name = None
+        if len(inputStr):
+            pos = inputStr.find('/')
+            ipAddress = inputStr[:pos]
+            ct6Name = inputStr[pos+1:]
+        if ipAddress and ct6Name:
+            threading.Thread( target=self._rebootDevice, args=(ipAddress,ct6Name)).start()
+        else:
+            self.warn("Select a CT6 device to reboot.")
+
+    def _ct6DevFound(self, rxDict):
+        self.debug(json.dumps(rxDict, indent=4))
+        if CT6Base.IP_ADDRESS in rxDict and \
+           CT6Base.UNIT_NAME in rxDict:
+            unitName = rxDict[CT6Base.UNIT_NAME]
+            ipAddress = rxDict[CT6Base.IP_ADDRESS]
+            self.info("Found CT6 device: IP Address: "+ipAddress+" ("+unitName+")")
+            msgDict = {CT6Base.IP_ADDRESS: ipAddress,
+                       CT6Base.UNIT_NAME: unitName}
+            self.updateGUI(msgDict)
+
+        return True
+
+    def _scanForCT6Devices(self, scanSeconds):
+        """@brief Search for CT6 devices on the LAN.
+           @param scanSeconds The number os seconds to spend scanning for CT6 devices."""
+        try:
+            ct6Scanner = CT6Scanner(None, None)
+            ct6Scanner.scan(callBack=self._ct6DevFound, runSeconds=scanSeconds)
+        finally:
+            self._sendEnableAllButtons(True)   
+
+    def _rebootDevice(self, ipAddress, deviceName):
+        """@brief Reboot a CT6 device.
+           @param ipAddress The IP address of the CT6 device.
+           @param deviceName The name of the device to be rebooted."""
+        try:
+            options = getCT6ToolCmdOpts()
+            devManager = YDevManager(self, options)
+            devManager.setIPAddress(ipAddress)
+            self.info(f"Checking {ipAddress} is reachable.")
+            devManager.doPing(ipAddress)
+            self.info(f"Power cycling {deviceName}")
+            devManager._powerCycle()
+            self.info(f"Waiting for {deviceName} to power off.")
+            devManager._waitForWiFiDisconnect()
+            self.info(f"Waiting for {deviceName} to power up and reconnect to the WiFi network.")
+            devManager._waitForPingSuccess()
+
+        finally:
+            self._sendEnableAllButtons(True)
+
     def _enableAllButtons(self, enabled):
         """@brief Enable/Disable all buttons.
            @param enabled True if button is enabled."""
@@ -922,9 +1022,12 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._getPortNamesButton.disabled = not enabled
         self._getEnabledStateButton.disabled = not enabled
         self._getMQTTServerButton.disabled = not enabled
+        self._scanButton.disabled = not enabled
+        self._rebootButton.disabled = not enabled
         
     def _clearMessages(self):
         """@brief Reset the messages in the status area."""
+        self._lastStatusMsgTextInput.value = ""
         self._statusAreaInput.value = ""
         
     def _mainApp(self, doc):
@@ -963,6 +1066,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._tabList.append( self._getMQTTPanel() )
         self._tabList.append( self._getEnableDevicePanel() )
         self._tabList.append( self._getInstallPanel() )
+        self._tabList.append( self._getScanPanel() )
 
         self._allTabsPanel = Tabs(tabs=self._tabList, sizing_mode="stretch_both", stylesheets=tabTextSizeSS)
             
@@ -1159,6 +1263,14 @@ class CT6ConfiguratorGUI(MultiAppServer):
             self._mqttUsernameInput.value = username
             self._mqttPasswordInput.value = password
             self._mqttServerTXPeriodMSInput.value = mqttTXPeriodMS
+
+        elif CT6Base.IP_ADDRESS in rxDict and \
+             CT6Base.UNIT_NAME in rxDict:
+            selectText = rxDict[CT6Base.IP_ADDRESS] + '/' + rxDict[CT6Base.UNIT_NAME]
+            if selectText not in self._ct6Select.options:
+                optionsList = list(self._ct6Select.options)
+                optionsList.append(selectText)
+                self._ct6Select.options = optionsList
 
     def _sendEnableAllButtons(self, state):
         """@brief Send a message to the GUI to enable/disable all the command buttons.

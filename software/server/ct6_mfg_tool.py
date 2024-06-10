@@ -490,7 +490,7 @@ class FactorySetup(CT6Base):
         self._checkAddress()
         self._uio.info(f'Factory setup and calibration of {self._ipAddress}')
 
-        self._waitForPingSucess(pingHoldSecs=0)
+        self._waitForPingSuccess(pingHoldSecs=0)
         #Calibrate the AC voltage for both devices first
         self._uio.info("Calibrating U5 VOLTAGE gain.")
         acVoltage = self._calVoltageGain(1)
@@ -507,7 +507,7 @@ class FactorySetup(CT6Base):
         portIndex = 0
         while portIndex < len(portRange):
             ct = portRange[portIndex]
-            self._waitForPingSucess(pingHoldSecs=0)
+            self._waitForPingSuccess(pingHoldSecs=0)
             self._uio.info("")
             self._uio.info("Ensure no AC load is connected.")
             self._uio.info("At this point you may enter 'B' to jump back to previous port calibration.")
@@ -790,7 +790,7 @@ class FactorySetup(CT6Base):
     def _waitForUnitPingable(self):
         """@brief Wait for unit to be pingable."""
         self._uio.info(f"Checking for CT6 unit on {self._ipAddress}")
-        self._waitForPingSucess()
+        self._waitForPingSuccess()
         
     def _powerCycle(self):
         url=f"http://{self._ipAddress}/power_cycle"
@@ -1125,7 +1125,7 @@ class FactorySetup(CT6Base):
         sleep(1)
         self._powerCycle()
         self._uio.info("CT6 unit is now power cycling.")
-        self._waitForPingSucess(pingHoldSecs=4)
+        self._waitForPingSuccess(pingHoldSecs=4)
         
         self.calibrateAndReboot()
         

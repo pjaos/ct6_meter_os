@@ -149,6 +149,30 @@ class CT6Base(BaseConstants):
         self._initFolders()
         self._ensureMCUCodeAvailable()
 
+    def _info(self, msg):
+        """@brief Display an info level message.
+           @param msg The message to display."""
+        if self._uio:
+            self._uio.info(msg)
+
+    def _warn(self, msg):
+        """@brief Display a warning level message.
+           @param msg The message to display."""
+        if self._uio:
+            self._uio.warn(msg)
+
+    def _error(self, msg):
+        """@brief Display an error level message.
+           @param msg The message to display."""
+        if self._uio:
+            self._uio.error(msg)
+
+    def _debug(self, msg):
+        """@brief Display a debug level message.
+           @param msg The message to display."""
+        if self._uio:
+            self._uio.debug(msg)
+
     def _initFolders(self):
         """@brief Init the folders used by various tools."""
         self._tempFolder = CT6Base.GetTempFolder()
@@ -182,8 +206,8 @@ class CT6Base(BaseConstants):
         if not os.path.isdir(self._uf2ImagePath):
             raise Exception(f"{self._uf2ImagePath} folder not found.")
 
-        self._uio.info(f"Install Folder:  {self._installFolder}")
-        self._uio.info(f"MCU Code Folder: {self._picowFolder}")
+        self._info(f"Install Folder:  {self._installFolder}")
+        self._info(f"MCU Code Folder: {self._picowFolder}")
 
         if not os.path.isdir(self._picowFolder):
             raise Exception(f"{self._picowFolder} folder not found.")
@@ -220,7 +244,7 @@ class CT6Base(BaseConstants):
     def _getConfigDict(self):
         """@brief Get the config dict from the device.
            @return The config dict."""
-        self._uio.info(f"Reading configuration from {self._ipAddress}")
+        self._info(f"Reading configuration from {self._ipAddress}")
         url=f"http://{self._ipAddress}/get_config"
         response = requests.get(url)
         return response.json()
@@ -228,7 +252,7 @@ class CT6Base(BaseConstants):
     def _getStatsDict(self):
         """@brief Get the stats dict from the device.
            @return The stats dict."""
-        self._uio.info(f"Reading stats from {self._ipAddress}")
+        self._info(f"Reading stats from {self._ipAddress}")
         url=f"http://{self._ipAddress}/get_stats"
         response = requests.get(url)
         return response.json()
@@ -245,7 +269,7 @@ class CT6Base(BaseConstants):
         if ipAddress is None:
             raise Exception("Use the -a/--address argument to define the CT6 IP address.")
         self._ipAddress = ipAddress
-        self._uio.debug(f"self._ipAddress={self._ipAddress}")
+        self._debug(f"self._ipAddress={self._ipAddress}")
 
     def doPing(self, address):
         """@brief Attempt to ping the address.
@@ -271,7 +295,7 @@ class CT6Base(BaseConstants):
            @param restartTimeout The number of seconds before an exception is thrown if the WiFi does not disconnect.
            @param showMessage If True show a message indicating we're waiting for a reboot."""
         if showMessage:
-            self._uio.info(f"Waiting for the CT6 unit  ({self._ipAddress}) to reboot.")
+            self._info(f"Waiting for the CT6 unit  ({self._ipAddress}) to reboot.")
         startT = time()
         while True:
             pingSec = self.doPing(self._ipAddress)
@@ -283,7 +307,7 @@ class CT6Base(BaseConstants):
         
             sleep(0.25)
             
-    def _waitForPingSucess(self, restartTimeout=60, pingHoldSecs = 3):
+    def _waitForPingSuccess(self, restartTimeout=60, pingHoldSecs = 3):
         """@brief Wait for a reconnect to the WiFi network.
            @param restartTimeout The number of seconds before an exception is thrown if the WiFi does not reconnect.
            @param pingHoldSecs The number of seconds of constant pings before we determine the WiFi has reconnected.
@@ -308,20 +332,20 @@ class CT6Base(BaseConstants):
             
             sleep(0.25)
             
-        self._uio.info(f"{self._ipAddress} ping success.")
+        self._info(f"{self._ipAddress} ping success.")
         
 
     def _loadJSONFile(self, filename):
         """@brief Load a dict from a JSON formatted file.
            @param filename The file to read from."""
-        self._uio.debug(f"Loading WiFi config from {filename}")
+        self._debug(f"Loading WiFi config from {filename}")
         with open(filename) as fd:
             fileContents = fd.read()
             return json.loads(fileContents)
         
     def _saveDictToJSONFile(self, theDict, filename):
         """@brief Save a dict to a file (JSON format)."""
-        self._uio.debug(f"Saving to {filename}")
+        self._debug(f"Saving to {filename}")
         with open(filename, 'w') as fd:
             json.dump(theDict, fd, ensure_ascii=False)
         
@@ -340,21 +364,21 @@ class CT6Base(BaseConstants):
         """@brief Run an rshell command file.
            @param cmdList A list of commands to execute."""
         cmdFile = CT6Base.RSHELL_CMD_LIST_FILE
-        self._uio.debug(f"Creating {cmdFile}")
+        self._debug(f"Creating {cmdFile}")
         # Create the rshell cmd file.
         fd = open(cmdFile, 'w')
         for line in cmdList:
             fd.write(f"{line}\n")
         fd.close()
         rshellCmd = self._getRShellCmd(self._serialPort, cmdFile)
-        self._uio.debug(f"EXECUTING: {rshellCmd}")
+        self._debug(f"EXECUTING: {rshellCmd}")
         check_call(rshellCmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
         
     def _openSerialPort(self, matchStr="/dev/ttyA"):
         """@brief Open the selected serial port.
            @param matchStr A string to match for any serial port found."""
         self._serialPort = self._getSerialPort(matchStr)
-        self._uio.debug(f"Attempting to open serial port {self._serialPort}")
+        self._debug(f"Attempting to open serial port {self._serialPort}")
         self._ser = serial.serial_for_url(self._serialPort, do_not_open=True, exclusive=True)
         self._ser.baudrate = 115200
         self._ser.bytesize = 8
@@ -363,14 +387,14 @@ class CT6Base(BaseConstants):
         self._ser.rtscts = False
         self._ser.xonxoff = False
         self._ser.open()
-        self._uio.debug(f"Opened serial port {self._serialPort}")
+        self._debug(f"Opened serial port {self._serialPort}")
                     
     def _getSerialPort(self, matchText, timeout=30):
         """@brief Get a serial port that should be connected to the RPi Pico W
            @param matchText The text to match the serial ports.
            @param timeout The timeout in seconds to wait for a serial port to appear.
            @return The serial device string."""
-        self._uio.info(f"Checking serial connections for CT6 device (timeout = {timeout} seconds).")
+        self._info(f"Checking serial connections for CT6 device (timeout = {timeout} seconds).")
         # If windows then force a COM port
         if self._windowsPlatform:
             matchText = "COM"
@@ -393,12 +417,12 @@ class CT6Base(BaseConstants):
         if len(matchingSerialPortList) == 0:
             raise Exception('No RPi Pico W serial port detected.')
                         
-        self._uio.info("Checking that only one serial port is connected to this machine.")
+        self._info("Checking that only one serial port is connected to this machine.")
         
         if len(matchingSerialPortList) > 1:
             raise Exception(f'Multiple serial ports detected: {",".join(matchingSerialPortList)}')
         
-        self._uio.info(f"Found {matchingSerialPortList[0]}")
+        self._info(f"Found {matchingSerialPortList[0]}")
         return matchingSerialPortList[0]
         
     def _checkMicroPython(self, closeSerialPort=True):
@@ -406,7 +430,7 @@ class CT6Base(BaseConstants):
            @param closeSerialPort If True then close the serial port on exit.
            @return True on success."""
         success = False
-        self._uio.debug("_checkMicroPython(): START")
+        self._debug("_checkMicroPython(): START")
         try:
             try:
                 self._openSerialPort()
@@ -418,34 +442,34 @@ class CT6Base(BaseConstants):
                     if now >= timeToSendCTRLC:
                         # Send CTRL B
                         self._ser.write(b"\03\02")
-                        self._uio.debug("Sent CTRL C/CTRL B")
+                        self._debug("Sent CTRL C/CTRL B")
                         # Send CTRL C every 3 seconds
                         timeToSendCTRLC = now+3
                     if self._ser.in_waiting > 0:
                         data = self._ser.read_until()
                         if len(data) > 0:
                             data=data.decode()
-                            self._uio.debug(f"Serial data = {data}")
+                            self._debug(f"Serial data = {data}")
                             if data.startswith("MicroPython"):
                                 line = data.rstrip("\r\n")
-                                self._uio.info(f"CT6 Unit:  {line}")
+                                self._info(f"CT6 Unit:  {line}")
                                 success = True
                                 break
                     else:
                         sleep(0.1)
 
             except serial.SerialException:
-                self._uio.debug(f"SerialException: {traceback.format_exc()}")
+                self._debug(f"SerialException: {traceback.format_exc()}")
     
             except OSError:
-                self._uio.debug(f"SerialException: {traceback.format_exc()}")
+                self._debug(f"SerialException: {traceback.format_exc()}")
 
         finally:
             if closeSerialPort and self._ser:
                 self._ser.close()
                 self._ser = None
                 
-        self._uio.debug("_checkMicroPython(): STOP")
+        self._debug("_checkMicroPython(): STOP")
         return success
         
     def restart(self):
@@ -492,11 +516,11 @@ class CT6Base(BaseConstants):
         thisMachineFileContents = self._getFileContents(CT6Base.CT6_MACHINE_CONFIG_FILE)
         if thisMachineFileContents is None:
             raise Exception(f"The CT6 board does not have a {CT6Base.CT6_MACHINE_CONFIG_FILE} file. Run a MFG test to recover.")
-        self._uio.debug(f"thisMachineFileContents=<{thisMachineFileContents}>")
+        self._debug(f"thisMachineFileContents=<{thisMachineFileContents}>")
         thisMachineDict = json.loads(thisMachineFileContents)
         fc = self._getFileContents(CT6Base.CT6_FACTORY_CONFIG_FILE)
         if fc == None:
-            self._uio.warn(f"The CT6 board does not have a {CT6Base.CT6_FACTORY_CONFIG_FILE} file.")
+            self._warn(f"The CT6 board does not have a {CT6Base.CT6_FACTORY_CONFIG_FILE} file.")
         # Set the house WiFi configuration in the machine config dict
         thisMachineDict[CT6Base.WIFI_CFG_KEY] = wifiCfgDict[CT6Base.WIFI_CFG_KEY]
         # Ensure bluetooth is turned off now we have configured the WiFi.
@@ -512,13 +536,13 @@ class CT6Base(BaseConstants):
         
     def _rebootUnit(self):
         """@brief reboot a CT6 unit."""
-        self._uio.info("Rebooting the MCU")
+        self._info("Rebooting the MCU")
         # Attempt to connect to the board under test python prompt
         self._checkMicroPython(closeSerialPort=False)
         try:
             # Send the python code to reboot the MCU
             self._ser.write(b"import machine ; machine.reset()\r")
-            self._uio.info("Rebooted the MCU")
+            self._info("Rebooted the MCU")
         except:
             pass
         if self._ser:
@@ -540,7 +564,7 @@ class CT6Base(BaseConstants):
         HOUSE_WIFI_TEMPLATE = HOUSE_WIFI_TEMPLATE.replace('PASSWORD_VALUE', password)
         with open(CT6Base.HOUSE_WIFI_CFG_FILE, 'w') as fd:
             fd.write(HOUSE_WIFI_TEMPLATE)
-        self._uio.info(f"Created {CT6Base.HOUSE_WIFI_CFG_FILE}")
+        self._info(f"Created {CT6Base.HOUSE_WIFI_CFG_FILE}")
 
     def _runApp(self, waitForIPAddress=True):
         """@brief Run the CT6 firmware on the CT6 unit.
@@ -548,7 +572,7 @@ class CT6Base(BaseConstants):
            @return The IP address that the CT6 obtains when registered on the WiFi if waitForIPAddress == True or None if not."""
         ipAddress = None
         sleep(1)
-        self._uio.info("Running APP1 on the CT6 unit. Waiting for WiFi connection...")
+        self._info("Running APP1 on the CT6 unit. Waiting for WiFi connection...")
         try:
             try:
                 self._openSerialPort()
@@ -565,7 +589,7 @@ class CT6Base(BaseConstants):
                             lines = data.split("\n")
                             for line in lines:
                                 line=line.rstrip("\r\n")
-                                self._uio.debug(line)
+                                self._debug(line)
 
                         if waitForIPAddress:                                
                             pos = data.find(", IP Address=")
@@ -573,10 +597,10 @@ class CT6Base(BaseConstants):
                                 elems = data.split("=")
                                 if len(elems) > 0:    
                                     ipAddress = elems[-1].rstrip("\r\n")
-                                    self._uio.info(f"CT6 IP address = {ipAddress}")
-                                    self._uio.info("Waiting for firmware to startup on CT6 device.")
+                                    self._info(f"CT6 IP address = {ipAddress}")
+                                    self._info("Waiting for firmware to startup on CT6 device.")
                                     sleep(4)
-                                    self._uio.info("Firmware is now running on the CT6 device.")
+                                    self._info("Firmware is now running on the CT6 device.")
                                     break
                         else:
                             # Wait for the app to get to a running state.
@@ -586,10 +610,10 @@ class CT6Base(BaseConstants):
                                 break
                                 
             except serial.SerialException:
-                self._uio.debug(f"SerialException: {traceback.format_exc()}")
+                self._debug(f"SerialException: {traceback.format_exc()}")
 
             except OSError:
-                self._uio.debug(f"SerialException: {traceback.format_exc()}")
+                self._debug(f"SerialException: {traceback.format_exc()}")
             
         finally:
             if self._ser:
@@ -601,7 +625,7 @@ class CT6Base(BaseConstants):
     def loadCT6Firmware(self, factoryConfigFile=None):
         """@brief Load the CT6 code onto the CT6 hardware.
            @param factoryConfigFile If set this is the factory.cfg file to load onto the CT6 unit."""
-        self._uio.debug("loadCT6Firmware(): START")
+        self._debug("loadCT6Firmware(): START")
         # If factory config defined check the contents of the file.
         if factoryConfigFile:
             self._checkFactoryConfFile(factoryConfigFile)
@@ -609,26 +633,26 @@ class CT6Base(BaseConstants):
         # This will clean all the files including all config from the MCU flash memory 
         mcuLoader = MCULoader(self._uio, self._options)
         mcuLoader.load()
-        self._uio.info("Running the CT6 firmware")
+        self._info("Running the CT6 firmware")
         # Start the app. This will create the this.machine.cfg file
         self._runApp(waitForIPAddress=False)
         if factoryConfigFile:
             self.restoreFactoryConfig(factoryConfigFile)
             
-        self._uio.info("Updating the MCU WiFi configuration.")
+        self._info("Updating the MCU WiFi configuration.")
         # Now the this.machine.cfg file is present we can setup the configuration.
         self._updateWiFiConfig()
         self._rebootUnit()
-        self._uio.info("Starting MCU to register on the WiFi network.")
+        self._info("Starting MCU to register on the WiFi network.")
         ipAddress = self._runApp()
-        self._uio.debug("loadCT6Firmware(): STOP")
+        self._debug("loadCT6Firmware(): STOP")
         return ipAddress
 
     def _getFileContentsOverWifi(self, filename, address):
         """@brief Get the file contents via the network (WiFi).
            @param filename The text filename to read.
            @brief address The unit IP address."""
-        self._uio.info(f"Get {filename} from {address}.")
+        self._info(f"Get {filename} from {address}.")
         url=f"http://{address}{CT6Base.GET_FILE_CMD}?file={filename}"
         response = self._runRESTCmd(url)
         rDict = response.json()
@@ -666,7 +690,7 @@ class CT6Base(BaseConstants):
                 assyStr = elems[0] + "_" + elems[1] + "_" + elems[2]
                 factoryCfgDict[CT6Base.ASSY_KEY] = assyStr
                 self._saveDictToJSONFile(factoryCfgDict, factoryConfigLogFile)
-                self._uio.warn(f"Corrected assembly number in the {factoryConfigLogFile} file.")
+                self._warn(f"Corrected assembly number in the {factoryConfigLogFile} file.")
             else:
                 raise Exception(f"{filename} invalid. Should have 'ASY0398_V03.2000_SN00001834_20240211094915_factory.cfg' form.")
             
@@ -686,7 +710,7 @@ class CT6Base(BaseConstants):
         with open(localFile, 'rb') as fd:
             encodedData = fd.read()
             sha256=hashlib.sha256(encodedData).hexdigest()
-        self._uio.info("Sending {} to {}".format(localFile, destPath))
+        self._info("Sending {} to {}".format(localFile, destPath))
         s = socket.socket()
         s.connect(socket.getaddrinfo(address, YDevManager.TCP_PORT)[0][-1])
         header = 'FILE {} {} {} {} HTTP/1.1\n'.format(fn, destPath, len(encodedData), sha256)
@@ -695,7 +719,7 @@ class CT6Base(BaseConstants):
         strResponse = response.decode()
         if strResponse.find("200 OK") == -1:
             raise Exception("{} file XFER failed.".format(localFile))
-        self._uio.info("{} file XFER success.".format(localFile))
+        self._info("{} file XFER success.".format(localFile))
 
     def restoreFactoryConfig(self, factoryConfigFile, serialCon = True):
         """@brief Restore the last factory config file to the CT6 unit via it's serial port.
@@ -714,7 +738,7 @@ class CT6Base(BaseConstants):
             self._sendFileOverWiFi(self._ipAddress, tmpLocalFile, "/")
             os.remove(tmpLocalFile)
             
-        self._uio.info("Loaded the factory.cfg data to the CT6 board.")
+        self._info("Loaded the factory.cfg data to the CT6 board.")
         
 
     def _runCommand(self, cmd, returnDict = False):
@@ -722,10 +746,10 @@ class CT6Base(BaseConstants):
            @return A requests instance."""
         self._checkAddress()
         url = 'http://{}:{}{}'.format(self._ipAddress, CT6Base.TCP_PORT, cmd)
-        self._uio.debug(f"CMD: {url}")
+        self._debug(f"CMD: {url}")
         if returnDict:
             obj = requests.get(url).json()
-            self._uio.debug(f"CMD RESPONSE: { str(obj) }")
+            self._debug(f"CMD RESPONSE: { str(obj) }")
             if isinstance(obj, dict):
                 return obj
             else:
@@ -741,20 +765,20 @@ class CT6Base(BaseConstants):
         if not os.path.isdir(localPath):
             raise Exception(f"{localPath} local path not found.")
 
-        self._uio.info("Receiving {} from {}".format(receiveFile, self._ipAddress))
+        self._info("Receiving {} from {}".format(receiveFile, self._ipAddress))
         requestsInstance = self._runCommand(YDevManager.GET_FILE_CMD + f"?file={receiveFile}")
         cfgDict = requestsInstance.json()
         if receiveFile in cfgDict:
             if os.path.isfile(receiveFile):
-                self._uio.info("The local file {} already exists.".format(receiveFile))
+                self._info("The local file {} already exists.".format(receiveFile))
                 if self._uio.getBoolInput("Overwrite y/n: "):
                     os.remove(receiveFile)
-                    self._uio.info("Removed local {}".format(receiveFile))
+                    self._info("Removed local {}".format(receiveFile))
             fileContents=cfgDict[receiveFile]
             absFile = os.path.join(localPath, receiveFile)
             with open(absFile, 'w') as fd:
                 fd.write(fileContents)
-            self._uio.info("Created local {}".format(absFile))
+            self._info("Created local {}".format(absFile))
 
         else:
             if "ERROR" in cfgDict:
@@ -791,17 +815,17 @@ class MCULoader(CT6Base):
     def _info(self, msg):
         """@brief display an info level message.
            @param msg The message text."""
-        self._uio.info(msg)
+        self._info(msg)
 
     def _debug(self, msg):
         """@brief display an info level message.
            @param msg The message text."""
-        self._uio.debug(msg)
+        self._debug(msg)
         
     def _error(self, msg):
         """@brief display an error level message.
            @param msg The message text."""
-        self._uio.error(msg)
+        self._error(msg)
         
     def _checkApp1(self):
         """@brief Run pyflakes3 on the app1 folder code to check for errors before loading it."""
@@ -870,7 +894,7 @@ class MCULoader(CT6Base):
         """@brief Load files onto the micro controller device.
            @param fileList The list of files to load.
            @param port The serial port to use."""      
-        self._uio.info("Loading CT6 firmware. This may take several minutes...")                 
+        self._info("Loading CT6 firmware. This may take several minutes...")                 
         cmdList = copy(MCULoader.CMD_LIST)
         for srcFile in fileList:
             picoWPos = srcFile.find("picow")
@@ -892,9 +916,9 @@ class MCULoader(CT6Base):
             if cmdOutput.find(_file) == -1:
                 lines = cmdOutput.split("\n")
                 for l in lines:
-                    self._uio.info(l)
+                    self._info(l)
                 raise Exception(f"Failed to load the {_file} file onto the CT6 device.") 
-        self._uio.info(f"Loaded all {len(fileList)} python files.")    
+        self._info(f"Loaded all {len(fileList)} python files.")    
     
     def _deleteAllCT6Files(self, port):
         """@brief Delete all files from the CT6 device.
@@ -1030,10 +1054,10 @@ class YDevManager(CT6Base):
     def _checkModulesInstalled(self):
         """@brief Check the required python modules are installed to rnu this tool."""
         for module in YDevManager.REQUIRED_PYPI_MODULES:
-            self._uio.info(f"Checking that the {module} python module is installed.")
+            self._info(f"Checking that the {module} python module is installed.")
             cmd = f"python3 -m pip install {module}"
             check_call(cmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
-            self._uio.info(f"The {module} python module is installed.")
+            self._info(f"The {module} python module is installed.")
 
     def _ensureValidAddress(self):
         """@brief Ensure the units address is valid."""
@@ -1044,10 +1068,10 @@ class YDevManager(CT6Base):
                   This involves zipping up all files in the self._app1Folder folder into a zip package file."""
         appZipFile = self._getAppZipFile()
         if os.path.isfile(appZipFile):
-            self._uio.info("{} already exists.".format(appZipFile))
+            self._info("{} already exists.".format(appZipFile))
             if self._uio.getBoolInput("Overwrite y/n: "):
                 os.remove(appZipFile)
-                self._uio.info("Removed {}".format(appZipFile))
+                self._info("Removed {}".format(appZipFile))
             else:
                 return
 
@@ -1060,8 +1084,8 @@ class YDevManager(CT6Base):
                        file_name = os.path.join(path, file)
                        archName = os.path.join(path.replace(self._app1Folder, ""), file)
                        zip.write(file_name, arcname=archName) # In archive the names are all relative to root
-                       self._uio.info("Added: {}".format(file_name))
-            self._uio.info('Created {}'.format(opFile))
+                       self._info("Added: {}".format(file_name))
+            self._info('Created {}'.format(opFile))
 
         else:
             raise Exception("{} path not found.".format(self._app1Folder))
@@ -1069,16 +1093,16 @@ class YDevManager(CT6Base):
     def _checkRunningNewApp(self, restartTimeout=120):
         """@brief Check that the upgrade has been successful and the device is running the updated app."""
         self._waitForWiFiDisconnect()
-        self._uio.info(f"The CT6 unit ({self._ipAddress}) has rebooted.")
-        self._uio.info("Waiting for the CT6 device to connect to the WiFi network.")
-        self._waitForPingSucess()
+        self._info(f"The CT6 unit ({self._ipAddress}) has rebooted.")
+        self._info("Waiting for the CT6 device to connect to the WiFi network.")
+        self._waitForPingSuccess()
         
         retDict = self._runCommand(YDevManager.GET_ACTIVE_APP_FOLDER, returnDict=True)
         activeApp = retDict['ACTIVE_APP_FOLDER']
         if self._orgActiveAppFolder == activeApp:
             raise Exception(f"Failed to run the updated app. Still running from {self._orgActiveAppFolder}.")
         else:
-            self._uio.info(f"Upgrade successful. Switched from {self._orgActiveAppFolder} to {activeApp}")
+            self._info(f"Upgrade successful. Switched from {self._orgActiveAppFolder} to {activeApp}")
 
     def upgrade(self, promptReboot=True):
         """@brief Perform an upgrade on the units SW.
@@ -1086,14 +1110,14 @@ class YDevManager(CT6Base):
         startTime = time()
         self._ensureValidAddress()
         appSize = self._getSize(self._picowFolder)
-        self._uio.info(f"Peforming an OTA upgrade of {self._ipAddress}")
+        self._info(f"Peforming an OTA upgrade of {self._ipAddress}")
 
         # We need to erase any data in the inactive partition to see if we have space for the new app
         self._runCommand(YDevManager.ERASE_OFFLINE_APP)
         self._checkDiskSpace(appSize)
         self._sendFilesToInactiveAppFolder()
         self._switchActiveAppFolder()
-        self._uio.info("took {:.1f} seconds to upgrade device.".format(time()-startTime))
+        self._info("took {:.1f} seconds to upgrade device.".format(time()-startTime))
         # Don't leave the byte code files
         self._deleteMPYFiles()
         if promptReboot:
@@ -1106,7 +1130,7 @@ class YDevManager(CT6Base):
                     break
     
                 if response.lower() == 'n':
-                    self._uio.info("The device will run the new software when it is manually restarted.")
+                    self._info("The device will run the new software when it is manually restarted.")
                     break
 
     def _deleteFiles(self, fileList):
@@ -1114,11 +1138,11 @@ class YDevManager(CT6Base):
         for aFile in fileList:
             if os.path.isfile(aFile):
                 os.remove(aFile)
-                self._uio.info("Deleted local {}".format(aFile))
+                self._info("Deleted local {}".format(aFile))
 
     def _deleteMPYFiles(self):
         """@brief Delete existing *.mpy files"""
-        self._uio.info("Cleaning up python bytecode files.")
+        self._info("Cleaning up python bytecode files.")
         fileList = []
         self._getFileList(self._upgradeAppRoot, fileList)
         mpyFileList = []
@@ -1130,11 +1154,11 @@ class YDevManager(CT6Base):
     def _reboot(self):
         """@brief Issue a command to reboot the device."""
         self._runCommand(YDevManager.REBOOT_DEVICE, returnDict = True)
-        self._uio.info("The device is rebooting.")
+        self._info("The device is rebooting.")
 
     def _powerCycle(self):
         self._runCommand(YDevManager.POWER_CYCLE_DEVICE, returnDict = True)
-        self._uio.info("The device is power cycling.")
+        self._info("The device is power cycling.")
 
     def _getSize(self, folder, byteCount=0):
         """@brief Get the size of all the files in and below the folder.
@@ -1157,7 +1181,7 @@ class YDevManager(CT6Base):
         mpyFile = os.path.basename(pythonFile)
         mpyFile = mpyFile.replace(".py",".mpy")
 
-        self._uio.info("Converting {} to {} (bytecode).".format(os.path.basename(pythonFile), mpyFile))
+        self._info("Converting {} to {} (bytecode).".format(os.path.basename(pythonFile), mpyFile))
         outputFile = pythonFile.replace(".py",".mpy")
         cmd = f'{self._mpyCmdLinePrefix} "{pythonFile}"'
         check_call(cmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
@@ -1184,7 +1208,7 @@ class YDevManager(CT6Base):
         if os.path.isdir(packagePath):
             shutil.rmtree(packagePath)
         os.mkdir(packagePath)
-        self._uio.info(f"Unzipping {zipFile} to {packagePath}")
+        self._info(f"Unzipping {zipFile} to {packagePath}")
 
         with ZipFile(zipFile, 'r') as zip_ref:
             zip_ref.extractall(packagePath)
@@ -1205,9 +1229,9 @@ class YDevManager(CT6Base):
                 maxAppSize = int(diskSize /2)
                 if appSize > maxAppSize:
                     raise Exception("The app is too large ({} bytes, max {} bytes).".format(appSize, maxAppSize))
-                self._uio.info("App size:            {}".format(appSize))
-                self._uio.info("Max app size:        {}".format(maxAppSize))
-                self._uio.info("% space left:        {:.1f}".format( ((1-(appSize/maxAppSize))*100.0) ))
+                self._info("App size:            {}".format(appSize))
+                self._info("Max app size:        {}".format(maxAppSize))
+                self._info("% space left:        {:.1f}".format( ((1-(appSize/maxAppSize))*100.0) ))
 
         else:
             raise Exception("Unable to retrieve the disk space from the device.")
@@ -1217,7 +1241,7 @@ class YDevManager(CT6Base):
         responseDict = self._runCommand(YDevManager.GET_INACTIVE_APP_FOLDER, returnDict=True)
         if YDevManager.INACTIVE_APP_FOLDER_KEY in responseDict:
             inactiveAppFolder = responseDict[YDevManager.INACTIVE_APP_FOLDER_KEY]
-            self._uio.info("Inactive App Folder: {}".format(inactiveAppFolder))
+            self._info("Inactive App Folder: {}".format(inactiveAppFolder))
             localAppFolder = self._upgradeAppRoot
             fileList=[]
             self._getFileList(localAppFolder, fileList)
@@ -1252,7 +1276,7 @@ class YDevManager(CT6Base):
 
         elif isinstance(obj, list):
             for line in obj:
-                self._uio.info(line)
+                self._info(line)
 
     def _showCmdResponse(self, cmd):
         """@brief Show the response to a command."""
@@ -1277,18 +1301,18 @@ class YDevManager(CT6Base):
         cfgDict = requestsInstance.json()
         configFilename = os.path.join(self._tempFolder, "this.machine.cfg")
         if os.path.isfile(configFilename):
-            self._uio.info("{} already exists.".format(configFilename))
+            self._info("{} already exists.".format(configFilename))
             if self._uio.getBoolInput("Overwrite y/n: "):
                 os.remove(configFilename)
-                self._uio.info("Removed local {}".format(configFilename))
+                self._info("Removed local {}".format(configFilename))
         jsonStr = json.dumps(cfgDict, indent=4)
         with open(configFilename, 'w') as fd:
             fd.write(jsonStr)
-        self._uio.info("Created local {}".format(configFilename))
+        self._info("Created local {}".format(configFilename))
 
     def eraseInactiveApp(self):
         """@bref Erase the inactive application."""
-        self._uio.info("Erasing inactive app.")
+        self._info("Erasing inactive app.")
         self._showCmdResponse(YDevManager.ERASE_OFFLINE_APP)
 
     def sendFile(self, localFile, destPath):
@@ -1360,10 +1384,10 @@ class YDevManager(CT6Base):
 
     def configureWiFi(self):
         """@brief configure the CT6 WiFi interface from the house_wifi.cfg file."""
-        self._uio.info("Setting up CT6 WiFi interface.")
+        self._info("Setting up CT6 WiFi interface.")
         ssid = self._updateWiFiConfig()
-        self._uio.info(f"WiFi SSID: {ssid}")
-        self._uio.info("The CT6 WiFi interface is now configured.")
+        self._info(f"WiFi SSID: {ssid}")
+        self._info("The CT6 WiFi interface is now configured.")
         
     def _openFirstAvailableSerialPort(self):
         """@brief Attempt to get the name of the first available serial port."""
@@ -1397,7 +1421,7 @@ class YDevManager(CT6Base):
                         sRead = bytesRead.decode()
                         sRead = sRead.rstrip('\r\n')
                         if len(sRead) > 0:
-                            self._uio.info(sRead)
+                            self._info(sRead)
                             
                 except KeyboardInterrupt:
                     running = False
@@ -1408,7 +1432,7 @@ class YDevManager(CT6Base):
                 if self._ser:
                     self._ser.close()
                     self._ser = None
-                    self._uio.info(f"Closed {self._serialPort}")
+                    self._info(f"Closed {self._serialPort}")
                 
 class CT6Scanner(CT6Base):
     """@brief Responsible for scanning for CT6 devices."""
@@ -1436,15 +1460,20 @@ class CT6Scanner(CT6Base):
                 self._sock.sendto(CT6Scanner.AreYouThereThread.AreYouThereMessage.encode(), (CT6Scanner.AreYouThereThread.MULTICAST_ADDRESS, self._port))
                 sleep(CT6Scanner.AreYouThereThread.PERIODICITY_SECONDS)
 
+        def shutDown(self):
+            """@brief Shutdown the are you there thread."""
+            self._running = False
+
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
            @param options An instance of the OptionParser command line options."""
         super().__init__(uio, options)
 
-    def scan(self, callBack=None):
+    def scan(self, callBack=None, runSeconds=None):
         """@brief Perform a scan for CT6 devices on the LAN.
-           @param callBack If defined then this method will be called passing the dict received from each unit that responds."""
+           @param callBack If defined then this method will be called passing the dict received from each unit that responds.
+           @param runSeconds If defined then this is the number of seconds to scan for."""
 
         port = CT6Scanner.CT6_UDP_SERVER_PORT
 
@@ -1453,11 +1482,14 @@ class CT6Scanner(CT6Base):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.bind(('', port))
 
-        self._uio.info('Sending AYT messages.')
+        self._info('Sending AYT messages.')
         areYouThereThread = CT6Scanner.AreYouThereThread(sock, port)
         areYouThereThread.start()
 
-        self._uio.info("Listening on UDP port %d" % (port) )
+        self._info("Listening on UDP port %d" % (port) )
+        stopTime = None
+        if runSeconds:
+            stopTime = time() + runSeconds
         running = True
         while running:
             data = sock.recv(65536)
@@ -1469,15 +1501,22 @@ class CT6Scanner(CT6Base):
                     # Ignore the reflected broadcast message.
                     if 'AYT' in rx_dict:
                         continue
-                    self._uio.info("-"*30+ "DEVICE FOUND" + "-"*30)
+                    self._info("-"*30+ "DEVICE FOUND" + "-"*30)
                     for key in rx_dict:
-                        self._uio.info("{: <25}={}".format(key, rx_dict[key]))
+                        self._info("{: <25}={}".format(key, rx_dict[key]))
 
                     if callBack:
                         running = callBack(rx_dict)
 
                 except:
                     pass
+
+            #If we need to stop after a given time period.
+            if stopTime and time() >= stopTime:
+                areYouThereThread.shutDown()
+                areYouThereThread.join()
+                sock.close()
+                break
 
 class CT6Config(CT6Base):
     """@brief Allow the user to configure a CT6 device."""
@@ -1509,7 +1548,7 @@ class CT6Config(CT6Base):
             index+=1
         response = requests.get(url)
         self._checkResponse(response)
-        self._uio.info("Saved parameters to CT6 device.")
+        self._info("Saved parameters to CT6 device.")
 
     def editDeviceConfig(self, cfgDict):
         """@brief Display a list of attributes to be edited, allow the user to edit them.
@@ -1518,7 +1557,7 @@ class CT6Config(CT6Base):
         while True:
             boolRet = False
             id=1
-            self._uio.info("ID Description    Value")
+            self._info("ID Description    Value")
             for uPrompt in CT6Config.USER_PROMPT_LIST:
                 key = CT6Config.EDITABLE_KEY_LIST[id-1]
                 if key == CT6Config.ACTIVE:
@@ -1530,7 +1569,7 @@ class CT6Config(CT6Base):
                         cfgDict[key]=value
                 else:
                     value = urllib.parse.unquote(cfgDict[key])
-                self._uio.info(f"{id}  {uPrompt:15s} {value}")
+                self._info(f"{id}  {uPrompt:15s} {value}")
                 id+=1
             response = self._uio.getInput("Enter the ID to change, S to store or Q to quit")
             if response.upper() == 'S':
@@ -1546,7 +1585,7 @@ class CT6Config(CT6Base):
                     key = CT6Config.EDITABLE_KEY_LIST[intVal-1]
                     prompt = CT6Config.USER_PROMPT_LIST[intVal-1]
                     if key == CT6Config.ACTIVE:
-                        self._uio.warn("Only set the CT6 device active when you wish to send data to the database.")
+                        self._warn("Only set the CT6 device active when you wish to send data to the database.")
                         attrValue = self._uio.getBoolInput("Activate the CT6 device ? y/n")
                         if attrValue == True:
                             attrValue = '1'
@@ -1561,17 +1600,17 @@ class CT6Config(CT6Base):
                     cfgDict[key] = attrValue
 
                 except IndexError:
-                    self._uio.error(f"{response} is an invalid ID.")
+                    self._error(f"{response} is an invalid ID.")
 
                 except ValueError:
-                    self._uio.error(f"{response} is an invalid CT6 parameter.")
+                    self._error(f"{response} is an invalid CT6 parameter.")
 
         return boolRet
 
     def configure(self):
         """@brief Perform the user configuration of a CT6 device."""
         self._checkAddress()
-        self._uio.info(f'Configure {self._options.address}')
+        self._info(f'Configure {self._options.address}')
         cfgDict = self._getConfigDict()
         save = self.editDeviceConfig(cfgDict)
         if save:
