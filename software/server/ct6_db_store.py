@@ -930,7 +930,7 @@ class CTDBClient(DBHandler):
         loadAvg = (load15/os.cpu_count()) * 100
         usedMB = psutil.virtual_memory()[3]/1000000
         freeMB = psutil.virtual_memory()[4]/1000000
-        self._uio.info(f"CPU Load AVG: {loadAvg:.1f}, Used Mem (MB): {usedMB:.1f} Free Mem (MB): {freeMB:.1f}")
+        self._uio.debug(f"CPU Load AVG: {loadAvg:.1f}, Used Mem (MB): {usedMB:.1f} Free Mem (MB): {freeMB:.1f}")
 
         objList = objgraph.most_common_types()
         for elemList in objList:
