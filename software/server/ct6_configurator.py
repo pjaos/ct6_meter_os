@@ -11,7 +11,7 @@ import shutil
 import platform
 
 from queue import Queue
-from time import time
+from time import time, strftime, localtime
 
 from p3lib.uio import UIO
 from p3lib.bokeh_gui import MultiAppServer
@@ -80,6 +80,13 @@ class CT6ConfiguratorGUI(MultiAppServer):
     MQTT_USERNAME               = "MQTT_USERNAME"
     MQTT_PASSWORD               = "MQTT_PASSWORD"
 
+    @staticmethod
+    def GetLogFileName():
+        """@return The name of the CT6 Configurator log file """
+        dateTimeStamp = strftime("%Y%m%d%H%M%S", localtime()).lower()
+        logFileName = f"ct6_configurator_{dateTimeStamp}.log"
+        return logFileName
+    
     def __init__(self, uio, options, config):
         """@brief Constructor.
            @param uio A UIO instance responsible for stdout/stdin input output.
@@ -97,6 +104,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._tabList           = None
         self._startUpdateTime   = None
         self._logPath           = os.path.join(os.path.expanduser('~'), FactorySetup.LOG_PATH)
+        self._logFile           = os.path.join(self._logPath, CT6ConfiguratorGUI.GetLogFileName())
         self._isWindows         = platform.system() == "Windows"
         self._installFolder     = CT6Base.GetInstallFolder()
         # Make this out current dir
@@ -969,7 +977,10 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._doc.add_periodic_callback(self._updateCallBack, 100)
         
         self._loadConfig()
-        
+
+        # Add msg to let the user know the log file for this session.
+        self.info("Created " + self._logFile)
+
     def _updateCallBack(self):
         # Call the update method so that to ensure it's safe to update the document.
         # This ensures an exception won't be thrown.
@@ -998,30 +1009,63 @@ class CT6ConfiguratorGUI(MultiAppServer):
         self._wifiSSIDInput.value = self._cfgMgr.getAttr(CT6ConfiguratorGUI.WIFI_SSID)
         self._wifiPasswordInput.value = self._cfgMgr.getAttr(CT6ConfiguratorGUI.WIFI_PASSWORD)
         self._ct6IPAddressInput.value = self._cfgMgr.getAttr(CT6ConfiguratorGUI.DEVICE_ADDRESS)
-        
+
+    def _saveLogMsg(self, msg):
+        """@brief Save the message to a log file.
+           @param msg The message text to be stored in the log file."""
+        # If the log file does not exist
+        if not os.path.isfile(self._logFile):
+            with open(self._logFile, 'w') as fd:
+                pass
+        # Update the log file
+        with open(self._logFile, 'a') as fd:
+            dateTimeStamp = CT6ConfiguratorGUI.GetLogFileName()
+            fd.write(dateTimeStamp + ": " + msg + '\n')
+
+    def _getDisplayMsg(self, msg, prefix):
+        """@brief Get the msg to display. If the msg does not already have a msg level we add one.
+           @param msg The source msg.
+           @param prefix The message prefix (level indcator) to add."""
+        if msg.startswith(CT6ConfiguratorGUI.INFO_MESSAGE) or \
+           msg.startswith(CT6ConfiguratorGUI.WARN_MESSAGE) or \
+           msg.startswith(CT6ConfiguratorGUI.ERROR_MESSAGE) or \
+           msg.startswith(CT6ConfiguratorGUI.DEBUG_MESSAGE):
+            _msg = msg
+        else:
+            _msg = prefix + msg
+        return _msg
+
     def __info(self, msg):
         """@brief Update an info level message. This must be called from the GUI thread.
            @param msg The message to display."""
-        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + CT6ConfiguratorGUI.INFO_MESSAGE + " " + str(msg)
-        self._lastStatusMsgTextInput.value = CT6ConfiguratorGUI.INFO_MESSAGE + " " + str(msg)
+        _msg = self._getDisplayMsg(msg, CT6ConfiguratorGUI.INFO_MESSAGE)
+        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + _msg
+        self._lastStatusMsgTextInput.value = _msg
+        self._saveLogMsg(_msg)
 
     def __warn(self, msg):
         """@brief Update an warning level message. This must be called from the GUI thread.
            @param msg The message to display."""
-        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + CT6ConfiguratorGUI.WARN_MESSAGE + " " + str(msg)
-        self._lastStatusMsgTextInput.value = CT6ConfiguratorGUI.INFO_MESSAGE + " " + str(msg)
+        _msg = self._getDisplayMsg(msg, CT6ConfiguratorGUI.WARN_MESSAGE)
+        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + _msg
+        self._lastStatusMsgTextInput.value = _msg
+        self._saveLogMsg(_msg)
 
     def __error(self, msg):
         """@brief Update an error level message. This must be called from the GUI thread.
            @param msg The message to display."""
-        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + CT6ConfiguratorGUI.ERROR_MESSAGE + " " + str(msg)
-        self._lastStatusMsgTextInput.value = CT6ConfiguratorGUI.INFO_MESSAGE + " " + str(msg)
+        _msg = self._getDisplayMsg(msg, CT6ConfiguratorGUI.ERROR_MESSAGE)
+        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + _msg
+        self._lastStatusMsgTextInput.value = _msg
+        self._saveLogMsg(_msg)
 
     def __debug(self, msg):
         """@brief Update an debug level message. This must be called from the GUI thread.
            @param msg The message to display."""
-        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + CT6ConfiguratorGUI.DEBUG_MESSAGE + " " + str(msg)
-        self._lastStatusMsgTextInput.value = CT6ConfiguratorGUI.INFO_MESSAGE + " " + str(msg)
+        _msg = self._getDisplayMsg(msg, CT6ConfiguratorGUI.DEBUG_MESSAGE)
+        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + _msg
+        self._lastStatusMsgTextInput.value = _msg
+        self._saveLogMsg(_msg)
 
     def _processRXDict(self, rxDict):
         """@brief Process the dicts received from the GUI message queue.
