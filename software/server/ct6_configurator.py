@@ -8,53 +8,37 @@ import traceback
 import tempfile
 import os
 import shutil
-import platform
 import json
 
-from queue import Queue
-from time import time, strftime, localtime
+from lib.ngt import TabbedNiceGui, YesNoDialog
 
 from p3lib.uio import UIO
-from p3lib.bokeh_gui import MultiAppServer
 from p3lib.helper import logTraceBack
 from p3lib.pconfig import ConfigManager
 
 from lib.config import ConfigBase
 
-from bokeh.layouts import column, row
-from bokeh.models.css import Styles
-from bokeh.models import TabPanel, Tabs, Div
-from bokeh.models import Button, NumericInput
-from bokeh.models import TextInput, PasswordInput, TextAreaInput
-from bokeh.layouts import layout
-from bokeh.models.widgets import Select
-
 from ct6_tool import YDevManager, getCT6ToolCmdOpts, CT6Config, MCULoader, CT6Base, CT6Scanner
 from ct6_mfg_tool import FactorySetup, getFactorySetupCmdOpts
 
+from nicegui import ui
+
 class CT6ConfiguratorConfig(ConfigBase):
-    DEFAULT_CONFIG_FILENAME = "ct6_configurator.cfg"
+    DEFAULT_CONFIG_FILENAME = "ng_ct6_configurator.cfg"
     DEFAULT_CONFIG = {
         ConfigBase.LOCAL_GUI_SERVER_ADDRESS:    "",
         ConfigBase.LOCAL_GUI_SERVER_PORT:       10000
     }
 
-class CT6ConfiguratorGUI(MultiAppServer):
-    """@brief Responsible for providing an GUI interface that allows the user to configure
-              some parameters on CT6 units."""
+class CT6GUIServer(TabbedNiceGui):
+    """@brief Responsible for starting the CT6 configurator GUI."""
     PAGE_TITLE                  = "CT6 Configurator"
-    BUTTON_TYPE                 = "success"
-    INFO_MESSAGE                = "INFO:  "
-    WARN_MESSAGE                = "WARN:  "
-    ERROR_MESSAGE               = "ERROR: "
-    DEBUG_MESSAGE               = "DEBUG: "
-    ENABLE_BUTTONS              = "ENABLE_BUTTONS"
+
     SET_CT6_IP_ADDRESS          = "SET_CT6_IP_ADDRESS"
     
     CMD_COMPLETE                = "CMD_COMPLETE"
-    UPDATE_SECONDS              = "UPDATE_SECONDS"
-    
-    CFG_FILENAME                = ".ct6ConfiguratorGUI.cfg"
+     
+    CFG_FILENAME                = ".CT6GUIServer.cfg"
     WIFI_SSID                   = "WIFI_SSID" 
     WIFI_PASSWORD               = "WIFI_PASSWORD" 
     DEVICE_ADDRESS              = "DEVICE_ADDRESS"
@@ -80,89 +64,211 @@ class CT6ConfiguratorGUI(MultiAppServer):
     MQTT_TOPIC                  = "MQTT_TOPIC"
     MQTT_USERNAME               = "MQTT_USERNAME"
     MQTT_PASSWORD               = "MQTT_PASSWORD"
-
-    @staticmethod
-    def GetLogFileName():
-        """@return The name of the CT6 Configurator log file """
-        dateTimeStamp = strftime("%Y%m%d%H%M%S", localtime()).lower()
-        logFileName = f"ct6_configurator_{dateTimeStamp}.log"
-        return logFileName
     
+    LOGFILE_PREFIX              = "ct6_configurator"
+   
     def __init__(self, uio, options, config):
-        """@brief Constructor.
-           @param uio A UIO instance responsible for stdout/stdin input output.
-           @param options The command line argparse options instance.
-           @param config The dash app config.
-           @param loginCredentialsFile A file containing the login credentials or None if no server authentication is required."""
-        super().__init__(address=config.getAttr(CT6ConfiguratorConfig.LOCAL_GUI_SERVER_ADDRESS),
-                         bokehPort=config.getAttr(CT6ConfiguratorConfig.LOCAL_GUI_SERVER_PORT) )
-        self._uio               = uio
-        self._options           = options
-        self._config            = config
-    
-        self._doc               = None
-        self._server            = None
-        self._tabList           = None
-        self._startUpdateTime   = None
-        self._logPath           = os.path.join(os.path.expanduser('~'), FactorySetup.LOG_PATH)
-        self._logFile           = os.path.join(self._logPath, CT6ConfiguratorGUI.GetLogFileName())
-        self._isWindows         = platform.system() == "Windows"
-        self._installFolder     = CT6Base.GetInstallFolder()
-        # Make this out current dir
-        os.chdir(self._installFolder)
+        """@brief Constructor
+           @param uio A UIO instance
+           @param options The command line options instance
+           @param config A CT6ConfiguratorConfig instance."""
+        super().__init__(uio.isDebugEnabled(), FactorySetup.LOG_PATH)
+        self._uio                       = uio
+        self._options                   = options
+        self._config                    = config
+        
+        self._wifiSSIDInput             = None
+        self._wifiPasswordInput         = None
+        self._setWiFiButton             = None
+        self._log                       = None
+        self._ct6IPAddressInput1        = None
+        self._ct6IPAddressInput2        = None
+        self._ct6DeviceList             = []
+        self._dialogPrompt              = None
+        self._dialogYesMethod           = None
 
-        self._skipFactoryConfigRestore = False
+        self._skipFactoryConfigRestore  = False
         if '--skip_factory_config_restore' in sys.argv:
             self._skipFactoryConfigRestore = True
-            # We remove this arg as ct6_tool and ct6_mfg_tool do not konw about this arg
+            # We remove this arg as ct6_tool and ct6_mfg_tool do not know about this arg
             # and we may re run the cmd line args for each of these later.
             sys.argv.remove('--skip_factory_config_restore')
 
-        self._ensureLogPathExists()
-
-        self._cfgMgr = ConfigManager(self._uio, CT6ConfiguratorGUI.CFG_FILENAME, CT6ConfiguratorGUI.DEFAULT_CONFIG)
-        # this queue is used to send commands from the GUI thread and read responses received from outside the GUI thread.
-        self._commsQueue = Queue()
+        self._cfgMgr                    = ConfigManager(self._uio, CT6GUIServer.CFG_FILENAME, CT6GUIServer.DEFAULT_CONFIG)
         
-    def _ensureLogPathExists(self):
-        """@brief Ensure that the log path exists."""
-        if not os.path.isdir(self._logPath):
-            os.makedirs(self._logPath)
+        self._logFile                   = os.path.join(self._logPath, CT6GUIServer.GetLogFileName(CT6GUIServer.LOGFILE_PREFIX))
 
-    def getAppMethodDict(self):
-        """@return The server app method dict."""
-        appMethodDict = {}
-        appMethodDict['/']=self._mainApp
-        return appMethodDict
+    def _setCT6IPAddress(self, address):
+        """@brief Set the CT6 IP address.
+                  This can be called from outside the GUI thread.
+           @param msg The message to be displayed."""
+        if address:
+            msgDict = {CT6GUIServer.SET_CT6_IP_ADDRESS: address}
+        else:
+            msgDict = {CT6GUIServer.ERROR_MESSAGE: "CT6 device failed to connect to WiFi network."}
+        self.updateGUI(msgDict)
 
-    def _getSetWifiPanel(self):
-        """@brief Return the panel used to configure the CT6 devices WiFi network parameters."""
-                #Add HTML to the page.
-        descriptionDiv = Div(text="""Set the WiFi SSID and password of your CT6 device.<br><br>A USB cable must be connected to the CT6 device to setup the WiFi.""")
+    def _saveConfig(self):
+        """@brief Save some parameters to a local config file."""
+        self._cfgMgr.addAttr(CT6GUIServer.WIFI_SSID, self._wifiSSIDInput.value)
+        self._cfgMgr.addAttr(CT6GUIServer.WIFI_PASSWORD, self._wifiPasswordInput.value)
+        self._cfgMgr.addAttr(CT6GUIServer.DEVICE_ADDRESS, self._ct6IPAddressInput1.value)
+        self._cfgMgr.store()
 
-        ssidRow = row(children=[self._wifiSSIDInput])
+    def _loadConfig(self):
+        """@brief Load the config from a config file."""
+        try:
+            self._cfgMgr.load()
+        except:
+            pass
+        self._wifiSSIDInput.value = self._cfgMgr.getAttr(CT6GUIServer.WIFI_SSID)
+        self._wifiPasswordInput.value = self._cfgMgr.getAttr(CT6GUIServer.WIFI_PASSWORD)
+        self._ct6IPAddressInput1.value = self._cfgMgr.getAttr(CT6GUIServer.DEVICE_ADDRESS)
+        self._copyCT6Address()
+
+    def _copyCT6Address(self):
+        """@brief Copy same address to CT6 address on all tabs."""
+        if self._ct6IPAddressInput1:
+            if self._ct6IPAddressInput2:
+                self._ct6IPAddressInput2.value = self._ct6IPAddressInput1.value
+            if self._ct6IPAddressInput3:
+                self._ct6IPAddressInput3.value = self._ct6IPAddressInput1.value
+            if self._ct6IPAddressInput4:
+                self._ct6IPAddressInput4.value = self._ct6IPAddressInput1.value
+            if self._ct6IPAddressInput5:
+                self._ct6IPAddressInput5.value = self._ct6IPAddressInput1.value
+            if self._ct6IPAddressInput6:
+                self._ct6IPAddressInput6.value = self._ct6IPAddressInput1.value
+
+    def _handleGUIUpdate(self, rxDict):
+        """@brief Process the dicts received from the GUI message queue that were not 
+                  handled by the parent class instance.
+           @param rxDict The dict received from the GUI message queue."""
+
+        if CT6GUIServer.SET_CT6_IP_ADDRESS in rxDict:
+            address = rxDict[CT6GUIServer.SET_CT6_IP_ADDRESS]
+            # Set the IP address field to the CT6 address
+            self._ct6IPAddressInput1.value = address
+            self._copyCT6Address()
+            self._saveConfig()
+                
+        elif CT6GUIServer.UPDATE_PORT_NAMES in rxDict:
+        
+            if CT6GUIServer.CT1_NAME in rxDict:
+                self._ct1PortNameInput.value = str(rxDict[CT6GUIServer.CT1_NAME])
+                
+            if CT6GUIServer.CT2_NAME in rxDict:
+                self._ct2PortNameInput.value = str(rxDict[CT6GUIServer.CT2_NAME])
+                
+            if CT6GUIServer.CT3_NAME in rxDict:
+                self._ct3PortNameInput.value = str(rxDict[CT6GUIServer.CT3_NAME])
+                
+            if CT6GUIServer.CT4_NAME in rxDict:
+                self._ct4PortNameInput.value = str(rxDict[CT6GUIServer.CT4_NAME])
+                
+            if CT6GUIServer.CT5_NAME in rxDict:
+                self._ct5PortNameInput.value = str(rxDict[CT6GUIServer.CT5_NAME])
+                
+            if CT6GUIServer.CT6_NAME in rxDict:
+                self._ct6PortNameInput.value = str(rxDict[CT6GUIServer.CT6_NAME])
+                
+            self._enableAllButtons(True)
+            self._infoGT("Read CT6 port names from the device.")
             
-        passwordRow = row(children=[self._wifiPasswordInput])
+        elif CT6GUIServer.PORT_NAMES_UPDATED in rxDict:
+            self._enableAllButtons(True)
+            self._infoGT("Set CT6 port names.")
             
-        self._setWiFiNetworkButton = Button(label="Setup WiFi", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._setWiFiNetworkButton.on_click(self._setWiFiNetworkButtonHandler)
+        elif CT6GUIServer.DEV_NAME in rxDict:
+            self._ct6DeviceNameInput.value = rxDict[CT6GUIServer.DEV_NAME]
+            self._enableAllButtons(True)
+                            
+        elif CT6GUIServer.ACTIVE in rxDict:
+            active = rxDict[CT6GUIServer.ACTIVE]
+            print(f"PJA: active={active}")
+            if active:
+                self.activeSwitch.value = True
+            else:
+                self.activeSwitch.value = False
+                
+        elif CT6GUIServer.MQTT_SERVER_ADDRESS in rxDict and \
+             CT6GUIServer.MQTT_SERVER_PORT in rxDict and \
+             CT6GUIServer.MQTT_TX_PERIOD_MS in rxDict and \
+             CT6GUIServer.MQTT_TOPIC in rxDict and \
+             CT6GUIServer.MQTT_USERNAME in rxDict and \
+             CT6GUIServer.MQTT_PASSWORD in rxDict:   
+            mqttServerAddress = rxDict[CT6GUIServer.MQTT_SERVER_ADDRESS]
+            mqttServerPort = rxDict[CT6GUIServer.MQTT_SERVER_PORT]
+            mqttTXPeriodMS = rxDict[CT6GUIServer.MQTT_TX_PERIOD_MS]
+            topic = rxDict[CT6GUIServer.MQTT_TOPIC]
+            username = rxDict[CT6GUIServer.MQTT_USERNAME]
+            password = rxDict[CT6GUIServer.MQTT_PASSWORD]
 
-        buttonRow = row(children=[self._setWiFiNetworkButton])
-        
-        
-        panel = column(children=[descriptionDiv,
-                                 ssidRow,
-                                 passwordRow, 
-                                 buttonRow])
-        return TabPanel(child=panel,  title="WiFi")
-        
+            # Remove any whitespace leading or trailing characters
+            mqttServerAddress = mqttServerAddress.strip()
+            topic = topic.strip()
+            username = username.strip()
+            password = password.strip()
+
+            self._mqttServerAddressInput.value = mqttServerAddress
+            self._mqttServerPortInput.value = mqttServerPort
+            self._mqttTopicInput.value = topic
+            self._mqttUsernameInput.value = username
+            self._mqttPasswordInput.value = password
+            self._mqttServerTXPeriodMSInput.value = mqttTXPeriodMS
+
+        elif CT6Base.IP_ADDRESS in rxDict and \
+             CT6Base.UNIT_NAME in rxDict:
+            selectText = rxDict[CT6Base.IP_ADDRESS] + '/' + rxDict[CT6Base.UNIT_NAME]
+            if selectText not in self._ct6DeviceList:
+                self._ct6DeviceList.append(selectText)
+            self._ct6Select.set_options(self._ct6DeviceList)
+            if len(self._ct6DeviceList) == 1:
+                self._ct6Select.set_value(self._ct6DeviceList[0])
+
+    def _initWiFiTab(self):
+        """@brief Create the Wifi tab contents."""
+        markDownText = """
+        <span style="font-size:1.5em;">Set the WiFi SSID and password of your CT6 device. A USB cable must be connected to the CT6 device to setup the WiFi.
+        """
+        ui.markdown(markDownText)
+        with ui.column():
+            
+            self._wifiSSIDInput = ui.input(label='WiFi SSID')
+            self._wifiPasswordInput = ui.input(label='WiFi Password', password=True)
+            self._setWiFiButton = ui.button('Setup WiFi', on_click=self._setWiFiNetworkButtonHandler)
+
+            # Add to button list so that button is disabled while activity is in progress.
+            self._appendButtonList(self._setWiFiButton)
+
     def _setWiFiNetworkButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
+        self._initTask(19,84)
         self._saveConfig()
         threading.Thread( target=self._setWiFiNetwork, args=(self._wifiSSIDInput.value, self._wifiPasswordInput.value)).start()
+
+    def _setWiFiNetwork(self, wifiSSID, wifiPassword):
+        """@brief Set the Wifi network on a CT6 device..
+           @param wifiSSID The WiFi SSID to set.
+           @param wifiPassword The WiFi password to set."""
+        try:
+            try:
+                if len(wifiSSID) == 0:
+                    self.error("A WiFi SSID is required.")
+                
+                elif len(wifiPassword) == 0:
+                    self.error("A WiFi password is required.")
+                    
+                else:
+                    self._setupWiFi(wifiSSID, wifiPassword)
+                    
+            except Exception as ex:
+                self.error(str(ex))
+                
+        finally:
+            self._sendEnableAllButtons(True)
+
                 
     def _setupWiFi(self, wifiSSID, wifiPassword):
         """@brief Setup the CT6 WiFi interface. This must be called outside the GUI thread.
@@ -177,63 +283,21 @@ class CT6ConfiguratorGUI(MultiAppServer):
         # Send a message to set the CT6 device IP address in the GUI
         self._setCT6IPAddress(ipAddress)
 
-    def _setWiFiNetwork(self, wifiSSID, wifiPassword):
-        """@brief Set the Wifi network.
-           @param wifiSSID The WiFi SSID to set.
-           @param wifiPassword The WiFi password to set."""
-        try:
-            try:
-                if len(wifiSSID) == 0:
-                    self.info("A WiFi SSID is required.")
-                
-                elif len(wifiPassword) == 0:
-                    self.info("A WiFi password is required.")
-                    
-                else:
-                    self._setupWiFi(wifiSSID, wifiPassword)
-                    
-            except Exception as ex:
-                self.error(str(ex))
-                
-        finally:
-            self._sendEnableAllButtons(True)
-                
-    def _setCT6IPAddress(self, address):
-        """@brief Send a warning message to be displayed in the GUI.
-           @param msg The message to be displayed."""
-        msgDict = {CT6ConfiguratorGUI.SET_CT6_IP_ADDRESS: address}
-        self.updateGUI(msgDict)
-        
-    def updateGUI(self, msgDict):
-        """@brief Send a message to the GUI so that it updates itself.
-           @param msgDict A dict containing details of how to update the GUI."""
-        # Record the seconds when we received the message
-        msgDict[CT6ConfiguratorGUI.UPDATE_SECONDS]=time()
-        self._commsQueue.put(msgDict)
-        
-    def _getUpgradePanel(self):
-        """@brief Return the panel used to upgrade CT6 devices."""
-        descriptionDiv = Div(text="""Upgrade CT6 firmware over your WiFi network.""")
-        
-        ipAddresssRow = row(children=[self._ct6IPAddressInput])
-                        
-        self._upgradeButton = Button(label="Upgrade CT6 device", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._upgradeButton.on_click(self._upgradeButtonButtonHandler)
-
-        buttonRow = row(children=[self._upgradeButton])
-        
-        panel = column(children=[descriptionDiv,
-                                 ipAddresssRow,
-                                 buttonRow])
-        return TabPanel(child=panel,  title="Upgrade")
+    def _initUpgradeTab(self):
+        """@brief Create the Wifi tab contents."""
+        markDownText = f"{CT6GUIServer.DESCRIP_STYLE}Upgrade CT6 firmware over your WiFi network."
+        ui.markdown(markDownText)
+        self._ct6IPAddressInput1 = ui.input(label='CT6 Address')
+        self._upgradeButton = ui.button('Upgrade', on_click=self._upgradeButtonButtonHandler)
+        # Add to button list so that button is disabled while activity is in progress.
+        self._appendButtonList(self._upgradeButton)
 
     def _upgradeButtonButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        threading.Thread( target=self._doUpgrade, args=(self._ct6IPAddressInput.value,)).start()
-        
+        self._initTask(107,120)
+        threading.Thread( target=self._doUpgrade, args=(self._ct6IPAddressInput1.value,)).start()
+
     def _doUpgrade(self, ct6IPAddress):
         """@brief Perform an upgrade of the CT6 unit.
            @param ct6IPAddress The address of the CT6 device."""
@@ -264,192 +328,27 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 
         finally:
             self._sendEnableAllButtons(True)
-        
-    def _getDeviceNamePanel(self):
-        """@brief Return the panel used to configure the CT6 device name."""
-        descriptionDiv = Div(text="""Set the name for your CT6 device.""")
-        
-        ipAddresssRow = row(children=[self._ct6IPAddressInput])
-        
-        self._ct6DeviceNameInput = TextInput(title="Device Name", placeholder="Device Name")
-        devNameRow = row(children=[self._ct6DeviceNameInput])
-        
-        self._setDevNameButton = Button(label="Set", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._setDevNameButton.on_click(self._setDevNameButtonHandler)
 
-        self._getDevNameButton = Button(label="Get", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._getDevNameButton.on_click(self._getDevNameButtonHandler)
+    def _initDevNameTab(self):
+        """@brief Create the set device name tab contents."""
+        markDownText = f"{CT6GUIServer.DESCRIP_STYLE}Set the name for your CT6 device."
+        ui.markdown(markDownText)
+        self._ct6IPAddressInput2 = ui.input(label='CT6 Address')
+        self._ct6DeviceNameInput = ui.input(label='Device Name')
+        with ui.row():
+            self._setDevNameButton = ui.button('Set', on_click=self._setDevNameButtonHandler)
+            self._getDevNameButton = ui.button('Get', on_click=self._getDevNameButtonHandler)
+        # Add to button list so that button is disabled while activity is in progress.
+        self._appendButtonList(self._setDevNameButton)
+        self._appendButtonList(self._getDevNameButton)
 
-        buttonRow = row(children=[self._getDevNameButton, self._setDevNameButton])
-
-        panel = column(children=[descriptionDiv,
-                                 ipAddresssRow,
-                                 devNameRow,
-                                 buttonRow])
-        return TabPanel(child=panel,  title="Device Name")
-            
     def _setDevNameButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
+        self._initTask(2,3)
         self._saveConfig()
-        threading.Thread( target=self._setDevName, args=(self._ct6IPAddressInput.value,self._ct6DeviceNameInput.value)).start()
-        
-    def _removeWhiteSpace(self, aString, replacementChar='_'):
-        """@brief Get a string that has whitespace characters replaced.
-           @param aString The source string to replace whitespace characters in.
-           @param replacementChar The character to replace whitespace characters with.
-           @return A string with the whitespace characters replaced."""
-        #Ensure the string has no tab characters
-        if aString.find("\t") >= 0:
-           aString=aString.replace('\t', '_')
-        #Ensure the string has no space characters
-        if aString.find(" ") >= 0:
-            aString=aString.replace(' ', '_')
-        return aString
-        
-    def _setDevName(self, ct6IPAddress, devName):
-        """@brief Set the CT6 device name.
-           @param ct6IPAddress The address of the CT6 device.
-           @param devName The name of the device."""
-        try:
-            try:
-                devName = self._removeWhiteSpace(devName)
-                self.info(f"Setting CT6 device ({ct6IPAddress}) name.")
-                cfgDict = {}
-                cfgDict[CT6ConfiguratorGUI.DEV_NAME] = devName
-                response = self._saveConfigDict(ct6IPAddress, cfgDict)
-                if response is not None:
-                    self.info(f"Set CT6 device name to {devName}")
-                
-            except Exception as ex:
-                self.reportException(ex)
-                
-        finally:
-            self._sendEnableAllButtons(True)
-    
-    def _getDevNameButtonHandler(self, event):
-        """@brief Process button click.
-           @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        self._saveConfig()
-        threading.Thread( target=self._getDevName, args=(self._ct6IPAddressInput.value,)).start()
-    
-    def _getDevName(self, ct6IPAddress):
-        """@brief Get the CT6 device name.
-           @param ct6IPAddress The address of the CT6 device."""
-        try:
-            try:
-                self.info(f"Getting CT6 device ({ct6IPAddress}) name.")
-                cfgDict = self._getConfigDict(ct6IPAddress)
-                if CT6ConfiguratorGUI.DEV_NAME in cfgDict:
-                    devName = cfgDict[CT6ConfiguratorGUI.DEV_NAME]
-                    self.info("Read CT6 device name.")
-                    msgDict = {CT6ConfiguratorGUI.DEV_NAME: devName}
-                    self.updateGUI(msgDict)
-                
-                else:
-                    self.error("Failed to read the CT6 device name.")
-                
-            except Exception as ex:
-                self.reportException(ex)
-                
-        finally:
-            self._sendEnableAllButtons(True)
-            
-    def _getPortNamePanel(self):
-        """@brief Return the panel used to configure the CT6 port names."""
-        descriptionDiv = Div(text="""Set the name of each port on your CT6 device.""")
-        
-        ipAddresssRow = row(children=[self._ct6IPAddressInput])
-        
-        self._ct1PortNameInput = TextInput(title="CT1 port name", placeholder="CT1 port name")
-        port1Row = row(children=[self._ct1PortNameInput])
-            
-        self._ct2PortNameInput = TextInput(title="CT2 port name", placeholder="CT2 port name")
-        port2Row = row(children=[self._ct2PortNameInput])
-            
-        self._ct3PortNameInput = TextInput(title="CT3 port name", placeholder="CT3 port name")
-        port3Row = row(children=[self._ct3PortNameInput])
-            
-        self._ct4PortNameInput = TextInput(title="CT4 port name", placeholder="CT4 port name")
-        port4Row = row(children=[self._ct4PortNameInput])
-            
-        self._ct5PortNameInput = TextInput(title="CT5 port name", placeholder="CT5 port name")
-        port5Row = row(children=[self._ct5PortNameInput])
-            
-        self._ct6PortNameInput = TextInput(title="CT6 port name", placeholder="CT6 port name")
-        port6Row = row(children=[self._ct6PortNameInput])
-            
-        self._setPortNamesButton = Button(label="Set", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._setPortNamesButton.on_click(self._setPortNamesButtonHandler)
-
-        self._getPortNamesButton = Button(label="Get", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._getPortNamesButton.on_click(self._getPortNamesButtonHandler)
-        
-        buttonRow = row(children=[self._getPortNamesButton, self._setPortNamesButton])
-
-        col1 = row(port1Row,
-                      port2Row,
-                      port3Row)
-        col2 = row(port4Row,
-                      port5Row,
-                      port6Row)
-        
-        panel = column(children=[descriptionDiv,
-                                 ipAddresssRow,
-                                 col1,
-                                 col2,
-                                 buttonRow])
-        
-        return TabPanel(child=panel,  title="Port Names")
-    
-    def _setPortNamesButtonHandler(self, event):
-        """@brief Process button click.
-           @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        threading.Thread( target=self._setPortNames, args=(self._ct6IPAddressInput.value, (self._ct1PortNameInput.value,
-                                                                                           self._ct2PortNameInput.value,
-                                                                                           self._ct3PortNameInput.value,
-                                                                                           self._ct4PortNameInput.value,
-                                                                                           self._ct5PortNameInput.value,
-                                                                                           self._ct6PortNameInput.value) )).start()
-                                                                                           
-    def _setPortNames(self, ct6IPAddress, portNames):
-        """@brief Set the CT6 port names.
-           @param ct6IPAddress The address of the CT6 device.
-           @param portNames The names of each port."""
-        try:
-            try:
-                self.info(f"Setting CT6 device ({ct6IPAddress}) port names.")
-                cfgDict = {}
-                cfgDict[CT6ConfiguratorGUI.CT1_NAME] = self._removeWhiteSpace(portNames[0])
-                cfgDict[CT6ConfiguratorGUI.CT2_NAME] = self._removeWhiteSpace(portNames[1])
-                cfgDict[CT6ConfiguratorGUI.CT3_NAME] = self._removeWhiteSpace(portNames[2])
-                cfgDict[CT6ConfiguratorGUI.CT4_NAME] = self._removeWhiteSpace(portNames[3])
-                cfgDict[CT6ConfiguratorGUI.CT5_NAME] = self._removeWhiteSpace(portNames[4])
-                cfgDict[CT6ConfiguratorGUI.CT6_NAME] = self._removeWhiteSpace(portNames[5])
-                response = self._saveConfigDict(ct6IPAddress, cfgDict)
-                if response is not None:
-                    msgDict = {CT6ConfiguratorGUI.PORT_NAMES_UPDATED: True}
-                    self.updateGUI(msgDict)
-                
-            except Exception as ex:
-                self.reportException(ex)
-                
-        finally:
-            self._sendEnableAllButtons(True)
-        
-    def _checkResponse(self, response):
-        """@brief Check we don't have an error response."""
-        rDict = response.json()
-        if "ERROR" in rDict:
-            msg = rDict["ERROR"]
-            self.error(msg)
-        
+        threading.Thread( target=self._setDevName, args=(self._ct6IPAddressInput2.value,self._ct6DeviceNameInput.value)).start()
+  
     def _saveConfigDict(self, ct6IPAddress, cfgDict):
         """@brief Save the config dict back to the CT6 device.
            @brief The device config dict."""
@@ -476,13 +375,151 @@ class CT6ConfiguratorGUI(MultiAppServer):
             self.debug("_saveConfigDict() failed.")
         self._checkResponse(response)
         return response
+    
+    def _checkResponse(self, response):
+        """@brief Check we don't have an error response."""
+        rDict = response.json()
+        if "ERROR" in rDict:
+            msg = rDict["ERROR"]
+            self.error(msg)
+
+    def _getConfigDict(self, ct6IPAddress):
+        """@brief Get the config dict from the device.
+           @param ct6IPAddress The address of the CT6 device.
+           @return The config dict."""
+        self.info(f"Reading configuration from {ct6IPAddress}.")
+        url=f"http://{ct6IPAddress}/get_config"
+        response = requests.get(url)
+        cfgDict = response.json()
+        self.debug(f"Config read from CT6 device: cfgDict={cfgDict}")
+        return cfgDict
+    
+    def _removeWhiteSpace(self, aString, replacementChar='_'):
+        """@brief Get a string that has whitespace characters replaced.
+           @param aString The source string to replace whitespace characters in.
+           @param replacementChar The character to replace whitespace characters with.
+           @return A string with the whitespace characters replaced."""
+        #Ensure the string has no tab characters
+        if aString.find("\t") >= 0:
+           aString=aString.replace('\t', '_')
+        #Ensure the string has no space characters
+        if aString.find(" ") >= 0:
+            aString=aString.replace(' ', '_')
+        return aString
         
+    def _setDevName(self, ct6IPAddress, devName):
+        """@brief Set the CT6 device name.
+           @param ct6IPAddress The address of the CT6 device.
+           @param devName The name of the device."""
+        try:
+            try:
+                devName = self._removeWhiteSpace(devName)
+                self.info(f"Setting CT6 device ({ct6IPAddress}) name.")
+                cfgDict = {}
+                cfgDict[CT6GUIServer.DEV_NAME] = devName
+                response = self._saveConfigDict(ct6IPAddress, cfgDict)
+                if response is not None:
+                    self.info(f"Set CT6 device name to {devName}")
+                
+            except Exception as ex:
+                self.reportException(ex)
+                
+        finally:
+            self._sendEnableAllButtons(True)
+    
+    def _getDevNameButtonHandler(self, event):
+        """@brief Process button click.
+           @param event The button event."""
+        self._initTask(3,4)
+        self._saveConfig()
+        threading.Thread( target=self._getDevName, args=(self._ct6IPAddressInput2.value,)).start()
+    
+    def _getDevName(self, ct6IPAddress):
+        """@brief Get the CT6 device name.
+           @param ct6IPAddress The address of the CT6 device."""
+        try:
+            try:
+                self.info(f"Getting CT6 device ({ct6IPAddress}) name.")
+                cfgDict = self._getConfigDict(ct6IPAddress)
+                if CT6GUIServer.DEV_NAME in cfgDict:
+                    devName = cfgDict[CT6GUIServer.DEV_NAME]
+                    self.info("Read CT6 device name.")
+                    msgDict = {CT6GUIServer.DEV_NAME: devName}
+                    self.updateGUI(msgDict)
+                
+                else:
+                    self.error("Failed to read the CT6 device name.")
+                
+            except Exception as ex:
+                self.reportException(ex)
+                
+        finally:
+            self._sendEnableAllButtons(True)
+
+    def _initPortNamesTab(self):
+        """@brief Create the set port names tab contents."""
+        markDownText = f"{CT6GUIServer.DESCRIP_STYLE}Set the name of each port on your CT6 device."
+        ui.markdown(markDownText)
+        self._ct6IPAddressInput3 = ui.input(label='CT6 Address')
+        with ui.row():
+            self._ct1PortNameInput = ui.input(label='CT1 port name')
+            self._ct2PortNameInput = ui.input(label='CT2 port name')
+            self._ct3PortNameInput = ui.input(label='CT3 port name')
+        with ui.row():
+            self._ct4PortNameInput = ui.input(label='CT4 port name')
+            self._ct5PortNameInput = ui.input(label='CT5 port name')
+            self._ct6PortNameInput = ui.input(label='CT6 port name')
+
+        with ui.row():
+            self._setPortNamesButton = ui.button('Set', on_click=self._setPortNamesButtonHandler)
+            self._getPortNamesButton = ui.button('Get', on_click=self._getPortNamesButtonHandler)
+        # Add to button list so that button is disabled while activity is in progress.
+        self._appendButtonList(self._setPortNamesButton)
+        self._appendButtonList(self._getPortNamesButton)
+
+    def _setPortNamesButtonHandler(self, event):
+            """@brief Process button click.
+            @param event The button event."""
+            self._enableAllButtons(False)
+            self._clearMessages()
+            threading.Thread( target=self._setPortNames, args=(self._ct6IPAddressInput3.value, (self._ct1PortNameInput.value,
+                                                                                            self._ct2PortNameInput.value,
+                                                                                            self._ct3PortNameInput.value,
+                                                                                            self._ct4PortNameInput.value,
+                                                                                            self._ct5PortNameInput.value,
+                                                                                            self._ct6PortNameInput.value) )).start()
+                                                                                            
+    def _setPortNames(self, ct6IPAddress, portNames):
+        """@brief Set the CT6 port names.
+        @param ct6IPAddress The address of the CT6 device.
+        @param portNames The names of each port."""
+        try:
+            try:
+                self.info(f"Setting CT6 device ({ct6IPAddress}) port names.")
+                cfgDict = {}
+                cfgDict[CT6GUIServer.CT1_NAME] = self._removeWhiteSpace(portNames[0])
+                cfgDict[CT6GUIServer.CT2_NAME] = self._removeWhiteSpace(portNames[1])
+                cfgDict[CT6GUIServer.CT3_NAME] = self._removeWhiteSpace(portNames[2])
+                cfgDict[CT6GUIServer.CT4_NAME] = self._removeWhiteSpace(portNames[3])
+                cfgDict[CT6GUIServer.CT5_NAME] = self._removeWhiteSpace(portNames[4])
+                cfgDict[CT6GUIServer.CT6_NAME] = self._removeWhiteSpace(portNames[5])
+                response = self._saveConfigDict(ct6IPAddress, cfgDict)
+                if response is not None:
+                    msgDict = {CT6GUIServer.PORT_NAMES_UPDATED: True}
+                    self.updateGUI(msgDict)
+                
+            except Exception as ex:
+                self.reportException(ex)
+                
+        finally:
+            self._sendEnableAllButtons(True)
+
     def _getPortNamesButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
         self._enableAllButtons(False)
         self._clearMessages()
-        threading.Thread( target=self._getPortNames, args=(self._ct6IPAddressInput.value,)).start()
+        threading.Thread( target=self._getPortNames, args=(self._ct6IPAddressInput3.value,)).start()
     
     def _getPortNames(self, ct6IPAddress):
         """@brief Get the CT6 port names.
@@ -494,89 +531,66 @@ class CT6ConfiguratorGUI(MultiAppServer):
         ct4PortName = ""
         ct5PortName = ""
         ct6PortName = ""
-        if CT6ConfiguratorGUI.CT1_NAME in cfgDict:
-            ct1PortName = cfgDict[CT6ConfiguratorGUI.CT1_NAME]
+        if CT6GUIServer.CT1_NAME in cfgDict:
+            ct1PortName = cfgDict[CT6GUIServer.CT1_NAME]
         
-        if CT6ConfiguratorGUI.CT2_NAME in cfgDict:
-            ct2PortName = cfgDict[CT6ConfiguratorGUI.CT2_NAME]
+        if CT6GUIServer.CT2_NAME in cfgDict:
+            ct2PortName = cfgDict[CT6GUIServer.CT2_NAME]
         
-        if CT6ConfiguratorGUI.CT3_NAME in cfgDict:
-            ct3PortName = cfgDict[CT6ConfiguratorGUI.CT3_NAME]
+        if CT6GUIServer.CT3_NAME in cfgDict:
+            ct3PortName = cfgDict[CT6GUIServer.CT3_NAME]
         
-        if CT6ConfiguratorGUI.CT4_NAME in cfgDict:
-            ct4PortName = cfgDict[CT6ConfiguratorGUI.CT4_NAME]
+        if CT6GUIServer.CT4_NAME in cfgDict:
+            ct4PortName = cfgDict[CT6GUIServer.CT4_NAME]
         
-        if CT6ConfiguratorGUI.CT5_NAME in cfgDict:
-            ct5PortName = cfgDict[CT6ConfiguratorGUI.CT5_NAME]
+        if CT6GUIServer.CT5_NAME in cfgDict:
+            ct5PortName = cfgDict[CT6GUIServer.CT5_NAME]
         
-        if CT6ConfiguratorGUI.CT6_NAME in cfgDict:
-            ct6PortName = cfgDict[CT6ConfiguratorGUI.CT6_NAME]
+        if CT6GUIServer.CT6_NAME in cfgDict:
+            ct6PortName = cfgDict[CT6GUIServer.CT6_NAME]
         
-        msgDict = {CT6ConfiguratorGUI.UPDATE_PORT_NAMES: True,
-                   CT6ConfiguratorGUI.CT1_NAME: ct1PortName,
-                   CT6ConfiguratorGUI.CT2_NAME: ct2PortName,
-                   CT6ConfiguratorGUI.CT3_NAME: ct3PortName,
-                   CT6ConfiguratorGUI.CT4_NAME: ct4PortName,
-                   CT6ConfiguratorGUI.CT5_NAME: ct5PortName,
-                   CT6ConfiguratorGUI.CT6_NAME: ct6PortName,}
+        msgDict = {CT6GUIServer.UPDATE_PORT_NAMES: True,
+                   CT6GUIServer.CT1_NAME: ct1PortName,
+                   CT6GUIServer.CT2_NAME: ct2PortName,
+                   CT6GUIServer.CT3_NAME: ct3PortName,
+                   CT6GUIServer.CT4_NAME: ct4PortName,
+                   CT6GUIServer.CT5_NAME: ct5PortName,
+                   CT6GUIServer.CT6_NAME: ct6PortName}
         self.updateGUI(msgDict)
-           
-    def _getConfigDict(self, ct6IPAddress):
-        """@brief Get the config dict from the device.
-           @param ct6IPAddress The address of the CT6 device.
-           @return The config dict."""
-        self.info(f"Reading configuration from {ct6IPAddress}.")
-        url=f"http://{ct6IPAddress}/get_config"
-        response = requests.get(url)
-        cfgDict = response.json()
-        self.debug(f"Config read from CT6 device: cfgDict={cfgDict}")
-        return cfgDict
-               
-    def _getMQTTPanel(self):
-        """@brief Return the panel used to configure the MQTT server."""
-        descriptionDiv = Div(text="""For use with third party tools such as ioBroker you may wish the CT6 device to<br>
-                                     periodically send data to an MQTT server. This is not required for normal operation<br>
-                                     of the CT6 device and so you may skip the settings on this page if you do not wish<br>
-                                     to send data to an MQTT server.<br>
-                                     To send JSON data to an MQTT server the 'MQTT Server Address' or 'MQTT Topic' fields must<br>
-                                     be set. You may need to complete the 'MQTT Username' and 'MQTT password' fields if your MQTT<br>
-                                     server requires this.<br>
-                                     The CT6 device will not attempt to send JSON data to an MQTT server unless enabled in<br>
-                                     the 'Activate Device' tab.""")
 
-        ipAddresssRow = row(children=[self._ct6IPAddressInput])
-        
-        self._mqttServerAddressInput = TextInput(title="MQTT Server Address", placeholder="MQTT Server Address")
-        self._mqttServerPortInput = NumericInput(title="MQTT Server Port", value=CT6ConfiguratorGUI.DEFAULT_MQTT_SERVER_PORT, low= 1, high=65535, mode='int')
-        self._mqttTopicInput = TextInput(title="MQTT Topic", placeholder="MQTT Topic")  
-        row1 = row(children=[self._mqttServerAddressInput, self._mqttServerPortInput, self._mqttTopicInput])
 
-        self._mqttUsernameInput = TextInput(title="MQTT Username", placeholder="MQTT Username")  
-        self._mqttPasswordInput = TextInput(title="MQTT Password", placeholder="MQTT Password") 
-        self._mqttServerTXPeriodMSInput = NumericInput(title="TX Period (Milli Seconds)", placeholder="TX Period (Milli Seconds)", value=CT6ConfiguratorGUI.DEFAULT_MQTT_TX_PERIOD_MS, low= 200, high=600000, mode='int')
-        row2 = row(children=[self._mqttUsernameInput, self._mqttPasswordInput, self._mqttServerTXPeriodMSInput])
+    def _initMQTTServerTab(self):
+        """@brief Create the MQTT Server tab contents."""
+        markDownText = """For use with third party tools such as [ioBroker](https://www.iobroker.net/) you may wish the CT6 device to periodically send data to an MQTT server. 
+                                     
+This is not required for normal operation of the CT6 device. Therefore if you do not wish to send data to an MQTT server skip the settings on this tab.
 
-        self._setMQTTServerButton = Button(label="Set", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._setMQTTServerButton.on_click(self._setMQTTServerButtonHandler)
+To send JSON data to an MQTT server the 'MQTT Server Address' and 'MQTT Topic' fields must be set. You may need to enter the 'MQTT Username' and 'MQTT password' fields if your MQTT server requires credentials.
 
-        self._getMQTTServerButton = Button(label="Get", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._getMQTTServerButton.on_click(self._getMQTTServerButtonHandler)
+The CT6 device will not attempt to send JSON data to an MQTT server unless enabled in the 'Activate Device' tab."""
+        ui.markdown(markDownText)
+        self._ct6IPAddressInput4 = ui.input(label='CT6 Address')
+        with ui.row():
+            self._mqttServerAddressInput = ui.input(label='MQTT Server Address').style('width: 200px;')
+            self._mqttServerPortInput = ui.number(label='MQTT Server Port', value=CT6GUIServer.DEFAULT_MQTT_SERVER_PORT, format='%d', min=1, max=65535).style('width: 200px;')
+            self._mqttTopicInput = ui.input(label='MQTT Topic').style('width: 200px;')
+        with ui.row():
+            self._mqttUsernameInput = ui.input(label="MQTT Username").style('width: 200px;')  
+            self._mqttPasswordInput = ui.input(label="MQTT Password").style('width: 200px;') 
+            self._mqttServerTXPeriodMSInput = ui.number(label="TX Period (Milli Seconds)", value=CT6GUIServer.DEFAULT_MQTT_TX_PERIOD_MS, min= 200, max=600000).style('width: 200px;')
 
-        buttonRow = row(children=[self._getMQTTServerButton, self._setMQTTServerButton])
+        with ui.row():
+            self._setMQTTServerButton = ui.button('Set', on_click=self._setMQTTServerButtonHandler)
+            self._getMQTTServerButton = ui.button('Get', on_click=self._getMQTTServerButtonHandler)
+        # Add to button list so that button is disabled while activity is in progress.
+        self._appendButtonList(self._setMQTTServerButton)
+        self._appendButtonList(self._getMQTTServerButton)
 
-        panel = column(children=[descriptionDiv,
-                                 ipAddresssRow,
-                                 row1,
-                                 row2,
-                                 buttonRow])
-        return TabPanel(child=panel,  title="MQTT Server")
-        
     def _setMQTTServerButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        threading.Thread( target=self._setMQTTServer, args=(self._ct6IPAddressInput.value, 
+        self._initTask(3,5)
+        threading.Thread( target=self._setMQTTServer, args=(self._ct6IPAddressInput4.value, 
                                                         self._mqttServerAddressInput.value ,
                                                         self._mqttServerPortInput.value,
                                                         self._mqttTopicInput.value,
@@ -598,12 +612,12 @@ class CT6ConfiguratorGUI(MultiAppServer):
                 self.info(f"Set CT6 device ({ct6IPAddress}) MQTT server configuration.")
                 # First check that the firmware on the CT6 device contains the MQTT server configuration
                 cfgDict = self._getConfigDict(ct6IPAddress) 
-                if CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_SERVER_PORT in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_TOPIC in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_USERNAME in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_PASSWORD in cfgDict:
+                if CT6GUIServer.MQTT_SERVER_ADDRESS in cfgDict and \
+                   CT6GUIServer.MQTT_SERVER_PORT in cfgDict and \
+                   CT6GUIServer.MQTT_TX_PERIOD_MS in cfgDict and \
+                   CT6GUIServer.MQTT_TOPIC in cfgDict and \
+                   CT6GUIServer.MQTT_USERNAME in cfgDict and \
+                   CT6GUIServer.MQTT_PASSWORD in cfgDict:
                     
                     #PAJ TODO self._checkReacable(address, port)
                     
@@ -619,12 +633,12 @@ class CT6ConfiguratorGUI(MultiAppServer):
                     username=username.replace(" ", "_")
                     password=password.replace(" ", "_")
 
-                    mqttCfgDict = {CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS: address,
-                                   CT6ConfiguratorGUI.MQTT_SERVER_PORT: port,
-                                   CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS: txPeriodMS,
-                                   CT6ConfiguratorGUI.MQTT_TOPIC: topic,
-                                   CT6ConfiguratorGUI.MQTT_USERNAME: username,
-                                   CT6ConfiguratorGUI.MQTT_PASSWORD: password}
+                    mqttCfgDict = {CT6GUIServer.MQTT_SERVER_ADDRESS: address,
+                                   CT6GUIServer.MQTT_SERVER_PORT: port,
+                                   CT6GUIServer.MQTT_TX_PERIOD_MS: txPeriodMS,
+                                   CT6GUIServer.MQTT_TOPIC: topic,
+                                   CT6GUIServer.MQTT_USERNAME: username,
+                                   CT6GUIServer.MQTT_PASSWORD: password}
                     response = self._saveConfigDict(ct6IPAddress, mqttCfgDict)
                     if response is not None:
                         self.info("Set CT6 device MQTT server configuration.")
@@ -641,9 +655,8 @@ class CT6ConfiguratorGUI(MultiAppServer):
     def _getMQTTServerButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        threading.Thread( target=self._getMQTTServer, args=(self._ct6IPAddressInput.value,)).start()
+        self._initTask(2,3)
+        threading.Thread( target=self._getMQTTServer, args=(self._ct6IPAddressInput4.value,)).start()
         
     def _getMQTTServer(self, ct6IPAddress):
         """@brief Perform an upgrade of the CT6 unit.
@@ -652,25 +665,25 @@ class CT6ConfiguratorGUI(MultiAppServer):
             try:
                 self.info(f"Get CT6 device ({ct6IPAddress}) MQTT server configuration.")
                 cfgDict = self._getConfigDict(ct6IPAddress)
-                if CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_SERVER_PORT in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_TOPIC in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_USERNAME in cfgDict and \
-                   CT6ConfiguratorGUI.MQTT_PASSWORD in cfgDict:
+                if CT6GUIServer.MQTT_SERVER_ADDRESS in cfgDict and \
+                   CT6GUIServer.MQTT_SERVER_PORT in cfgDict and \
+                   CT6GUIServer.MQTT_TX_PERIOD_MS in cfgDict and \
+                   CT6GUIServer.MQTT_TOPIC in cfgDict and \
+                   CT6GUIServer.MQTT_USERNAME in cfgDict and \
+                   CT6GUIServer.MQTT_PASSWORD in cfgDict:
                     
-                    mqttServerAddress = cfgDict[CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS]
-                    mqttServerPort = cfgDict[CT6ConfiguratorGUI.MQTT_SERVER_PORT]
-                    mqttTopic = cfgDict[CT6ConfiguratorGUI.MQTT_TOPIC]
-                    mqttUsername = cfgDict[CT6ConfiguratorGUI.MQTT_USERNAME]
-                    mqttPassword = cfgDict[CT6ConfiguratorGUI.MQTT_PASSWORD]
-                    mqttTXPeriodMS = cfgDict[CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS]
-                    msgDict = {CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS: mqttServerAddress,
-                               CT6ConfiguratorGUI.MQTT_SERVER_PORT: mqttServerPort,
-                               CT6ConfiguratorGUI.MQTT_TOPIC: mqttTopic,
-                               CT6ConfiguratorGUI.MQTT_USERNAME: mqttUsername,
-                               CT6ConfiguratorGUI.MQTT_PASSWORD: mqttPassword,
-                               CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS: mqttTXPeriodMS}
+                    mqttServerAddress = cfgDict[CT6GUIServer.MQTT_SERVER_ADDRESS]
+                    mqttServerPort = cfgDict[CT6GUIServer.MQTT_SERVER_PORT]
+                    mqttTopic = cfgDict[CT6GUIServer.MQTT_TOPIC]
+                    mqttUsername = cfgDict[CT6GUIServer.MQTT_USERNAME]
+                    mqttPassword = cfgDict[CT6GUIServer.MQTT_PASSWORD]
+                    mqttTXPeriodMS = cfgDict[CT6GUIServer.MQTT_TX_PERIOD_MS]
+                    msgDict = {CT6GUIServer.MQTT_SERVER_ADDRESS: mqttServerAddress,
+                               CT6GUIServer.MQTT_SERVER_PORT: mqttServerPort,
+                               CT6GUIServer.MQTT_TOPIC: mqttTopic,
+                               CT6GUIServer.MQTT_USERNAME: mqttUsername,
+                               CT6GUIServer.MQTT_PASSWORD: mqttPassword,
+                               CT6GUIServer.MQTT_TX_PERIOD_MS: mqttTXPeriodMS}
                     self.updateGUI(msgDict)
                         
                 else:
@@ -682,41 +695,24 @@ class CT6ConfiguratorGUI(MultiAppServer):
         finally:
             self._sendEnableAllButtons(True)
 
-    def _getEnableDevicePanel(self):
-        """@brief Return the panel used to configure the CT6 devices WiFi network parameters."""
-        descriptionDiv = Div(text="""Activate or deactivate your CT6 device. Your CT6 device will only send data to a database or an MQTT<br>server when it has been set to the active state.""")
-                
-        ipAddresssRow = row(children=[self._ct6IPAddressInput])
-        
-        self._enabledStates = ["enabled", "disabled"]
-        # Select the first serial port in the list
-        self._enabledStateSelect = Select(title="CT6 Device Active", value=self._enabledStates[1], options=self._enabledStates)
-        enabledStateRow = row(children=[self._enabledStateSelect])
-            
-        self._setEnabledStateButton = Button(label="Set", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._setEnabledStateButton.on_click(self._setEnabledStateButtonHandler)
+    def _initActivateDeviceTab(self):
+        """@brief Create the Activate device tab contents."""
+        markDownText = f"""{CT6GUIServer.DESCRIP_STYLE}Activate or deactivate your CT6 device. Your CT6 device will only send data to a database or an MQTT server when it has been set to the active state."""
+        ui.markdown(markDownText)
+        self._ct6IPAddressInput5 = ui.input(label='CT6 Address')
+        self.activeSwitch = ui.switch('Active')
+        with ui.row():
+            self._setEnabledStateButton = ui.button('Set', on_click=self._setEnabledStateButtonHandler)
+            self._getEnabledStateButton = ui.button('Get', on_click=self._getEnabledStateButtonHandler)
+        # Add to button list so that button is disabled while activity is in progress.
+        self._appendButtonList(self._setEnabledStateButton)
+        self._appendButtonList(self._getEnabledStateButton)
 
-        self._getEnabledStateButton = Button(label="Get", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._getEnabledStateButton.on_click(self._getEnabledStateButtonHandler)
-
-        buttonRow = row(children=[self._getEnabledStateButton, self._setEnabledStateButton])
-        
-        panel = column(children=[descriptionDiv,
-                                 ipAddresssRow,
-                                 enabledStateRow,
-                                 buttonRow])
-        return TabPanel(child=panel,  title="Activate Device")
-    
     def _setEnabledStateButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        if self._enabledStateSelect.value == 'enabled':
-            state=1
-        else:
-            state=0
-        threading.Thread( target=self._enableCT6, args=(self._ct6IPAddressInput.value, state )).start()
+        self._initTask(2,3)
+        threading.Thread( target=self._enableCT6, args=(self._ct6IPAddressInput5.value, self.activeSwitch.value )).start()
         
     def _enableCT6(self, ct6IPAddress, enabled):
         """@brief Enable/Disable the CT6 unit.
@@ -730,7 +726,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
                     active=1
                     activeStr = "active"
                 cfgDict = {}
-                cfgDict[CT6ConfiguratorGUI.ACTIVE] = active
+                cfgDict[CT6GUIServer.ACTIVE] = active
                 response = self._saveConfigDict(ct6IPAddress, cfgDict)
                 if response is not None:         
                     self.info(f"Set CT6 device ({ct6IPAddress}) the {activeStr} state.")
@@ -744,9 +740,8 @@ class CT6ConfiguratorGUI(MultiAppServer):
     def _getEnabledStateButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
-        threading.Thread( target=self._getEnabled, args=(self._ct6IPAddressInput.value,)).start()
+        self._initTask(2,3)
+        threading.Thread( target=self._getEnabled, args=(self._ct6IPAddressInput5.value,)).start()
         
     def _getEnabled(self, ct6IPAddress):
         """@brief Get the enabled state of the CT6 unit.
@@ -756,9 +751,9 @@ class CT6ConfiguratorGUI(MultiAppServer):
             try:
                 self.info(f"Getting CT6 device ({ct6IPAddress}) active state.")
                 cfgDict = self._getConfigDict(ct6IPAddress)
-                if CT6ConfiguratorGUI.ACTIVE in cfgDict:
-                    state = cfgDict[CT6ConfiguratorGUI.ACTIVE]
-                    msgDict = {CT6ConfiguratorGUI.ACTIVE: state}
+                if CT6GUIServer.ACTIVE in cfgDict:
+                    state = cfgDict[CT6GUIServer.ACTIVE]
+                    msgDict = {CT6GUIServer.ACTIVE: state}
                     self.updateGUI(msgDict)
                         
                 else:
@@ -771,35 +766,21 @@ class CT6ConfiguratorGUI(MultiAppServer):
         finally:
             self._sendEnableAllButtons(True)
 
-    def _getInstallPanel(self):
-        """@brief Return the panel used to wipe the Pico W flash and re install the software."""
-        #Add HTML to the page.
-        descriptionDiv = Div(text="""Read the factory configuration from the CT6 device, before wiping the CT6 flash. The CT6 device MicroPython<br> \
+    def _initInstallTab(self):
+        """@brief Create the install tab contents."""
+        markDownText = """Read the factory configuration from the CT6 device, before wiping the CT6 flash. The CT6 device MicroPython<br> \
                                      and firmware will then be reloaded before reloading the CT6 device factory configuration.<br> \
                                      This option allows you to recover a CT6 unit that will not boot.<br><br> \
-                                     A USB cable must be connected to the CT6 device to install CT6 software.""")
+                                     A USB cable must be connected to the CT6 device to install CT6 software."""
+        ui.markdown(markDownText)
+        self._installSWButton = ui.button('Install CT6 SW', on_click=self._installSWButtonHandler)
+        # Add to button list so that button is disabled while activity is in progress.
+        self._appendButtonList(self._installSWButton)
         
-        ssidRow = row(children=[self._wifiSSIDInput])
-            
-        passwordRow = row(children=[self._wifiPasswordInput])
-
-        self._installSWButton = Button(label="Install CT6 SW", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._installSWButton.on_click(self._installSWButtonHandler)
-
-        buttonRow = row(children=[self._installSWButton])
-        
-        panel = column(children=[descriptionDiv,
-                                 ssidRow,
-                                 passwordRow,
-                                 buttonRow])
-
-        return TabPanel(child=panel,  title="Install")
-
     def _installSWButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
+        self._initTask(101,160)
         self._saveConfig()
         threading.Thread( target=self._installSW, args=(self._wifiSSIDInput.value, self._wifiPasswordInput.value)).start()
 
@@ -911,45 +892,32 @@ class CT6ConfiguratorGUI(MultiAppServer):
         finally:
             self._sendEnableAllButtons(True)   
 
-    def _getScanPanel(self):
-        """@brief Return the panel used to scan for CT6 devices on the LAN."""
-        #Add HTML to the page.
-        descriptionDiv = Div(text="""Scan for CT6 devices on the LAN.""")
+    def _initScanTab(self):
+        """@brief Create the scan tab contents."""
+        markDownText = """Scan for active CT6 devices on the LAN."""
+        ui.markdown(markDownText)
+        self._ct6Select = ui.select(options=[], label="CT6 Device").style('width: 300px;')
+        self._scanSecondsInput = ui.number(label='Scan Period (Seconds)', value=3, format='%d', min=1, max=60)
+        self._scanSecondsInput.style('width: 300px')
+        with ui.row():
+            self._scanButton = ui.button('Scan', on_click=self._scanButtonHandler)
+            self._rebootButton = ui.button('Power Cycle CT6 Device', on_click=self._rebootButtonHandler)
+        # Add to button list so that button is disabled while activity is in progress.
+        self._appendButtonList(self._scanButton)
+        self._appendButtonList(self._rebootButton)
 
-        self._ct6Select = Select(title="CT6 Device")
-        ct6DevRow = row(children=[self._ct6Select])
-
-        self._scanSecondsInput = NumericInput(title="Scan Period (Seconds)", value=3, low= 1, high=60, mode='int')
-        scanSecondsRow = row(children=[self._scanSecondsInput])
-
-        self._scanButton = Button(label="Scan", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._scanButton.on_click(self._scanButtonHandler)
-
-        self._rebootButton = Button(label="Power Cycle CT6 Device", button_type=CT6ConfiguratorGUI.BUTTON_TYPE)
-        self._rebootButton.on_click(self._rebootButtonHandler)
-
-        buttonRow = row(children=[self._scanButton, self._rebootButton])
-        
-        panel = column(children=[descriptionDiv,
-                                 ct6DevRow,
-                                 scanSecondsRow,
-                                 buttonRow])
-
-        return TabPanel(child=panel,  title="Scan")
-    
     def _scanButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
+        self._ct6DeviceList = []
+        self._initTask(0,0) # PJA update this
         self._saveConfig()
         threading.Thread( target=self._scanForCT6Devices, args=(self._scanSecondsInput.value,)).start()
 
     def _rebootButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._enableAllButtons(False)
-        self._clearMessages()
+        self._initTask(2,2) # PJA update this
         self._saveConfig()
         inputOptions = self._ct6Select.options
         inputStr = self._ct6Select.value
@@ -963,7 +931,7 @@ class CT6ConfiguratorGUI(MultiAppServer):
             pos = inputStr.find('/')
             ipAddress = inputStr[:pos]
             ct6Name = inputStr[pos+1:]
-        if ipAddress and ct6Name:
+        if ipAddress:
             threading.Thread( target=self._rebootDevice, args=(ipAddress,ct6Name)).start()
         else:
             self.warn("Select a CT6 device to reboot.")
@@ -995,6 +963,9 @@ class CT6ConfiguratorGUI(MultiAppServer):
            @param ipAddress The IP address of the CT6 device.
            @param deviceName The name of the device to be rebooted."""
         try:
+            # If we don't have a dev ice name use the IP address
+            if deviceName is None or len(deviceName) == 0:
+                deviceName = ipAddress
             options = getCT6ToolCmdOpts()
             devManager = YDevManager(self, options)
             devManager.setIPAddress(ipAddress)
@@ -1010,341 +981,91 @@ class CT6ConfiguratorGUI(MultiAppServer):
         finally:
             self._sendEnableAllButtons(True)
 
-    def _enableAllButtons(self, enabled):
-        """@brief Enable/Disable all buttons.
-           @param enabled True if button is enabled."""
-        self._installSWButton.disabled = not enabled
-        self._setWiFiNetworkButton.disabled = not enabled
-        self._upgradeButton.disabled = not enabled
-        self._setPortNamesButton.disabled = not enabled
-        self._setEnabledStateButton.disabled = not enabled
-        self._setMQTTServerButton.disabled = not enabled
-        self._getPortNamesButton.disabled = not enabled
-        self._getEnabledStateButton.disabled = not enabled
-        self._getMQTTServerButton.disabled = not enabled
-        self._scanButton.disabled = not enabled
-        self._rebootButton.disabled = not enabled
+    def _calibrateTab(self):
+        """@brief Create the calibrate tab contents."""
+        markDownText = f"""{CT6GUIServer.DESCRIP_STYLE}The CT6 device measures the AC supply voltage in order to read accurate power values. \
+                                                       This is calibrated during manufacture using the recommended AC power supply.<br>
+                                                       The CT6 device should work with any AC power supply that provides 9-16 volts. \
+                                                       If you use a different power supply from the one the CT6 device was calibrated with, during manufacture, you must recalibrate the unit to ensure accurate power measurements. \
+                                                       This tab allows you to calibrate the CT6 device voltage measurements.<br><br>\
+                                                       Measure the AC voltage, enter the measured AC voltage below and select the 'PERFORM VOLTAGE CALIBRATION' button."""
+        ui.markdown(markDownText)
+        self._ct6IPAddressInput6 = ui.input(label='CT6 Address').style('width: 200px;')
+        self._acVoltageInput = ui.number(label="AC Voltage", format='%.2f', value=230.0, min=50, max=400).style('width: 200px;')
+        self._acFreq60HzInput = widget = ui.switch("60 Hz AC Supply").style('width: 200px;')
+        self._acFreq60HzInput.tooltip("Leave this off if your AC frequency is 50 Hz.")
+        self._voltageCalStep1Dialog = YesNoDialog(f"Are you sure you wish to calibrate the voltage on the {self._ct6IPAddressInput6.value} CT6 device ?",
+                                                    self._calVoltageStep1)
+        self._calibrateVoltageButton = ui.button('Perform Voltage Calibration', on_click=lambda: self._voltageCalStep1Dialog.show() )
+        # Add to button list so that button is disabled while activity is in progress.
+        self._appendButtonList(self._calibrateVoltageButton)
         
-    def _clearMessages(self):
-        """@brief Reset the messages in the status area."""
-        self._lastStatusMsgTextInput.value = ""
-        self._statusAreaInput.value = ""
-        
-    def _mainApp(self, doc):
-        """@brief create the GUI page.
-           @param doc The document to add the plot to."""
-        self._startupShow = True
-        # Clear the queue once we have the lock to ensure it's
-        # not being read inside the _update() method.
-        while not self._commsQueue.empty():
-            self._commsQueue.get(block=False)
+    def _calVoltageStep1(self):
+        """@brief Guid the user through the voltage calibration process."""
+        self._initTask(0,0) # PJA update this
+        self._saveConfig()
+        self.info("Start CT6 voltage calibration.")
+        threading.Thread( target=self._calVoltage, args=(self._ct6IPAddressInput6.value, self._acVoltageInput.value, self._acFreq60HzInput.value)).start()
 
-        doc.clear()
-        self._doc = doc
-        # Set the Web page title
-        self._doc.title = CT6ConfiguratorGUI.PAGE_TITLE
-        self._tabList = []
-        # 1 rem generally = 16px
-        # Using rem rather than px can help ensure consistency of font size and spacing throughout your UI.
-        fontSize='1rem'
-        theme = "dark_minimal"
-        tabTextSizeSS = [{'.bk-tab': Styles(font_size='{}'.format(fontSize))}, {'.bk-tab': Styles(background='{}'.format('grey'))}]
-
-        self._wifiSSIDInput = TextInput(title="WiFi SSID", placeholder="WiFi SSID")
-        self._wifiPasswordInput = PasswordInput(title="WiFi password",placeholder="WiFi password")
-
-        self._lastStatusMsgTextInput = TextInput(title="Message", value="", disabled=True)
-        self._statusAreaInput = TextAreaInput(title="Message Log", value="", disabled=True, rows=10)
-
-        # Create address input field. Defined here because we use it on multiple tabs.
-        self._ct6IPAddressInput = TextInput(title="CT6 IP Address", placeholder="CT6 IP Address")
-
-        self._tabList.append( self._getSetWifiPanel() )
-        self._tabList.append( self._getUpgradePanel() )
-        self._tabList.append( self._getDeviceNamePanel() )
-        self._tabList.append( self._getPortNamePanel() )
-        self._tabList.append( self._getMQTTPanel() )
-        self._tabList.append( self._getEnableDevicePanel() )
-        self._tabList.append( self._getInstallPanel() )
-        self._tabList.append( self._getScanPanel() )
-
-        self._allTabsPanel = Tabs(tabs=self._tabList, sizing_mode="stretch_both", stylesheets=tabTextSizeSS)
-            
-        pageWidthPanel = column(children=[self._allTabsPanel], sizing_mode="stretch_both")
-        statusPanel1 = layout([[self._lastStatusMsgTextInput]], sizing_mode='scale_width')
-        statusPanel2 = layout([[self._statusAreaInput]], sizing_mode='scale_width')
-        mainPanel = column(children=[pageWidthPanel, statusPanel1, statusPanel2], sizing_mode="stretch_both")
-        
-        self._doc.add_root( mainPanel )
-
-        self._doc.theme = theme
-        self._doc.add_periodic_callback(self._updateCallBack, 100)
-        
-        self._loadConfig()
-
-        # Add msg to let the user know the log file for this session.
-        self.info("Created " + self._logFile)
-
-    def _updateCallBack(self):
-        # Call the update method so that to ensure it's safe to update the document.
-        # This ensures an exception won't be thrown.
-        self._doc.add_next_tick_callback(self._update)
-
-    def _update(self, maxDwellMS=1000):
-        """@brief Called periodically to update the Web GUI."""
-        while not self._commsQueue.empty():
-            rxMessage = self._commsQueue.get()
-            if isinstance(rxMessage, dict):
-                self._processRXDict(rxMessage)
-        
-    def _saveConfig(self):
-        """@brief Save some parameters to a local config file."""
-        self._cfgMgr.addAttr(CT6ConfiguratorGUI.WIFI_SSID, self._wifiSSIDInput.value)
-        self._cfgMgr.addAttr(CT6ConfiguratorGUI.WIFI_PASSWORD, self._wifiPasswordInput.value)
-        self._cfgMgr.addAttr(CT6ConfiguratorGUI.DEVICE_ADDRESS, self._ct6IPAddressInput.value)
-        self._cfgMgr.store()
-        
-    def _loadConfig(self):
-        """@brief Load the config from a config file."""
+    def _calVoltage(self, address, acVoltage, acFreq60Hz):
+        """@brief Perform the AC voltage calibration.
+           @param address The address of the CT6 device.
+           @param acVoltage The measured AC voltage.
+           @param acFreq60Hz True if AC main freq is 60 Hz, False if 50 Hz"""
         try:
-            self._cfgMgr.load()
-        except:
-            pass
-        self._wifiSSIDInput.value = self._cfgMgr.getAttr(CT6ConfiguratorGUI.WIFI_SSID)
-        self._wifiPasswordInput.value = self._cfgMgr.getAttr(CT6ConfiguratorGUI.WIFI_PASSWORD)
-        self._ct6IPAddressInput.value = self._cfgMgr.getAttr(CT6ConfiguratorGUI.DEVICE_ADDRESS)
-
-    def _saveLogMsg(self, msg):
-        """@brief Save the message to a log file.
-           @param msg The message text to be stored in the log file."""
-        # If the log file does not exist
-        if not os.path.isfile(self._logFile):
-            with open(self._logFile, 'w') as fd:
-                pass
-        # Update the log file
-        with open(self._logFile, 'a') as fd:
-            dateTimeStamp = CT6ConfiguratorGUI.GetLogFileName()
-            fd.write(dateTimeStamp + ": " + msg + '\n')
-
-    def _getDisplayMsg(self, msg, prefix):
-        """@brief Get the msg to display. If the msg does not already have a msg level we add one.
-           @param msg The source msg.
-           @param prefix The message prefix (level indcator) to add."""
-        if msg.startswith(CT6ConfiguratorGUI.INFO_MESSAGE) or \
-           msg.startswith(CT6ConfiguratorGUI.WARN_MESSAGE) or \
-           msg.startswith(CT6ConfiguratorGUI.ERROR_MESSAGE) or \
-           msg.startswith(CT6ConfiguratorGUI.DEBUG_MESSAGE):
-            _msg = msg
-        else:
-            _msg = prefix + msg
-        return _msg
-
-    def __info(self, msg):
-        """@brief Update an info level message. This must be called from the GUI thread.
-           @param msg The message to display."""
-        _msg = self._getDisplayMsg(msg, CT6ConfiguratorGUI.INFO_MESSAGE)
-        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + _msg
-        self._lastStatusMsgTextInput.value = _msg
-        self._saveLogMsg(_msg)
-
-    def __warn(self, msg):
-        """@brief Update an warning level message. This must be called from the GUI thread.
-           @param msg The message to display."""
-        _msg = self._getDisplayMsg(msg, CT6ConfiguratorGUI.WARN_MESSAGE)
-        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + _msg
-        self._lastStatusMsgTextInput.value = _msg
-        self._saveLogMsg(_msg)
-
-    def __error(self, msg):
-        """@brief Update an error level message. This must be called from the GUI thread.
-           @param msg The message to display."""
-        _msg = self._getDisplayMsg(msg, CT6ConfiguratorGUI.ERROR_MESSAGE)
-        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + _msg
-        self._lastStatusMsgTextInput.value = _msg
-        self._saveLogMsg(_msg)
-
-    def __debug(self, msg):
-        """@brief Update an debug level message. This must be called from the GUI thread.
-           @param msg The message to display."""
-        _msg = self._getDisplayMsg(msg, CT6ConfiguratorGUI.DEBUG_MESSAGE)
-        self._statusAreaInput.value = self._statusAreaInput.value + "\n" + _msg
-        self._lastStatusMsgTextInput.value = _msg
-        self._saveLogMsg(_msg)
-
-    def _processRXDict(self, rxDict):
-        """@brief Process the dicts received from the GUI message queue.
-           @param rxDict The dict received from the GUI message queue."""
-        if CT6ConfiguratorGUI.INFO_MESSAGE in rxDict:
-            msg = rxDict[CT6ConfiguratorGUI.INFO_MESSAGE]
-            self.__info(msg)
-
-        elif CT6ConfiguratorGUI.WARN_MESSAGE in rxDict:
-            msg = rxDict[CT6ConfiguratorGUI.WARN_MESSAGE]
-            self.__warn(msg)
-
-        elif CT6ConfiguratorGUI.ERROR_MESSAGE in rxDict:
-            msg = rxDict[CT6ConfiguratorGUI.ERROR_MESSAGE]
-            self.__error(msg)
-
-        elif CT6ConfiguratorGUI.DEBUG_MESSAGE in rxDict:
-            msg = rxDict[CT6ConfiguratorGUI.DEBUG_MESSAGE]
-            self.__debug(msg)
-            
-        elif CT6ConfiguratorGUI.ENABLE_BUTTONS in rxDict:
-            state = rxDict[CT6ConfiguratorGUI.ENABLE_BUTTONS]
-            self._enableAllButtons(state)
-
-        elif CT6ConfiguratorGUI.SET_CT6_IP_ADDRESS in rxDict:
-            address = rxDict[CT6ConfiguratorGUI.SET_CT6_IP_ADDRESS]
-            # Set the IP address field to the CT6 address
-            self._ct6IPAddressInput.value = address
-            self._saveConfig()
-                
-        elif CT6ConfiguratorGUI.UPDATE_PORT_NAMES in rxDict:
-        
-            if CT6ConfiguratorGUI.CT1_NAME in rxDict:
-                self._ct1PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT1_NAME])
-                
-            if CT6ConfiguratorGUI.CT2_NAME in rxDict:
-                self._ct2PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT2_NAME])
-                
-            if CT6ConfiguratorGUI.CT3_NAME in rxDict:
-                self._ct3PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT3_NAME])
-                
-            if CT6ConfiguratorGUI.CT4_NAME in rxDict:
-                self._ct4PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT4_NAME])
-                
-            if CT6ConfiguratorGUI.CT5_NAME in rxDict:
-                self._ct5PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT5_NAME])
-                
-            if CT6ConfiguratorGUI.CT6_NAME in rxDict:
-                self._ct6PortNameInput.value = str(rxDict[CT6ConfiguratorGUI.CT6_NAME])
-                
-            self._enableAllButtons(True)
-            self.__info("Read CT6 port names from the device.")
-            
-        elif CT6ConfiguratorGUI.PORT_NAMES_UPDATED in rxDict:
-            self._enableAllButtons(True)
-            self.__info("Set CT6 port names.")
-            
-        elif CT6ConfiguratorGUI.DEV_NAME in rxDict:
-            self._ct6DeviceNameInput.value = rxDict[CT6ConfiguratorGUI.DEV_NAME]
-            self._enableAllButtons(True)
-                            
-        elif CT6ConfiguratorGUI.ACTIVE in rxDict:
-            active = rxDict[CT6ConfiguratorGUI.ACTIVE]
-            if active:
-                self._enabledStateSelect.value="enabled"
-            else:
-                self._enabledStateSelect.value="disabled"
-                
-        elif CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS in rxDict and \
-             CT6ConfiguratorGUI.MQTT_SERVER_PORT in rxDict and \
-             CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS in rxDict and \
-             CT6ConfiguratorGUI.MQTT_TOPIC in rxDict and \
-             CT6ConfiguratorGUI.MQTT_USERNAME in rxDict and \
-             CT6ConfiguratorGUI.MQTT_PASSWORD in rxDict:   
-            mqttServerAddress = rxDict[CT6ConfiguratorGUI.MQTT_SERVER_ADDRESS]
-            mqttServerPort = rxDict[CT6ConfiguratorGUI.MQTT_SERVER_PORT]
-            mqttTXPeriodMS = rxDict[CT6ConfiguratorGUI.MQTT_TX_PERIOD_MS]
-            topic = rxDict[CT6ConfiguratorGUI.MQTT_TOPIC]
-            username = rxDict[CT6ConfiguratorGUI.MQTT_USERNAME]
-            password = rxDict[CT6ConfiguratorGUI.MQTT_PASSWORD]
-
-            # Remove any whitespace leading or trailing characters
-            mqttServerAddress = mqttServerAddress.strip()
-            topic = topic.strip()
-            username = username.strip()
-            password = password.strip()
-
-            self._mqttServerAddressInput.value = mqttServerAddress
-            self._mqttServerPortInput.value = mqttServerPort
-            self._mqttTopicInput.value = topic
-            self._mqttUsernameInput.value = username
-            self._mqttPasswordInput.value = password
-            self._mqttServerTXPeriodMSInput.value = mqttTXPeriodMS
-
-        elif CT6Base.IP_ADDRESS in rxDict and \
-             CT6Base.UNIT_NAME in rxDict:
-            selectText = rxDict[CT6Base.IP_ADDRESS] + '/' + rxDict[CT6Base.UNIT_NAME]
-            if selectText not in self._ct6Select.options:
-                optionsList = list(self._ct6Select.options)
-                optionsList.append(selectText)
-                self._ct6Select.options = optionsList
-
-    def _sendEnableAllButtons(self, state):
-        """@brief Send a message to the GUI to enable/disable all the command buttons.
-           @param msg The message to be displayed."""
-        msgDict = {CT6ConfiguratorGUI.ENABLE_BUTTONS: state}
-        self.updateGUI(msgDict)
-            
-    # Start ------------------------------
-    # Methods that allow the GUI to display standard UIO messages
-    #
-    def info(self, msg):
-        """@brief Send a info message to be displayed in the GUI.
-           @param msg The message to be displayed."""
-        msgDict = {CT6ConfiguratorGUI.INFO_MESSAGE: msg}
-        self.updateGUI(msgDict)
-
-    def warn(self, msg):
-        """@brief Send a warning message to be displayed in the GUI.
-           @param msg The message to be displayed."""
-        msgDict = {CT6ConfiguratorGUI.WARN_MESSAGE: msg}
-        self.updateGUI(msgDict)
-        
-    def error(self, msg):
-        """@brief Send a error message to be displayed in the GUI.
-           @param msg The message to be displayed."""
-        msgDict = {CT6ConfiguratorGUI.ERROR_MESSAGE: msg}
-        self.updateGUI(msgDict)
-        
-    def debug(self, msg):
-        """@brief Send a debug message to be displayed in the GUI.
-           @param msg The message to be displayed."""
-        if self._uio.isDebugEnabled():
-            msgDict = {CT6ConfiguratorGUI.DEBUG_MESSAGE: msg}
-            self.updateGUI(msgDict)
-
-    def getInput(self, prompt):
-        raise Exception("Set your WiFi SSID and password and try again.")
-            
-    def reportException(self, exception):
-        """@brief Report an exception."""
-        if self._uio.isDebugEnabled():
-            self.error(traceback.format_exc())
-            
-        else:
-            self.error( exception.args[0] )
-            
-    # End ------------------------------   
-        
-class CT6ConfiguratorServer(object):
-    """@brief Responsible for starting the CT6 configurator GUI."""
-
-    def __init__(self, uio, options, config):
-        """@brief Constructor
-           @param uio A UIO instance
-           @param options The command line options instance
-           @param config A GUIConfigBase instance."""
-        self._uio                   = uio
-        self._options               = options
-        self._config                = config
-        self._dbHandler             = None
-
-    def close(self):
-        """@brief Close down the app server."""
-        pass
+            factorySetupOptions = getFactorySetupCmdOpts()
+            factorySetupOptions.address = address
+            factorySetupOptions.ac60hz = acFreq60Hz
+            factorySetup = FactorySetup(self, factorySetupOptions)
+            factorySetup._calVoltageGain(1, maxError=0.3, acVoltage=acVoltage)
+            factorySetup._calVoltageGain(4, maxError=0.3, acVoltage=acVoltage)
+            self.info("Voltage calibration completed successfully.")
+        finally:
+            self._sendEnableAllButtons(True)
 
     def start(self):
         """@Start the App server running."""
         try:
-            gui = CT6ConfiguratorGUI(self._uio, self._options, self._config)
-            gui.runBlockingBokehServer(gui.getAppMethodDict(), openBrowser=True)
+            tabNameList = ('WiFi', 
+                           'Upgrade', 
+                           'Device Name', 
+                           'Port Names', 
+                           'MQTT Server', 
+                           'Activate Device', 
+                           'Install', 
+                           'Scan',
+                           'Calibrate Voltage')
+            # This must have the same number of elements as the above list
+            tabMethodInitList = [self._initWiFiTab, 
+                                 self._initUpgradeTab, 
+                                 self._initDevNameTab, 
+                                 self._initPortNamesTab, 
+                                 self._initMQTTServerTab, 
+                                 self._initActivateDeviceTab, 
+                                 self._initInstallTab, 
+                                 self._initScanTab,
+                                 self._calibrateTab]
+            address = self._config.getAttr(CT6ConfiguratorConfig.LOCAL_GUI_SERVER_ADDRESS)
+            port = self._config.getAttr(CT6ConfiguratorConfig.LOCAL_GUI_SERVER_PORT)
+
+            # PJA try without address port
+            self.initGUI(tabNameList, 
+                          tabMethodInitList, 
+                          address=address, 
+                          port=port, 
+                          pageTitle=CT6GUIServer.PAGE_TITLE)
+            self._loadConfig()
 
         finally:
             self.close()
-            
+
+
+
+
+
+
+
+
 def main():
     """@brief Program entry point"""
     uio = UIO()
@@ -1369,7 +1090,7 @@ def main():
 
         ct6ConfiguratorConfig = CT6ConfiguratorConfig(uio, options.config_file, CT6ConfiguratorConfig.DEFAULT_CONFIG)
         
-        ct6Configurator = CT6ConfiguratorServer(uio, options, ct6ConfiguratorConfig)
+        ct6Configurator = CT6GUIServer(uio, options, ct6ConfiguratorConfig)
         ct6Configurator.start()
 
     #If the program throws a system exit exception
@@ -1386,5 +1107,6 @@ def main():
         else:
             uio.error(str(ex))
 
-if __name__== '__main__':
+# Note __mp_main__ is used by the nicegui module
+if __name__ in {"__main__", "__mp_main__"}:
     main()
