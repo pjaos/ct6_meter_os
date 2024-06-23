@@ -106,22 +106,44 @@ CT6 {"CT2": {"PRMS": 0.0, "PAPPARENT": 0.0, "PF": -1.0, "PREACT": 0.0, "VRMS": 2
  The flash will then be erased, MicroPython will be reloaded followed by the CT6 firmware.
  This options allows the user to recover a CT6 unit if required.
 
- When the 'Install CT6 SW' button is selected the CT6 factory configuration. A USB cable must be connected 
- to the CT6 device to use this option. During the process of loading the CT6 firmware you will be
- instructed to power down and then power up the CT6 device while holding the button on the Pico W device. 
- The hole next to the C on the CT6 on the front of the CT6 case allows you hold this button down without
- removing the Pico W from the CT6 case.
 
- ![alt text](images/ct6_configurator_8.png "CT6 Configurator Install")
+ A USB cable must be connected to the CT6 device to use this option. Select the 'Install CT6 SW' button 
+ and the CT6 factory configuration will be read from the device as shown below.
+  
+  ![alt text](images/ct6_configurator_8_a.png "CT6 Configurator Install")
+
+As instructed in the window remove power from the CT6 device and hold the button on the Pico W device down.
+The hole next to the C on the CT6 on the front of the CT6 case allows you hold this button down without
+removing the Pico W from the CT6 case. The Pico W device will then be erased and reloaded and should 
+complete as shown below.
+
+  ![alt text](images/ct6_configurator_8_b.png "CT6 Configurator Install")
 
  ## Scan for CT6 devices
  The Scan tab allows you to check your LAN for any CT6 devices that may be present. Select the Scan button 
  to start the scanning process. The dropdown list of CT6 Devices is then populated with those that are found.
 
-  ![alt text](images/ct6_configurator_9.png "CT6 Configurator Scan")
+  ![alt text](images/ct6_configurator_9_a.png "CT6 Configurator Scan")
 
-If a device is selected and the 'Power Cycle CT6 Device' button is selected the CT6 device will power off and
-after 4 or 5 seconds power back on again to reconnect to the WiFi network.  
+You can then power cycle a CT6 device remotly if required by selectin the device from the drop down list and then
+selecting the 'Power Cycle CT6 Device' button. The CT6 device will power off and after 4 or 5 seconds power 
+back on again to reconnect to the WiFi network as shown below.
+
+  ![alt text](images/ct6_configurator_9_b.png "CT6 Configurator Scan")
+
+## Calibrate the CT6 voltage measurements
+The CT6 device is powered from an AC supply. The CT6 device measures the mains AC voltage by measuring its AC supply voltage. 
+This supply voltage is dropped down to 9-16 volts from the AC mains voltage by the power adapter used. 
+When the CT6 device is manufactured it's voltage measurements are calibrated. This is done using the recommended 
+power adaptor. If you wish to use another power adaptor it must provide between 9 and 16V AC to the CT6 device and
+be calibrated. Using the 'CALIBRATE VOLTAGE' tab you can perform CT6 voltage calibration to ensure the voltage 
+measured by the CT6 device is accurate. 
+
+To do this you have to manually measure the AC voltage using a digital multimeter (DMM) or some other device. Care must be taken when doing this as the AC mains voltage is dangerous. Use a connector block to measure the AC mains voltage with a DMM. Some inline energy monitoring devices will report the AC mains voltage which could be used instead of a DMM. Note that the accuracy of the voltage measurement will dictate the accuracy of the CT6 device power readings.
+
+To perform the voltage calibration enter the measures AC voltage into the field on the CALIBRATE VOLTAGE tab. The '60 Hz AC supply switch should be left off unless your AC mains supply frequency is 60 Hz. In this case the AC mains frequency is assumed to be 50 Hz. Then select the 'PERFORM VOLTAGE CALIBRATION' button as shown below.
+
+  ![alt text](images/ct6_configurator_10.png "CT6 Voltage Calibration")
 
 
 
