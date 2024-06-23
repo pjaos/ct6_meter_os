@@ -97,6 +97,9 @@ class CT6GUIServer(TabbedNiceGui):
         self._cfgMgr                    = ConfigManager(self._uio, CT6GUIServer.CFG_FILENAME, CT6GUIServer.DEFAULT_CONFIG)
         
         self._logFile                   = os.path.join(self._logPath, CT6GUIServer.GetLogFileName(CT6GUIServer.LOGFILE_PREFIX))
+        
+        # Add msg to let the user know the log file for this session.
+        self.info("Created " + self._logFile)
 
     def _setCT6IPAddress(self, address):
         """@brief Set the CT6 IP address.
