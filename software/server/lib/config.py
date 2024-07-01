@@ -53,7 +53,7 @@ class ConfigBase(ConfigManager):
            @param uio UIO instance.
            @param configFile Config file instance.
            @param defaultConfig The default configuration."""
-        super().__init__(uio, configFile, defaultConfig, addDotToFilename=False, encrypt=True)
+        super().__init__(uio, configFile, defaultConfig, addDotToFilename=False, encrypt=False)
         self._uio     = uio
         self.load()
         self.store()
