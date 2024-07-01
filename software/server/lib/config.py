@@ -55,7 +55,10 @@ class ConfigBase(ConfigManager):
            @param defaultConfig The default configuration."""
         super().__init__(uio, configFile, defaultConfig, addDotToFilename=False, encrypt=False)
         self._uio     = uio
-        self.load()
+        try:
+            self.load()
+        except:
+            self._configDict = self._defaultConfig
         self.store()
         
     def _showLocalIPAddressList(self):
