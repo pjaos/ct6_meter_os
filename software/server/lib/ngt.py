@@ -10,6 +10,7 @@ import os
 import platform
 import argparse
 
+from time import sleep
 from p3lib.uio import UIO
 from p3lib.helper import logTraceBack
 
@@ -35,7 +36,7 @@ class TabbedNiceGui(object):
 
     # This can be used in the markdown text for a TAB description to give slightly larger text
     # than normal.
-    DESCRIP_STYLE               = '<span style="font-size:1.5em;">'
+    DESCRIP_STYLE               = '<span style="font-size:1.2em;">'
     ENABLE_BUTTONS              = "ENABLE_BUTTONS"
     UPDATE_SECONDS              = "UPDATE_SECONDS"
     INFO_MESSAGE                = "INFO:  "
@@ -44,6 +45,9 @@ class TabbedNiceGui(object):
     DEBUG_MESSAGE               = "DEBUG: "
     MAX_PROGRESS_VALUE          = 100
     DEFAULT_SERVER_PORT         = 9812
+    GUI_TIMER_SECONDS           = 0.1
+    UPDATE_SECONDS              = "UPDATE_SECONDS"
+    DEFAULT_GUI_RESPONSE_TIMEOUT= 30.0
 
     @staticmethod
     def GetDateTimeStamp():
@@ -87,10 +91,10 @@ class TabbedNiceGui(object):
         # Make the install folder our current dir
         os.chdir(self._installFolder)
 
-        
-
-        # this queue is used to send commands from the GUI thread and read responses received from outside the GUI thread.
-        self._commsQueue = Queue()
+        # This queue is used to send commands from any thread to the GUI thread.
+        self._toGUIQueue = Queue()
+        # This queue is for the GUI thread to send messages to other threads
+        self._fromGUIQueue = Queue()
 
     def _ensureLogPathExists(self):
         """@brief Ensure that the log path exists."""
@@ -124,7 +128,7 @@ class TabbedNiceGui(object):
         """@brief Send a error message to be displayed in the GUI.
                   This can be called from outside the GUI thread.
            @param msg The message to be displayed."""
-        msgDict = {TabbedNiceGui.ERROR_MESSAGE: msg}
+        msgDict = {TabbedNiceGui.ERROR_MESSAGE: repr(msg)}
         self.updateGUI(msgDict)
         
     def debug(self, msg):
@@ -175,7 +179,7 @@ class TabbedNiceGui(object):
            @param msgDict A dict containing details of how to update the GUI."""
         # Record the seconds when we received the message
         msgDict[TabbedNiceGui.UPDATE_SECONDS]=time()
-        self._commsQueue.put(msgDict)
+        self._toGUIQueue.put(msgDict)
 
     def showTable(self, table, rowSeparatorChar = "-", colSeparatorChar = "|"):
         """@brief Show the contents of a table to the user.
@@ -318,8 +322,8 @@ class TabbedNiceGui(object):
 
     def periodicTimer(self):
         """@called periodically to allow updates of the GUI."""
-        while not self._commsQueue.empty():
-            rxMessage = self._commsQueue.get()
+        while not self._toGUIQueue.empty():
+            rxMessage = self._toGUIQueue.get()
             if isinstance(rxMessage, dict):
                 self._processRXDict(rxMessage)
 
@@ -363,7 +367,7 @@ class TabbedNiceGui(object):
             ui.button('Log Message Count', on_click=self._showLogMsgCount)
             ui.button('Clear Log', on_click=self._clearLog)
 
-        ui.timer(interval=0.1, callback=self.periodicTimer)
+        ui.timer(interval=TabbedNiceGui.GUI_TIMER_SECONDS, callback=self.periodicTimer)
         ui.run(host=address, port=port, title=pageTitle, dark=True, uvicorn_logging_level=guiLogLevel, reload=reload)
 
     def _setProgressMessageCount(self, normalCount, debugCount):
@@ -436,12 +440,50 @@ class TabbedNiceGui(object):
 
             self._handleGUIUpdate(rxDict)
 
+    def _updateGUI(self, msgDict):
+        """@brief Send a message to the GUI so that it updates itself.
+           @param msgDict A dict containing details of how to update the GUI."""
+        # Record the seconds when we received the message
+        msgDict[TabbedNiceGui.UPDATE_SECONDS]=time()
+        self._toGUIQueue.put(msgDict)
+
+    def _updateExeThread(self, msgDict):
+        """@brief Send a message from the GUI thread to an external (non GUI thread).
+           @param msgDict A dict containing messages to be sent to the external thread."""
+        # Record the seconds when we received the message
+        msgDict[TabbedNiceGui.UPDATE_SECONDS]=time()
+        self._fromGUIQueue.put(msgDict)
+
+    def _updateGUIAndWaitForResponse(self, msgDict, timeout=DEFAULT_GUI_RESPONSE_TIMEOUT):
+        """@brief Send a message to the GUI and wait for a response.
+           @param msgDict The message dictionary to be sent to the GUI.
+           @param timeout The number of seconds to wait for a response.
+           @return The return dict."""
+        timeoutT = time()+timeout
+        rxDict = None
+        self._updateGUI(msgDict)
+        while True:
+            if not self._fromGUIQueue.empty():
+                rxMessage = self._fromGUIQueue.get()
+                if isinstance(rxMessage, dict):
+                    rxDict = rxMessage
+                    break
+
+            elif time() >= timeoutT:
+                raise Exception(f"{timeout} second GUI response timeout.")
+            
+            else:
+                # Don't spin to fast
+                sleep(0.1)
+            
+        return rxDict
+    
     def _handleGUIUpdate(self, rxDict):
         """@brief Process the dicts received from the GUI message queue
                   that were not handled by the parent class.
            @param rxDict The dict received from the GUI message queue."""
         raise NotImplementedError("_handleGUIUpdate() is not implemented. Implement this method in a subclass of TabbedNiceGUI")
-
+    
 
 class YesNoDialog(object):
     """@brief Responsible for displaying a dialog box to the user with a boolean (I.E yes/no, ok/cancel) response."""
@@ -523,7 +565,7 @@ class YesNoDialog(object):
             for fieldName in self._inputFieldDict:
                 fieldType = self._inputFieldDict[fieldName][YesNoDialog.FIELD_TYPE_KEY]
                 if fieldType == YesNoDialog.TEXT_INPUT_FIELD_TYPE:
-                    widget = ui.input(label=fieldName)
+                    widget = ui.input(label=fieldName).style('width: 200px;')
 
                 elif fieldType == YesNoDialog.NUMBER_INPUT_FIELD_TYPE:
                     value = self._inputFieldDict[fieldName][YesNoDialog.VALUE_KEY]
@@ -532,7 +574,7 @@ class YesNoDialog(object):
                     widget = ui.number(label=fieldName, 
                                         value=value, 
                                         min=min, 
-                                        max=max)
+                                        max=max).style('width: 200px;')
                     
                 elif fieldType == YesNoDialog.SWITCH_INPUT_FIELD_TYPE:
                     widget = ui.switch(fieldName)
@@ -582,7 +624,7 @@ class YesNoDialog(object):
         """@brief Set the text of the success button.
            @param successMethod The method called when the user selects the success button."""
         self._successMethod = successMethod
-        
+
     def setFailureMethod(self, failureMethod):
         """@brief Set the text of the success button.
            @param failureMethod The method called when the user selects the failure button."""

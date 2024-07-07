@@ -272,12 +272,14 @@ class FactorySetup(CT6Base):
 
             sleep(0.4)
             
-    def _calCurrentGain(self, ct, maxError=0.02):
+    def _calCurrentGain(self, ct, maxError=0.02, acAmps=None, noLoadTimeoutSeconds=120.0):
         """@brief Calibrate the current gain for the CT.
            @param ct The ct number1,2,3,4,5 or 6.
-           @param maxError The maximum error. If the error drops below this value then we say the voltage is calibrated."""
+           @param maxError The maximum error. If the error drops below this value then we say the voltage is calibrated.
+           @param acAmps The measured current in amps. If left as None then the user is prompted to enter the value.
+           @param noLoadTimeoutSeconds If no load is detected then wait this period of time before timing out."""
         self._uio.info("")
-        self._uio.getInput("Ensure an AC load drawing at least 5 amps is connected and press RETURN")
+        self._uio.getInput("Ensure an AC load drawing at least 1 amp is connected and press RETURN")
 
         if ct == 1:
             configKey = FactorySetup.CT1_IGAIN_KEY
@@ -304,26 +306,30 @@ class FactorySetup(CT6Base):
                     
         # First check that we have enough current flowing
         self._uio.info(f"Checking that CT{ct} detects at least 5 amps.")
+        timeoutT = time()+noLoadTimeoutSeconds
         while True:
             statsDict = self._getStatsDict()
             ctStatsDict = statsDict[f"CT{ct}"]
 
             amps = ctStatsDict[FactorySetup.IRMS]
             self._uio.info(f"Detected {amps} amps.")
-            if amps >= 5.0:
+            if amps >= 1.0:
                 break
             else:
-                self._uio.warn(f"Detected {amps} amps. A load current of at least 5 amps is required for calibration.")
+                self._uio.warn(f"Detected {amps} amps. A load current of at least 1 amp is required for calibration.")
                 sleep(1)
+            if time() > timeoutT:
+                raise Exception(f"{noLoadTimeoutSeconds} second timeout waiting for a load current.")
             sleep(0.4)
 
-        # Do some bounds checking on the entered voltage
+        # Do some bounds checking on the entered current
         while True:
-            acAmps = self._uio.getFloatInput("Enter the AC RMS current in amps as measured with an external meter")
-            if acAmps >= 5 and acAmps < 100:
+            if acAmps is None:
+                acAmps = self._uio.getFloatInput("Enter the AC RMS current in amps as measured with an external meter")
+            if acAmps >= 1 and acAmps < 100:
                 break
             else:
-                self._uio.warn(f"{acAmps} is out of range (5 - 100 amps).")
+                self._uio.warn(f"{acAmps} is out of range (1 - 100 amps).")
                 
         while True:
             cfgDict = self._getConfigDict()
@@ -363,9 +369,10 @@ class FactorySetup(CT6Base):
         self._uio.info(f"CT{ct} current calibration complete.")
         self._uio.getInput("DISCONNECT the AC load and press RETURN")
 
-    def _calCurrentOffset(self, ct):
+    def _calCurrentOffset(self, ct, loadOffTimeoutSeconds=120.0):
         """@brief Calibrate current offsets.
-           @param ct The ct port."""
+           @param ct The ct port.
+           @param loadOffTimeoutSeconds The max time to wait for the load to be off."""
 
         ampsOffset=0
         offsetDelta=1000
@@ -390,6 +397,7 @@ class FactorySetup(CT6Base):
 
         # First check that the user has turned off the load
         self._uio.info(f"Checking that CT{ct} load has been turned off.")
+        timeoutT = time()+loadOffTimeoutSeconds
         while True:
             statsDict = self._getStatsDict()
             ctStatsDict = statsDict[f"CT{ct}"]
@@ -400,6 +408,9 @@ class FactorySetup(CT6Base):
                 sleep(1)
             else:
                 break
+            if time() > timeoutT:
+                raise Exception(f"{loadOffTimeoutSeconds} second timeout waiting for the load to be turned off.")
+            
             sleep(0.4)
 
         while True:

@@ -65,8 +65,19 @@ class CT6GUIServer(TabbedNiceGui):
     MQTT_USERNAME               = "MQTT_USERNAME"
     MQTT_PASSWORD               = "MQTT_PASSWORD"
     
+    MIN_CAL_CURRENT             = 1
+    MAX_CAL_CURRENT             = 100
+    
     LOGFILE_PREFIX              = "ct6_configurator"
-   
+
+    AC_LOAD_OFF_TO_GUI_CMD      = 1
+    CURRENT_CAL_COMPLETE_TO_GUI_CMD = 2
+
+    QUIT_THREAD_FROM_GUI_CMD    = 1
+    AC_LOAD_OFF_FROM_GUI_CMD    = 2
+
+    AC_CURRENT_FIELD            = "AC Current (Amps)"
+    
     def __init__(self, uio, options, config):
         """@brief Constructor
            @param uio A UIO instance
@@ -86,6 +97,7 @@ class CT6GUIServer(TabbedNiceGui):
         self._ct6DeviceList             = []
         self._dialogPrompt              = None
         self._dialogYesMethod           = None
+        self._loadOffDialog             = None
 
         self._skipFactoryConfigRestore  = False
         if '--skip_factory_config_restore' in sys.argv:
@@ -127,21 +139,23 @@ class CT6GUIServer(TabbedNiceGui):
         self._wifiSSIDInput.value = self._cfgMgr.getAttr(CT6GUIServer.WIFI_SSID)
         self._wifiPasswordInput.value = self._cfgMgr.getAttr(CT6GUIServer.WIFI_PASSWORD)
         self._ct6IPAddressInput1.value = self._cfgMgr.getAttr(CT6GUIServer.DEVICE_ADDRESS)
-        self._copyCT6Address()
+        self._copyCT6Address(self._ct6IPAddressInput1.value)
 
-    def _copyCT6Address(self):
-        """@brief Copy same address to CT6 address on all tabs."""
+    def _copyCT6Address(self, ipAddress):
+        """@brief Copy same address to CT6 address on all tabs.
+           @param ipAddress The IP address to copy to all tabs."""
         if self._ct6IPAddressInput1:
-            if self._ct6IPAddressInput2:
-                self._ct6IPAddressInput2.value = self._ct6IPAddressInput1.value
-            if self._ct6IPAddressInput3:
-                self._ct6IPAddressInput3.value = self._ct6IPAddressInput1.value
-            if self._ct6IPAddressInput4:
-                self._ct6IPAddressInput4.value = self._ct6IPAddressInput1.value
-            if self._ct6IPAddressInput5:
-                self._ct6IPAddressInput5.value = self._ct6IPAddressInput1.value
-            if self._ct6IPAddressInput6:
-                self._ct6IPAddressInput6.value = self._ct6IPAddressInput1.value
+            self._ct6IPAddressInput1.value = ipAddress
+        if self._ct6IPAddressInput2:
+            self._ct6IPAddressInput2.value = ipAddress
+        if self._ct6IPAddressInput3:
+            self._ct6IPAddressInput3.value = ipAddress
+        if self._ct6IPAddressInput4:
+            self._ct6IPAddressInput4.value = ipAddress
+        if self._ct6IPAddressInput5:
+            self._ct6IPAddressInput5.value = ipAddress
+        if self._ct6IPAddressInput6:
+            self._ct6IPAddressInput6.value = ipAddress
 
     def _handleGUIUpdate(self, rxDict):
         """@brief Process the dicts received from the GUI message queue that were not 
@@ -151,8 +165,7 @@ class CT6GUIServer(TabbedNiceGui):
         if CT6GUIServer.SET_CT6_IP_ADDRESS in rxDict:
             address = rxDict[CT6GUIServer.SET_CT6_IP_ADDRESS]
             # Set the IP address field to the CT6 address
-            self._ct6IPAddressInput1.value = address
-            self._copyCT6Address()
+            self._copyCT6Address(address)
             self._saveConfig()
                 
         elif CT6GUIServer.UPDATE_PORT_NAMES in rxDict:
@@ -188,7 +201,6 @@ class CT6GUIServer(TabbedNiceGui):
                             
         elif CT6GUIServer.ACTIVE in rxDict:
             active = rxDict[CT6GUIServer.ACTIVE]
-            print(f"PJA: active={active}")
             if active:
                 self.activeSwitch.value = True
             else:
@@ -228,6 +240,12 @@ class CT6GUIServer(TabbedNiceGui):
             self._ct6Select.set_options(self._ct6DeviceList)
             if len(self._ct6DeviceList) == 1:
                 self._ct6Select.set_value(self._ct6DeviceList[0])
+
+        elif CT6GUIServer.AC_LOAD_OFF_TO_GUI_CMD in rxDict:
+            self._loadOffDialog.show()
+
+        elif CT6GUIServer.CURRENT_CAL_COMPLETE_TO_GUI_CMD in rxDict:
+            ui.notify(f"Port {self._ctPortInput.value} current calibration complete.")
 
     def _initWiFiTab(self):
         """@brief Create the Wifi tab contents."""
@@ -299,6 +317,8 @@ class CT6GUIServer(TabbedNiceGui):
         """@brief Process button click.
            @param event The button event."""
         self._initTask(107,120)
+        self._copyCT6Address(self._ct6IPAddressInput1.value)
+        self._saveConfig()
         threading.Thread( target=self._doUpgrade, args=(self._ct6IPAddressInput1.value,)).start()
 
     def _doUpgrade(self, ct6IPAddress):
@@ -349,6 +369,7 @@ class CT6GUIServer(TabbedNiceGui):
         """@brief Process button click.
            @param event The button event."""
         self._initTask(2,3)
+        self._copyCT6Address(self._ct6IPAddressInput2.value)
         self._saveConfig()
         threading.Thread( target=self._setDevName, args=(self._ct6IPAddressInput2.value,self._ct6DeviceNameInput.value)).start()
   
@@ -434,6 +455,7 @@ class CT6GUIServer(TabbedNiceGui):
         """@brief Process button click.
            @param event The button event."""
         self._initTask(3,4)
+        self._copyCT6Address(self._ct6IPAddressInput2.value)
         self._saveConfig()
         threading.Thread( target=self._getDevName, args=(self._ct6IPAddressInput2.value,)).start()
     
@@ -481,16 +503,18 @@ class CT6GUIServer(TabbedNiceGui):
         self._appendButtonList(self._getPortNamesButton)
 
     def _setPortNamesButtonHandler(self, event):
-            """@brief Process button click.
-            @param event The button event."""
-            self._enableAllButtons(False)
-            self._clearMessages()
-            threading.Thread( target=self._setPortNames, args=(self._ct6IPAddressInput3.value, (self._ct1PortNameInput.value,
-                                                                                            self._ct2PortNameInput.value,
-                                                                                            self._ct3PortNameInput.value,
-                                                                                            self._ct4PortNameInput.value,
-                                                                                            self._ct5PortNameInput.value,
-                                                                                            self._ct6PortNameInput.value) )).start()
+        """@brief Process button click.
+        @param event The button event."""
+        self._enableAllButtons(False)
+        self._clearMessages()
+        self._copyCT6Address(self._ct6IPAddressInput3.value)
+        self._saveConfig()
+        threading.Thread( target=self._setPortNames, args=(self._ct6IPAddressInput3.value, (self._ct1PortNameInput.value,
+                                                                                        self._ct2PortNameInput.value,
+                                                                                        self._ct3PortNameInput.value,
+                                                                                        self._ct4PortNameInput.value,
+                                                                                        self._ct5PortNameInput.value,
+                                                                                        self._ct6PortNameInput.value) )).start()
                                                                                             
     def _setPortNames(self, ct6IPAddress, portNames):
         """@brief Set the CT6 port names.
@@ -522,6 +546,8 @@ class CT6GUIServer(TabbedNiceGui):
            @param event The button event."""
         self._enableAllButtons(False)
         self._clearMessages()
+        self._copyCT6Address(self._ct6IPAddressInput3.value)
+        self._saveConfig()
         threading.Thread( target=self._getPortNames, args=(self._ct6IPAddressInput3.value,)).start()
     
     def _getPortNames(self, ct6IPAddress):
@@ -593,6 +619,8 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         """@brief Process button click.
            @param event The button event."""
         self._initTask(3,5)
+        self._copyCT6Address(self._ct6IPAddressInput4.value)
+        self._saveConfig()
         threading.Thread( target=self._setMQTTServer, args=(self._ct6IPAddressInput4.value, 
                                                         self._mqttServerAddressInput.value ,
                                                         self._mqttServerPortInput.value,
@@ -659,6 +687,8 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         """@brief Process button click.
            @param event The button event."""
         self._initTask(2,3)
+        self._copyCT6Address(self._ct6IPAddressInput4.value)
+        self._saveConfig()
         threading.Thread( target=self._getMQTTServer, args=(self._ct6IPAddressInput4.value,)).start()
         
     def _getMQTTServer(self, ct6IPAddress):
@@ -715,6 +745,8 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         """@brief Process button click.
            @param event The button event."""
         self._initTask(2,3)
+        self._copyCT6Address(self._ct6IPAddressInput5.value)
+        self._saveConfig()
         threading.Thread( target=self._enableCT6, args=(self._ct6IPAddressInput5.value, self.activeSwitch.value )).start()
         
     def _enableCT6(self, ct6IPAddress, enabled):
@@ -744,6 +776,8 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         """@brief Process button click.
            @param event The button event."""
         self._initTask(2,3)
+        self._copyCT6Address(self._ct6IPAddressInput5.value)
+        self._saveConfig()
         threading.Thread( target=self._getEnabled, args=(self._ct6IPAddressInput5.value,)).start()
         
     def _getEnabled(self, ct6IPAddress):
@@ -889,11 +923,10 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
                 self.info("Install Success. You may now configure the WiFi on the CT6 device using the WiFi tab.")
 
             except Exception as ex:
-                self.debug(traceback.format_exc())
-                self.error(str(ex))
+                self.reportException(ex)
                 
         finally:
-            self._sendEnableAllButtons(True)   
+            self._sendEnableAllButtons(True)
 
     def _initScanTab(self):
         """@brief Create the scan tab contents."""
@@ -913,14 +946,14 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         """@brief Process button click.
            @param event The button event."""
         self._ct6DeviceList = []
-        self._initTask(0,0) # PJA update this
+        self._initTask(0,0) # The number of messages we receive is not predictable so we don't add a progress bar here.
         self._saveConfig()
         threading.Thread( target=self._scanForCT6Devices, args=(self._scanSecondsInput.value,)).start()
 
     def _rebootButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        self._initTask(2,2) # PJA update this
+        self._initTask(2,2)
         self._saveConfig()
         inputOptions = self._ct6Select.options
         inputStr = self._ct6Select.value
@@ -956,56 +989,154 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         """@brief Search for CT6 devices on the LAN.
            @param scanSeconds The number os seconds to spend scanning for CT6 devices."""
         try:
-            ct6Scanner = CT6Scanner(None, None)
-            ct6Scanner.scan(callBack=self._ct6DevFound, runSeconds=scanSeconds)
+            try:
+                ct6Scanner = CT6Scanner(None, None)
+                ct6Scanner.scan(callBack=self._ct6DevFound, runSeconds=scanSeconds)
+            except Exception as ex:
+                self.reportException(ex)
         finally:
-            self._sendEnableAllButtons(True)   
+            self._sendEnableAllButtons(True)
 
     def _rebootDevice(self, ipAddress, deviceName):
         """@brief Reboot a CT6 device.
            @param ipAddress The IP address of the CT6 device.
            @param deviceName The name of the device to be rebooted."""
         try:
-            # If we don't have a dev ice name use the IP address
-            if deviceName is None or len(deviceName) == 0:
-                deviceName = ipAddress
-            options = getCT6ToolCmdOpts()
-            devManager = YDevManager(self, options)
-            devManager.setIPAddress(ipAddress)
-            self.info(f"Checking {ipAddress} is reachable.")
-            devManager.doPing(ipAddress)
-            self.info(f"Power cycling {deviceName}")
-            devManager._powerCycle()
-            self.info(f"Waiting for {deviceName} to power off.")
-            devManager._waitForWiFiDisconnect()
-            self.info(f"Waiting for {deviceName} to power up and reconnect to the WiFi network.")
-            devManager._waitForPingSuccess()
+            try:
+                # If we don't have a dev ice name use the IP address
+                if deviceName is None or len(deviceName) == 0:
+                    deviceName = ipAddress
+                options = getCT6ToolCmdOpts()
+                devManager = YDevManager(self, options)
+                devManager.setIPAddress(ipAddress)
+                self.info(f"Checking {ipAddress} is reachable.")
+                devManager.doPing(ipAddress)
+                self.info(f"Power cycling {deviceName}")
+                devManager._powerCycle()
+                self.info(f"Waiting for {deviceName} to power off.")
+                devManager._waitForWiFiDisconnect()
+                self.info(f"Waiting for {deviceName} to power up and reconnect to the WiFi network.")
+                devManager._waitForPingSuccess()
+
+            except Exception as ex:
+                self.reportException(ex)
 
         finally:
             self._sendEnableAllButtons(True)
 
     def _calibrateTab(self):
         """@brief Create the calibrate tab contents."""
-        markDownText = f"""{CT6GUIServer.DESCRIP_STYLE}The CT6 device measures the AC supply voltage in order to read accurate power values. \
-                                                       This is calibrated during manufacture using the recommended AC power supply.<br>
-                                                       The CT6 device should work with any AC power supply that provides 9-16 volts. \
-                                                       If you use a different power supply from the one the CT6 device was calibrated with, during manufacture, you must recalibrate the unit to ensure accurate power measurements. \
-                                                       This tab allows you to calibrate the CT6 device voltage measurements.<br><br>\
-                                                       Measure the AC voltage, enter the measured AC voltage below and select the 'PERFORM VOLTAGE CALIBRATION' button."""
-        ui.markdown(markDownText)
+
         self._ct6IPAddressInput6 = ui.input(label='CT6 Address').style('width: 200px;')
-        self._acVoltageInput = ui.number(label="AC Voltage", format='%.2f', value=230.0, min=50, max=400).style('width: 200px;')
-        self._acFreq60HzInput = widget = ui.switch("60 Hz AC Supply").style('width: 200px;')
-        self._acFreq60HzInput.tooltip("Leave this off if your AC frequency is 50 Hz.")
-        self._voltageCalStep1Dialog = YesNoDialog(f"Are you sure you wish to calibrate the voltage on the {self._ct6IPAddressInput6.value} CT6 device ?",
-                                                    self._calVoltageStep1)
-        self._calibrateVoltageButton = ui.button('Perform Voltage Calibration', on_click=lambda: self._voltageCalStep1Dialog.show() )
-        # Add to button list so that button is disabled while activity is in progress.
-        self._appendButtonList(self._calibrateVoltageButton)
+
+        with ui.tabs().classes('w-full') as tabs:
+            calVoltageTab = ui.tab('Calibrate Voltage')
+            calCurrentTab = ui.tab('Calibrate Current')
+        with ui.tab_panels(tabs, value=calVoltageTab).classes('w-full'):
+            with ui.tab_panel(calVoltageTab):
+                markDownText = f"""{CT6GUIServer.DESCRIP_STYLE}The CT6 device measures the AC supply voltage in order to read accurate power values. \
+                                                            This is calibrated during manufacture using the recommended AC power supply.<br>
+                                                            The CT6 device should work with any AC power supply that provides 9-16 volts. \
+                                                            If you use a different power supply from the one the CT6 device was calibrated with, during manufacture, you must recalibrate the unit to ensure accurate power measurements. \
+                                                            This tab allows you to calibrate the CT6 device voltage measurements.<br><br>\
+                                                            Measure the AC voltage, enter the measured AC voltage below and then select the button below."""
+                ui.markdown(markDownText)
+                self._acVoltageInput = ui.number(label="AC Voltage", format='%.2f', value=0, min=50, max=400).style('width: 200px;')
+                self._acFreq60HzInput = ui.switch("60 Hz AC Supply").style('width: 200px;')
+                self._acFreq60HzInput.tooltip("Leave this off if your AC frequency is 50 Hz.")
+                self._voltageCalStep1Dialog = YesNoDialog("Are you sure you wish to calibrate the voltage on the CT6 device ?",
+                                                            self._calVoltageStep1)
+                self._calibrateVoltageButton = ui.button('Calibrate Voltage', on_click=lambda: self._voltageCalStep1Dialog.show() )
+                # Add to button list so that button is disabled while activity is in progress.
+                self._appendButtonList(self._calibrateVoltageButton)
+
+            with ui.tab_panel(calCurrentTab):
+                markDownText = f"""{CT6GUIServer.DESCRIP_STYLE}The CT6 device measures current on each of it's 6 ports. During manufacture \
+                                                            the CT6 device ports are calibrated with a 'YHDC SCT013 100A 0-1V' CT transformer connected to each port. \
+                                                            If you wish to use another type of CT transformer you must calibrate the port to which the CT transformer is connected. \
+                                                            Click [this link](https://github.com/pjaos/ct6_meter_os/blob/master/software/server/README_MFG.md) for details of how this calibration is performed.<br><br> \
+                                                            With an AC load, enter the measured current on the selected port and then select the button below to perform the calibration."""
+                ui.markdown(markDownText)
+                self._ctPortInput = ui.radio([1, 2, 3, 4, 5 ,6], value=1).props('inline')
+                self._acCurrentInput = ui.number(label=CT6GUIServer.AC_CURRENT_FIELD, 
+                                                 format='%.2f', 
+                                                 value=0, 
+                                                 min=CT6GUIServer.MIN_CAL_CURRENT, 
+                                                 max=CT6GUIServer.MAX_CAL_CURRENT).style('width: 200px;')
+                self._acFreq60HzInput = ui.switch("60 Hz AC Supply").style('width: 200px;')
+                self._acFreq60HzInput.tooltip("Leave this off if your AC frequency is 50 Hz.")
+                self._currentCalDialog = YesNoDialog("Are you sure you wish to calibrate the current on the selected port ?",
+                                                            self._startPortCurrentCal)
+                self._calibrateCurrentButton = ui.button('Calibrate Current', on_click=self._currentCalDialog.show)
+                # Add to button list so that button is disabled while activity is in progress.
+                self._appendButtonList(self._calibrateCurrentButton)
+                
+                self._loadOffDialog = YesNoDialog("Turn off the AC load on the selected port.", 
+                                                          self._acLoadOff,
+                                                          failureMethod=self._quitThread,
+                                                          successButtonText="OK",
+                                                          failureButtonText="Cancel")
+
+    def _startPortCurrentCal(self):
+        """@brief Guide the user through the voltage calibration process."""
+        self._initTask(0,0) # No progress bar for this task as it relies on user responses
+        self._copyCT6Address(self._ct6IPAddressInput6.value)
+        self._saveConfig()
+        # Start the thread that will calibrate the current on a single port.
+        threading.Thread( target=self._calCurrent, args=(self._ct6IPAddressInput6.value, self._ctPortInput.value, self._acCurrentInput.value, self._acFreq60HzInput.value)).start()
+
+    def _calCurrent(self, address, port, amps, acFreq60Hz):
+        """@brief Perform the AC voltage calibration. This is executed outside the GUI thread.
+           @param address The address of the CT6 device.
+           @param port The port to calibrate the current on.
+           @param amps The measured current on the CT port.
+           @param acFreq60Hz True if AC main freq is 60 Hz, False if 50 Hz."""
+        try:
+            try:
+                self.info(f"Start current calibration on port {port}.")
+                self.info(f"Current = {amps:.2f} Amps.")
+                if amps >= 1.0:
+                    factorySetupOptions = getFactorySetupCmdOpts()
+                    factorySetupOptions.address = address
+                    factorySetupOptions.ac60hz = acFreq60Hz
+                    factorySetup = FactorySetup(self, factorySetupOptions)
+                    # Perform the port calibration and store the result in the CT6 device flash.
+                    factorySetup._calCurrentGain(port, acAmps=amps, noLoadTimeoutSeconds=5)
+                    cmdDict = {CT6GUIServer.AC_LOAD_OFF_TO_GUI_CMD: None}
+                    responseDict = self._updateGUIAndWaitForResponse(cmdDict)
+                    if CT6GUIServer.AC_LOAD_OFF_FROM_GUI_CMD in responseDict:
+                        factorySetup._calCurrentOffset(port, loadOffTimeoutSeconds=5)
+                        cmdDict = {CT6GUIServer.CURRENT_CAL_COMPLETE_TO_GUI_CMD: None}
+                        responseDict = self._updateGUI(cmdDict)
+                        self.info(f"Port {port} current calibration complete.")
+
+                else:
+                    self.error(f"The measured current must be at least 1 amp to calibrate the CT port.")
+                    self.info("You must measure this load current and enter the AC current value.")
+
+            except Exception as ex:
+                self.reportException(ex)
+
+        finally:
+            self._sendEnableAllButtons(True)
         
+    def _quitThread(self):
+        """@brief Called by the GUI thread to quit a non GUI thread."""
+        # Send CMD back to thread to indicate the user wants to quit.
+        cmdDict = {CT6GUIServer.QUIT_THREAD_FROM_GUI_CMD: True}
+        self._updateExeThread(cmdDict)
+        self.info("Calibration cancelled.")
+
+    def _acLoadOff(self):
+        """@brief Called when the user indicates they have the AC load off."""
+        # Send CMD back to thread to indicate the user wants to continue.
+        cmdDict = {CT6GUIServer.AC_LOAD_OFF_FROM_GUI_CMD: True}
+        self._updateExeThread(cmdDict)
+
     def _calVoltageStep1(self):
         """@brief Guid the user through the voltage calibration process."""
-        self._initTask(0,0) # PJA update this
+        self._initTask(0,0)
+        self._copyCT6Address(self._ct6IPAddressInput6.value)
         self._saveConfig()
         self.info("Start CT6 voltage calibration.")
         threading.Thread( target=self._calVoltage, args=(self._ct6IPAddressInput6.value, self._acVoltageInput.value, self._acFreq60HzInput.value)).start()
@@ -1016,13 +1147,20 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
            @param acVoltage The measured AC voltage.
            @param acFreq60Hz True if AC main freq is 60 Hz, False if 50 Hz"""
         try:
-            factorySetupOptions = getFactorySetupCmdOpts()
-            factorySetupOptions.address = address
-            factorySetupOptions.ac60hz = acFreq60Hz
-            factorySetup = FactorySetup(self, factorySetupOptions)
-            factorySetup._calVoltageGain(1, maxError=0.3, acVoltage=acVoltage)
-            factorySetup._calVoltageGain(4, maxError=0.3, acVoltage=acVoltage)
-            self.info("Voltage calibration completed successfully.")
+            try:
+                if acVoltage >= 80:
+                    factorySetupOptions = getFactorySetupCmdOpts()
+                    factorySetupOptions.address = address
+                    factorySetupOptions.ac60hz = acFreq60Hz
+                    factorySetup = FactorySetup(self, factorySetupOptions)
+                    factorySetup._calVoltageGain(1, maxError=0.3, acVoltage=acVoltage)
+                    factorySetup._calVoltageGain(4, maxError=0.3, acVoltage=acVoltage)
+                    self.info("Voltage calibration completed successfully.")
+                else:
+                    self.error(f"The measured voltage must be at least 80 volts.")
+
+            except Exception as ex:
+                self.reportException(ex)
         finally:
             self._sendEnableAllButtons(True)
 
@@ -1034,10 +1172,10 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
                            'Device Name', 
                            'Port Names', 
                            'MQTT Server', 
-                           'Activate Device', 
+                           'Activate Device',
                            'Install', 
                            'Scan',
-                           'Calibrate Voltage')
+                           'Calibration')
             # This must have the same number of elements as the above list
             tabMethodInitList = [self._initWiFiTab, 
                                  self._initUpgradeTab, 
@@ -1051,7 +1189,6 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
             address = self._config.getAttr(CT6ConfiguratorConfig.LOCAL_GUI_SERVER_ADDRESS)
             port = self._config.getAttr(CT6ConfiguratorConfig.LOCAL_GUI_SERVER_PORT)
 
-            # PJA try without address port
             self.initGUI(tabNameList, 
                           tabMethodInitList, 
                           address=address, 
