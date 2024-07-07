@@ -131,7 +131,11 @@ back on again to reconnect to the WiFi network as shown below.
 
   ![alt text](images/ct6_configurator_9_b.png "CT6 Configurator Scan")
 
-## Calibrate the CT6 voltage measurements
+## Calibrate the CT6 measurements
+The CT6 device measures the AC mains voltage and the current on port connected to a current transformer (CT).
+
+### Voltage Calibration
+
 The CT6 device is powered from an AC supply. The CT6 device measures the mains AC voltage by measuring its AC supply voltage. 
 This supply voltage is dropped down to 9-16 volts from the AC mains voltage by the power adapter used. 
 When the CT6 device is manufactured it's voltage measurements are calibrated. This is done using the recommended 
@@ -143,7 +147,17 @@ To do this you have to manually measure the AC voltage using a digital multimete
 
 To perform the voltage calibration enter the measures AC voltage into the field on the CALIBRATE VOLTAGE tab. The '60 Hz AC supply switch should be left off unless your AC mains supply frequency is 60 Hz. In this case the AC mains frequency is assumed to be 50 Hz. Then select the 'PERFORM VOLTAGE CALIBRATION' button as shown below.
 
-  ![alt text](images/ct6_configurator_10.png "CT6 Voltage Calibration")
+  ![alt text](images/ct6_configurator_10_a.png "CT6 Voltage Calibration")
+
+
+### Current Calibration
+
+When the CT6 device is manufactured it is calibrated using a 'YHDC SCT013 100A 0-1V' current transformer. If you wish to use a different transformer then you will need to calibrate the CT port with the new CT connected. A current of at least 1 amps must be passing through the cable that the CT is connected to in order to calibrate it. It is recommended that this current is around 10 amps. The 'CALIBRATE CURRENT' tab can used to calibrate the current measurement on the device port. You will need an external method to measure the current so that you can enter the value into the 'AC Current (Amps)' field. The equipment to perform this calibration is detailed in [README_MFG]README_MFG.md).
+
+With a load on the connected CT enter the 'AC Current (Amps)' measured value. The '60 Hz AC supply switch should be left off unless your AC mains supply frequency is 60 Hz. Then select the 'CALIBRATE CURRENT' button as shown below.
+
+  ![alt text](images/ct6_configurator_10_b.png "CT6 Current Calibration")
+
 
 
 

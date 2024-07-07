@@ -21,11 +21,11 @@ below.
 
 # Current transformer
 
-This project is designed to use only the YHDC SCT013 100A 0-1V split core current transformer as shown below.
+This project is tested with the YHDC SCT013 100A 0-1V split core current transformer when manufactured. If you wish to use a different current transformer then you must calibrate the unit as detailed at the end of [this](../software/server/setting_up_ct6_units.md) document.
 
 ![alt text](images/ct.jpg "Current Transformer")
 
-These can be plugged into ports 1 - 6 to provide up to six separate bi directional measurements of AC power. When clipping the current transformer around the live AC wire the face shown above should be on the AC supply (grid) side. It should be possible to use other current transformers as the calibration mechanism should allow calibration. I have also checked the myenergi current transformers (https://www.myenergi.com/product/ct-clamp/) and these complete the calibration process correctly.
+These can be plugged into ports 1 - 6 to provide up to six separate bi directional measurements of AC power. When clipping the current transformer around the live AC wire it is recommended that the face shown above should be on the AC supply (grid) side. This results in -ve power values for imported energy and +ve power values for generated energy. If you wish to have +ve values for imported energy then reverse the current transformer. It should be possible to use other current transformers but they will need calibration as detailed above.
 
 ## Case
 The Case was designed using [FreeCad](https://www.freecad.org/). The various
