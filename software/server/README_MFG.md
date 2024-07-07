@@ -101,8 +101,7 @@ Alternatively, run a command inside the virtualenv with pipenv run.
 - CT6 unit hardware (CT6 board with display connected).
 - CT6 AC power supply.
 - Modified micro USB cable. This cable must have the +5v power lead disconnected. This is normally the red wire in the 4 wire USB cable.
-- AC power meter.
-  [E.G ENERGENIE ENE007](https://energenie4u.co.uk/catalogue/product/ENER007)). However it should be noted that the accuracy of this device will govern the CT6 calibration accuracy.
+- AC power meter ([E.G ENERGENIE ENE007](https://energenie4u.co.uk/catalogue/product/ENER007)). However it should be noted that the accuracy of this device will govern the CT6 calibration accuracy.
 - Linux PC running Ubuntu 20.04 or later.
 - [SCT013_100A current transformer](https://www.mouser.com/datasheet/2/744/101990029_SCT_013_000_Datasheet-2487743.pdf)
 - [Mains Test Block](https://uk.rs-online.com/web/p/mains-test-blocks/0458926?gb=b)
