@@ -72,7 +72,7 @@ Alternatively, run a command inside the virtualenv with pipenv run.
 ***************************************************************************
 ```
 
-- These commands now available to you on the command line. 
+- These commands are now available to you on the command line. 
   Command line help text can be viewed for each command if the -h argument is used.
   The software/server/README.md file details how to use the installed software.
 
