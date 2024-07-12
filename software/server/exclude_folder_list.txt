@@ -1,6 +1,0 @@
-tmp
-packages
-debian
-build_windows_installer
-installers
-todel

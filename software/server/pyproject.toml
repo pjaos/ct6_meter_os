@@ -1,0 +1,53 @@
+[tool.poetry]
+name = "ct6"
+version = "7.8"
+description = ""
+authors = ["Paul Austen <pjaos@gmail.com>"]
+readme = "README.md"
+packages = [
+    { include = "ct6" },
+    { include = "lib" },
+    { include = "picow" }
+]
+include = [
+    { path = "assets", format = ["sdist", "wheel"] }
+]
+
+
+[tool.poetry.dependencies]
+python = "^3.12"
+# Fix security vulnerability reported by github dependabot.
+cryptography = "^42.0.4"
+paramiko = "^2.10.1"
+numpy = "*"
+# requires (on debian based Linux platforms)
+# sudo apt-get install python3-dev default-libmysqlclient-dev build-essential
+# to install mysqlclient
+mysqlclient = "*"
+paho-mqtt = "*"
+p3lib = "^1.1.67"
+bokeh = "3.1.0"
+requests = "*"
+ifaddr = "*"
+pandas = "*"
+ping3 = "*"
+pyserial = "3.5"
+retry = "*"
+argon2-cffi = "*"
+rshell = "*"
+mpy_cross = "*"
+pyflakes = "*"
+psutil = "*"
+objgraph = "*"
+nicegui = "*"
+#ip2geotools = "*" # Remove the # comment at the start of this line if you wish the server
+                   # access log file to contain country, region and city information. 
+                   # The down side to this is that about 70 extra python modules are pulled
+                   # in making installation longer.
+
+[tool.poetry.scripts]
+ct6_configurator = "ct6.start_ct6_configurator:dummy"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
