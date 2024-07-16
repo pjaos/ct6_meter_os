@@ -31,7 +31,7 @@ from lib.config import ConfigBase
 from lib.db_handler import DBHandler
 from lib.base_constants import BaseConstants
 
-from ct6_dash_mgr import CRED_JSON_FILE
+from ct6.ct6_dash_mgr import CRED_JSON_FILE
 
 class CT6DashConfig(ConfigBase):
     DEFAULT_CONFIG_FILENAME = "ct6Dash.cfg"

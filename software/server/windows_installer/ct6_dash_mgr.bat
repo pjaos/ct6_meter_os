@@ -1,0 +1,1 @@
+python -m poetry run python -c "import ct6.ct6_dash_mgr; ct6.ct6_dash_mgr.main()" %*

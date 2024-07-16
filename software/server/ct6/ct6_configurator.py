@@ -106,6 +106,7 @@ class CT6GUIServer(TabbedNiceGui):
             sys.argv.remove('--skip_factory_config_restore')
 
         self._cfgMgr                    = ConfigManager(self._uio, CT6GUIServer.CFG_FILENAME, CT6GUIServer.DEFAULT_CONFIG)
+        self._loadConfig()
         
         self._logFile                   = os.path.join(self._logPath, CT6GUIServer.GetLogFileName(CT6GUIServer.LOGFILE_PREFIX))
         
@@ -135,10 +136,6 @@ class CT6GUIServer(TabbedNiceGui):
             self._cfgMgr.load()
         except:
             pass
-        self._wifiSSIDInput.value = self._cfgMgr.getAttr(CT6GUIServer.WIFI_SSID)
-        self._wifiPasswordInput.value = self._cfgMgr.getAttr(CT6GUIServer.WIFI_PASSWORD)
-        self._ct6IPAddressInput1.value = self._cfgMgr.getAttr(CT6GUIServer.DEVICE_ADDRESS)
-        self._copyCT6Address(self._ct6IPAddressInput1.value)
 
     def _copyCT6Address(self, ipAddress):
         """@brief Copy same address to CT6 address on all tabs.
@@ -255,7 +252,15 @@ class CT6GUIServer(TabbedNiceGui):
         with ui.column():
             
             self._wifiSSIDInput = ui.input(label='WiFi SSID')
+            ssid = self._cfgMgr.getAttr(CT6GUIServer.WIFI_SSID)
+            if ssid:
+                self._wifiSSIDInput.value = ssid
+
             self._wifiPasswordInput = ui.input(label='WiFi Password', password=True)
+            passwd = self._cfgMgr.getAttr(CT6GUIServer.WIFI_PASSWORD)
+            if passwd:
+                self._wifiPasswordInput.value = passwd
+
             self._setWiFiButton = ui.button('Setup WiFi', on_click=self._setWiFiNetworkButtonHandler)
 
             # Add to button list so that button is disabled while activity is in progress.
@@ -1075,6 +1080,11 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
                                                           failureMethod=self._quitThread,
                                                           successButtonText="OK",
                                                           failureButtonText="Cancel")
+                
+        # Set the IP address as this is the last tab to be loaded
+        ipAddress = self._cfgMgr.getAttr(CT6GUIServer.DEVICE_ADDRESS)
+        if ipAddress:
+            self._copyCT6Address(ipAddress)
 
     def _startPortCurrentCal(self):
         """@brief Guide the user through the voltage calibration process."""
@@ -1164,7 +1174,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
             self._sendEnableAllButtons(True)
 
     def start(self):
-        """@Start the App server running."""
+        """@brief Start the App server running."""
         try:
             tabNameList = ('WiFi', 
                            'Upgrade', 
@@ -1192,24 +1202,17 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
                           tabMethodInitList, 
                           address=address, 
                           port=port, 
-                          pageTitle=CT6GUIServer.PAGE_TITLE)
-            self._loadConfig()
+                          pageTitle=CT6GUIServer.PAGE_TITLE,
+                          reload=False)
+
 
         finally:
             self.close()
-
-
-
-
-
-
-
 
 def main():
     """@brief Program entry point"""
     uio = UIO()
     options = None
-
     try:
         parser = argparse.ArgumentParser(description="This application provides an GUI that can be used to configure CT6 units.",
                                          formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1228,7 +1231,6 @@ def main():
             uio.info("Syslog enabled")
 
         ct6ConfiguratorConfig = CT6ConfiguratorConfig(uio, options.config_file, CT6ConfiguratorConfig.DEFAULT_CONFIG)
-        
         ct6Configurator = CT6GUIServer(uio, options, ct6ConfiguratorConfig)
         ct6Configurator.start()
 
@@ -1246,12 +1248,6 @@ def main():
         else:
             uio.error(str(ex))
 
-#def startup():
-#    print(f"PJA: 1 __name__={__name__}")
-#    if __name__ in {"__main__", "__mp_main__"}:
-#        main()
+if __name__== '__main__':
+    main()
 
-# Note __mp_main__ is used by the nicegui module
-#print(f"PJA: 2 __name__={__name__}")
-#if __name__ in {"__main__", "__mp_main__"}:
-#main()

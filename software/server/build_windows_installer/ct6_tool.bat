@@ -1,1 +1,0 @@
-python3 -m pipenv run python ct6_tool.py %*

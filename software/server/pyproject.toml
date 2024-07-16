@@ -15,6 +15,7 @@ include = [
 
 
 [tool.poetry.dependencies]
+pyreadline3 = "*"
 python = "^3.12"
 # Fix security vulnerability reported by github dependabot.
 cryptography = "^42.0.4"
@@ -46,7 +47,12 @@ nicegui = "*"
                    # in making installation longer.
 
 [tool.poetry.scripts]
-ct6_configurator = "ct6.start_ct6_configurator:dummy"
+ct6_dash = "ct6.ct6_dash:main"
+ct6_db_store = "ct6.ct6_db_store:main"
+ct6_mfg_tool = "ct6.ct6_mfg_tool:main"
+ct6_dash_mgr = "ct6.ct6_dash_mgr:main"
+ct6_tool = "ct6.ct6_tool:main"
+ct6_configurator = "ct6.ct6_configurator:main"
 
 [build-system]
 requires = ["poetry-core"]
