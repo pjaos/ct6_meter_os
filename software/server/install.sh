@@ -1,2 +1,2 @@
 #!/bin/bash
-pipx install dist/ct6-7.8-py3-none-any.whl
+pipx install installers/ct6-7.9-py3-none-any.whl
