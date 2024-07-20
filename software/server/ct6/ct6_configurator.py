@@ -4,14 +4,12 @@ import sys
 import argparse
 import threading
 import requests
-import traceback
 import tempfile
 import os
 import shutil
 import json
 
 from lib.ngt import TabbedNiceGui, YesNoDialog
-from lib.config import ConfigBase
 
 from p3lib.uio import UIO
 from p3lib.helper import logTraceBack
@@ -22,16 +20,12 @@ from ct6.ct6_mfg_tool import FactorySetup, getFactorySetupCmdOpts
 
 from nicegui import ui
 
-class CT6ConfiguratorConfig(ConfigBase):
-    DEFAULT_CONFIG_FILENAME = "ng_ct6_configurator.cfg"
-    DEFAULT_CONFIG = {
-        ConfigBase.LOCAL_GUI_SERVER_ADDRESS:    "",
-        ConfigBase.LOCAL_GUI_SERVER_PORT:       10000
-    }
-
 class CT6GUIServer(TabbedNiceGui):
     """@brief Responsible for starting the CT6 configurator GUI."""
     PAGE_TITLE                  = "CT6 Configurator"
+    DEFAULT_SERVER_ADDRESS      = "0.0.0.0"
+    DEFAULT_SERVER_PORT         = 10000
+
 
     SET_CT6_IP_ADDRESS          = "SET_CT6_IP_ADDRESS"
     
@@ -77,15 +71,15 @@ class CT6GUIServer(TabbedNiceGui):
 
     AC_CURRENT_FIELD            = "AC Current (Amps)"
     
-    def __init__(self, uio, options, config):
+    def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance
-           @param options The command line options instance
-           @param config A CT6ConfiguratorConfig instance."""
+           @param options The command line options instance."""
         super().__init__(uio.isDebugEnabled(), FactorySetup.LOG_PATH)
         self._uio                       = uio
         self._options                   = options
-        self._config                    = config
+        self._svrAddress                = options.address
+        self._svrPort                   = options.port
         
         self._wifiSSIDInput             = None
         self._wifiPasswordInput         = None
@@ -1120,7 +1114,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
                         self.info(f"Port {port} current calibration complete.")
 
                 else:
-                    self.error(f"The measured current must be at least 1 amp to calibrate the CT port.")
+                    self.error("The measured current must be at least 1 amp to calibrate the CT port.")
                     self.info("You must measure this load current and enter the AC current value.")
 
             except Exception as ex:
@@ -1166,7 +1160,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
                     factorySetup._calVoltageGain(4, maxError=0.3, acVoltage=acVoltage)
                     self.info("Voltage calibration completed successfully.")
                 else:
-                    self.error(f"The measured voltage must be at least 80 volts.")
+                    self.error("The measured voltage must be at least 80 volts.")
 
             except Exception as ex:
                 self.reportException(ex)
@@ -1175,6 +1169,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
 
     def start(self):
         """@brief Start the App server running."""
+        self._uio.info("Starting GUI...")
         try:
             tabNameList = ('WiFi', 
                            'Upgrade', 
@@ -1195,13 +1190,11 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
                                  self._initInstallTab, 
                                  self._initScanTab,
                                  self._calibrateTab]
-            address = self._config.getAttr(CT6ConfiguratorConfig.LOCAL_GUI_SERVER_ADDRESS)
-            port = self._config.getAttr(CT6ConfiguratorConfig.LOCAL_GUI_SERVER_PORT)
 
             self.initGUI(tabNameList, 
                           tabMethodInitList, 
-                          address=address, 
-                          port=port, 
+                          address=self._svrAddress, 
+                          port=self._svrPort, 
                           pageTitle=CT6GUIServer.PAGE_TITLE,
                           reload=False)
 
@@ -1217,9 +1210,8 @@ def main():
         parser = argparse.ArgumentParser(description="This application provides an GUI that can be used to configure CT6 units.",
                                          formatter_class=argparse.RawDescriptionHelpFormatter)
         parser.add_argument("-d", "--debug",  action='store_true', help="Enable debugging.")
-        parser.add_argument("-f", "--config_file",  help="The configuration file for the CT6 Dash Server"\
-                                    " (default={}).".format(CT6ConfiguratorConfig.GetConfigFile(CT6ConfiguratorConfig.DEFAULT_CONFIG_FILENAME)),
-                                    default=CT6ConfiguratorConfig.GetConfigFile(CT6ConfiguratorConfig.DEFAULT_CONFIG_FILENAME))
+        parser.add_argument("-a", "--address",help=f"Address to bind the server to The host string (default={CT6GUIServer.DEFAULT_SERVER_ADDRESS}).", default=CT6GUIServer.DEFAULT_SERVER_ADDRESS)
+        parser.add_argument("-p", "--port",   type=int, help=f"The TCP server port on which to server the ct6 configurator app (default={CT6GUIServer.DEFAULT_SERVER_PORT}).", default=CT6GUIServer.DEFAULT_SERVER_PORT)
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
         parser.add_argument("--skip_factory_config_restore",action='store_true', help="Skip factory config restore. Use with care.")
 
@@ -1230,8 +1222,7 @@ def main():
         if options.enable_syslog:
             uio.info("Syslog enabled")
 
-        ct6ConfiguratorConfig = CT6ConfiguratorConfig(uio, options.config_file, CT6ConfiguratorConfig.DEFAULT_CONFIG)
-        ct6Configurator = CT6GUIServer(uio, options, ct6ConfiguratorConfig)
+        ct6Configurator = CT6GUIServer(uio, options)
         ct6Configurator.start()
 
     #If the program throws a system exit exception
