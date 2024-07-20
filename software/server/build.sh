@@ -6,5 +6,5 @@ rm -rf picow
 cp -rf ../picow .
 rm -rf dist
 pyflakes3 ct6/*.py
-poetry build
+poetry -vvv build
 cp dist/ct6-*-py3-none-any.whl installers/
