@@ -1,3 +1,6 @@
+# V8.0 Changes
+- Add ability to set the ct6_configurator app server bind address and port.
+
 # V7.9 Changes
 - Change Windows and Linux installers to use poetry rather than pipenv
 
