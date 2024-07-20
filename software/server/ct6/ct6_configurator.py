@@ -1167,9 +1167,17 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         finally:
             self._sendEnableAllButtons(True)
 
+    def _checkArgs(self):
+        """@brief Check command line arguments."""
+        if self._options.port < 1024:
+            raise Exception("The minimum TCP port that you can bind the GUI server to is 1024.")
+        if self._options.port > 65535:
+            raise Exception("The maximum TCP port that you can bind the GUI server to is 65535.")
+
     def start(self):
         """@brief Start the App server running."""
         self._uio.info("Starting GUI...")
+        self._checkArgs()
         try:
             tabNameList = ('WiFi', 
                            'Upgrade', 
