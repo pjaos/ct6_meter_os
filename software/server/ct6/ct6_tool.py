@@ -1492,6 +1492,13 @@ class CT6Scanner(CT6Base):
                 try:
                     dataStr = data.decode()
                     rx_dict = json.loads(dataStr)
+                    # If the user is only interested in one device
+                    if self._options.address and CT6Base.IP_ADDRESS in rx_dict:
+                        ct6Address = rx_dict[CT6Base.IP_ADDRESS]
+                        # And this is not the device of interest
+                        if self._options.address != ct6Address:
+                            # Ignore it
+                            continue
                     # Ignore the reflected broadcast message.
                     if 'AYT' in rx_dict:
                         continue
@@ -1639,7 +1646,7 @@ def getCT6ToolCmdOpts():
     parser.add_argument("--defaults",               help="Reset a device to the default configuration.", action='store_true')
     parser.add_argument("--check_mpy_cross",        action='store_true', help="Check that the mpy_cross (bytecode compiler) is installed.")
     parser.add_argument("-v", "--view",             action='store_true', help="View received data on first /dev/ttyUSB* or /dev/ttyACM* serial port quickly after a Pico W reset.")
-    parser.add_argument("-a", "--address",          help="The address of the CT6 unit.", default=None)
+    parser.add_argument("-a", "--address",          help="The address of the CT6 unit. This is used where the address of the device is required. If the -f option is used this is used to display just the device of interest.", default=None)
     parser.add_argument("-d", "--debug",            action='store_true', help="Enable debugging.")
 
     options = parser.parse_args()
