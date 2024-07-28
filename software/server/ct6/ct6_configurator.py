@@ -1218,8 +1218,8 @@ def main():
         parser = argparse.ArgumentParser(description="This application provides an GUI that can be used to configure CT6 units.",
                                          formatter_class=argparse.RawDescriptionHelpFormatter)
         parser.add_argument("-d", "--debug",  action='store_true', help="Enable debugging.")
-        parser.add_argument("-a", "--address",help=f"Address to bind the server to The host string (default={CT6GUIServer.DEFAULT_SERVER_ADDRESS}).", default=CT6GUIServer.DEFAULT_SERVER_ADDRESS)
-        parser.add_argument("-p", "--port",   type=int, help=f"The TCP server port on which to server the ct6 configurator app (default={CT6GUIServer.DEFAULT_SERVER_PORT}).", default=CT6GUIServer.DEFAULT_SERVER_PORT)
+        parser.add_argument("-a", "--address",help=f"Address that the GUI server is bound to (default={CT6GUIServer.DEFAULT_SERVER_ADDRESS}).", default=CT6GUIServer.DEFAULT_SERVER_ADDRESS)
+        parser.add_argument("-p", "--port",   type=int, help=f"The TCP server port to which the GUI server is bound to (default={CT6GUIServer.DEFAULT_SERVER_PORT}).", default=CT6GUIServer.DEFAULT_SERVER_PORT)
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
         parser.add_argument("--skip_factory_config_restore",action='store_true', help="Skip factory config restore. Use with care.")
 
