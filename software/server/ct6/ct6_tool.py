@@ -892,11 +892,11 @@ class MCULoader(CT6Base):
             fd.write("{}\n".format(l))
         fd.close()
         cmdOutput = self._runCmd(port, MCULoader.RSHELL_CMD_LIST_FILE)
+        lines = cmdOutput.split("\n")
+        for l in lines:
+            self._debug(l)
         for _file in fileList:
             if cmdOutput.find(_file) == -1:
-                lines = cmdOutput.split("\n")
-                for l in lines:
-                    self._info(l)
                 raise Exception(f"Failed to load the {_file} file onto the CT6 device.") 
         self._info(f"Loaded all {len(fileList)} python files.")    
     
