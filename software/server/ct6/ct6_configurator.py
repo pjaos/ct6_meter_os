@@ -823,7 +823,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         """@brief Correct for a windows path in an rshell command.
            @param aPath The path to check.
            @return The corrected Windows path if on a Windows platform.
-                   If not on a windwos platform aPath is returned unchanged."""
+                   If not on a windows platform aPath is returned unchanged."""
         mPath = aPath
         if self._isWindows:
             # Remove drive
@@ -866,16 +866,24 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         if factoryConfigFile and os.path.isfile(factoryConfigFile):
             srcFile = factoryConfigFile
         else:
-            # Use the fallback factory config file if available.
+            # Use the fallback factory config file in temp if available.
             tempPath = tempfile.gettempdir()
             srcFile = os.path.join(tempPath, YDevManager.CT6_FACTORY_CONFIG_FILE)
-            if not os.path.isfile(srcFile):
-                raise Exception(f"{srcFile} fallback factory config file not found.")
+            # If the fallback file exists let the user know as it may be the factory config file for a different unit
+            # but it's probably best to try and load it and let the user know.
+            if os.path.isfile(srcFile):
+                self.warn(f"Using fallback factory config: {srcFile}")
+            else:
+                if self._skipFactoryConfigRestore:
+                    self.warn("Not restoring factory config to the CT6 device.")
+                else:
+                    raise Exception(f"{srcFile} fallback factory config file not found.")
 
-        # Copy the factory config to the temp folder
-        destFile = f"/pyboard/{YDevManager.CT6_FACTORY_CONFIG_FILE}"
-        devManager._runRShell((f"cp {self._correctRshellWindowsPath(srcFile)} {destFile}",))
-        self.info("Restored factory config to the CT6 device.")
+        if os.path.isfile(srcFile):
+            # Copy the factory config to the temp folder
+            destFile = f"/pyboard/{YDevManager.CT6_FACTORY_CONFIG_FILE}"
+            devManager._runRShell((f"cp {self._correctRshellWindowsPath(srcFile)} {destFile}",))
+            self.info("Restored factory config to the CT6 device.")
 
     def _installSW(self, wifiSSID, wifiPassword):
         """@brief Called to do the work of wiping flash and installing the system software onto
