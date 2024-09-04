@@ -838,18 +838,25 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         """@brief Read the factory config from the CT6 unit.
            @param devManager A YDevManager instance.
            @return The path to a local copy of the factory config file read from the CT6 device."""
-        self.info("Connecting to CT6 device over it's serial port.")
-        # Attempt to connect to the board under test python prompt
-        if not devManager._checkMicroPython(closeSerialPort=True):
-            raise Exception("Failed to read the CT6 MicroPython version over serial port.")
         tempPath = tempfile.gettempdir()
         srcFile = f"/pyboard/{YDevManager.CT6_FACTORY_CONFIG_FILE}"
         destFile = os.path.join(tempPath, YDevManager.CT6_FACTORY_CONFIG_FILE)
-        self.info("Reading CT6 factory configuration.")
-        self.debug(f"Copy {YDevManager.CT6_FACTORY_CONFIG_FILE} to {destFile}")
-        # Copy the factory config to the temp folder
-        devManager._runRShell((f'cp {srcFile} {self._correctRshellWindowsPath(destFile)}',))
-        devManager._checkFactoryConfFile(f'{destFile}')
+        try:
+            self.info("Connecting to CT6 device over it's serial port.")
+            # Attempt to connect to the board under test python prompt
+            if not devManager._checkMicroPython(closeSerialPort=True):
+                raise Exception("Failed to read the CT6 MicroPython version over serial port.")
+            self.info("Reading CT6 factory configuration.")
+            self.debug(f"Copy {YDevManager.CT6_FACTORY_CONFIG_FILE} to {destFile}")
+
+            # Copy the factory config to the temp folder
+            devManager._runRShell((f'cp {srcFile} {self._correctRshellWindowsPath(destFile)}',))
+            devManager._checkFactoryConfFile(f'{destFile}')
+        except:
+            self.error(f"Failed to read CT6 {YDevManager.CT6_FACTORY_CONFIG_FILE} file.")
+            if not os.path.isfile(destFile):
+                raise Exception(f"Unable to find the {YDevManager.CT6_FACTORY_CONFIG_FILE} file on the CT6 device or in the {tempPath} folder (cached copy).")
+
         factoryDict = devManager._loadJSONFile(destFile)
         assyLabel = factoryDict[YDevManager.ASSY_KEY]
         tsString = FactorySetup.GetTSString()

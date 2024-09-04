@@ -162,10 +162,11 @@ class TabbedNiceGui(object):
                   If not then the exception message is displayed.
            @param exception The exception instance."""
         if self._debugEnabled:
-            self.error(traceback.format_exc())
-            
-        else:
-            self.error( exception.args[0] )
+            msg = traceback.format_exc()
+            lines = msg.split('\n')
+            for l in lines:
+                self.error(l)
+        self.error( exception.args[0] )
 
     def _sendEnableAllButtons(self, state):
         """@brief Send a message to the GUI to enable/disable all the GUI buttons.

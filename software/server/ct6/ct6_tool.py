@@ -128,6 +128,7 @@ class CT6Base(BaseConstants):
     # When pipenv is executed on windows the python comand must be executed to ensure the 
     # env is loaded.
     WINDOWS_MPY_CMDLINE_PREFIX = "python -m mpy_cross "
+    RPI_PICO_SERIAL_MATCH_TEXT = "/dev/ttyA"
 
     def __init__(self, uio, options):
         """@brief Constructor
@@ -349,20 +350,22 @@ class CT6Base(BaseConstants):
         with open(filename, 'w') as fd:
             json.dump(theDict, fd, ensure_ascii=False)
         
-    def _getRShellCmd(self, port, cmdFile, picow=True):
+    def _getRShellCmd(self, port, cmdFile, picow=True, serialTimeout=5):
         """@brief Get the RSHell command line.
            @param port The serial port to use.
            @param cmdFile The rshell command to execute.
            @param picow True if loading a Pico W MSU. False for ESP32."""
         if picow:
-            rshellCmd = f'rshell --rts 1 --dtr 1 --timing -p {port} --buffer-size 512 -f "{cmdFile}"'
+            rshellCmd = f'rshell --rts 1 --dtr 1 --wait {serialTimeout} --timing -p {port} --buffer-size 512 -f "{cmdFile}"'
         else:
-            rshellCmd = f'rshell --rts 0 --dtr 0 --timing -p {port} --buffer-size 512 -f "{cmdFile}"'
+            rshellCmd = f'rshell --rts 0 --dtr 0 --wait {serialTimeout} --timing -p {port} --buffer-size 512 -f "{cmdFile}"'
         return rshellCmd
 
     def _runRShell(self, cmdList):
         """@brief Run an rshell command file.
            @param cmdList A list of commands to execute."""
+        # Get the currently available serial port
+        serialPort = self._getSerialPort(CT6Base.RPI_PICO_SERIAL_MATCH_TEXT)
         cmdFile = CT6Base.RSHELL_CMD_LIST_FILE
         self._debug(f"Creating {cmdFile}")
         # Create the rshell cmd file.
@@ -370,11 +373,11 @@ class CT6Base(BaseConstants):
         for line in cmdList:
             fd.write(f"{line}\n")
         fd.close()
-        rshellCmd = self._getRShellCmd(self._serialPort, cmdFile)
+        rshellCmd = self._getRShellCmd(serialPort, cmdFile)
         self._debug(f"EXECUTING: {rshellCmd}")
         check_call(rshellCmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
-        
-    def _openSerialPort(self, matchStr="/dev/ttyA"):
+
+    def _openSerialPort(self, matchStr=RPI_PICO_SERIAL_MATCH_TEXT):
         """@brief Open the selected serial port.
            @param matchStr A string to match for any serial port found."""
         self._serialPort = self._getSerialPort(matchStr)
@@ -465,9 +468,8 @@ class CT6Base(BaseConstants):
                 self._debug(f"SerialException: {traceback.format_exc()}")
 
         finally:
-            if closeSerialPort and self._ser:
-                self._ser.close()
-                self._ser = None
+            if closeSerialPort:
+                self._closeSerialPortIfOpen()
                 
         self._debug("_checkMicroPython(): STOP")
         return success
@@ -479,9 +481,7 @@ class CT6Base(BaseConstants):
             self._ser.write(b"import machine ; machine.reset()\r")
         
         finally:
-            if self._ser:
-                self._ser.close()
-                self._ser = None
+            self._closeSerialPortIfOpen()
 
     def _getFileContents(self, filename):
         """@brief Get the contents of a text file on the CT6 unit using the serial ports python prompt.
@@ -528,9 +528,7 @@ class CT6Base(BaseConstants):
         #Save the machine config to a local file.
         localMachineCfgFile = os.path.join(self._tempFolder, CT6Base.CT6_MACHINE_CONFIG_FILE)
         self._saveDictToJSONFile(thisMachineDict, localMachineCfgFile)
-        if self._ser:
-           self._ser.close()
-           self._ser = None
+        self._closeSerialPortIfOpen()
         self._runRShell((f'cp "{localMachineCfgFile}" /pyboard/',) )
         return thisMachineDict[CT6Base.WIFI_CFG_KEY]['SSID']
         
@@ -545,10 +543,16 @@ class CT6Base(BaseConstants):
             self._info("Rebooted the MCU")
         except:
             pass
+        self._closeSerialPortIfOpen()
+           
+    def _closeSerialPortIfOpen(self):
+        """@brief Close an open serial port."""
         if self._ser:
            self._ser.close()
            self._ser = None
-           
+        if self._serialPort:
+            self._serialPort = None
+
     def _handleHouseWiFiConfigFileNotFound(self):
         """@brief Called to handle the situation where the CT6Base.HOUSE_WIFI_CFG_FILE file is not present."""
         ssid = self._uio.getInput("The local WiFi SSID: ")
@@ -616,9 +620,7 @@ class CT6Base(BaseConstants):
                 self._debug(f"SerialException: {traceback.format_exc()}")
             
         finally:
-            if self._ser:
-                self._ser.close()
-                self._ser = None
+            self._closeSerialPortIfOpen()
                 
         return ipAddress
 
@@ -898,7 +900,7 @@ class MCULoader(CT6Base):
         for _file in fileList:
             if cmdOutput.find(_file) == -1:
                 raise Exception(f"Failed to load the {_file} file onto the CT6 device.") 
-        self._info(f"Loaded all {len(fileList)} python files.")    
+        self._info(f"Loaded all {len(fileList)} python files.")
     
     def _deleteAllCT6Files(self, port):
         """@brief Delete all files from the CT6 device.
@@ -917,6 +919,7 @@ class MCULoader(CT6Base):
         self._checkMicroPython()
         self.deleteMPYFiles()
         # Delete all files from the CT6 device
+        self._serialPort = self._getSerialPort(CT6Base.RPI_PICO_SERIAL_MATCH_TEXT)
         self._deleteAllCT6Files(self._serialPort)
         # We now need to reboot the device in order to ensure the WDT is disabled
         # as there is no way to disable the WDT once enabled and the WDT runs 
@@ -927,6 +930,7 @@ class MCULoader(CT6Base):
         localFileList = [os.path.join(self._picowFolder, "main.py")]
         mpyFileList = self._convertToMPY()
         filesToLoad = localFileList + mpyFileList
+        self._serialPort = self._getSerialPort(CT6Base.RPI_PICO_SERIAL_MATCH_TEXT)
         self._loadFiles(filesToLoad, self._serialPort)
         self.deleteMPYFiles()
 
@@ -1389,7 +1393,7 @@ class YDevManager(CT6Base):
         self._serialPort = None
         while checking:
             try:
-                self._openSerialPort(matchStr="/dev/ttyA")
+                self._openSerialPort(matchStr=YDevManager.RPI_PICO_SERIAL_MATCH_TEXT)
                 checking = False
             except:
                 try:
@@ -1424,8 +1428,7 @@ class YDevManager(CT6Base):
                                                 
             finally:
                 if self._ser:
-                    self._ser.close()
-                    self._ser = None
+                    self._closeSerialPortIfOpen()
                     self._info(f"Closed {self._serialPort}")
                 
 class CT6Scanner(CT6Base):
@@ -1493,7 +1496,7 @@ class CT6Scanner(CT6Base):
                     dataStr = data.decode()
                     rx_dict = json.loads(dataStr)
                     # If the user is only interested in one device
-                    if self._options.address and CT6Base.IP_ADDRESS in rx_dict:
+                    if hasattr(self._options, 'address') and self._options.address and CT6Base.IP_ADDRESS in rx_dict:
                         ct6Address = rx_dict[CT6Base.IP_ADDRESS]
                         # And this is not the device of interest
                         if self._options.address != ct6Address:
