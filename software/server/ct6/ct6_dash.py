@@ -99,6 +99,17 @@ class GUI(MultiAppServer):
 
     LOCAL_PATH                  = os.path.dirname(os.path.abspath(__file__))
 
+    @staticmethod
+    def GetLoginPage():
+        """@brief Get the abs path to the login.html file.
+           @return The full path to the login.html file."""
+        loginHtmlFile = os.path.join(GUI.LOCAL_PATH, "assets/login.html")
+        if not os.path.isfile(loginHtmlFile):
+            loginHtmlFile = os.path.join(GUI.LOCAL_PATH, "../assets/login.html")
+            if not os.path.isfile(loginHtmlFile):
+                raise Exception(f'{loginHtmlFile} file not found.')
+        return loginHtmlFile
+
     def __init__(self, uio, options, config, loginCredentialsFile):
         """@brief Constructor.
            @param uio A UIO instance responsible for stdout/stdin input output.
@@ -108,7 +119,7 @@ class GUI(MultiAppServer):
         super().__init__(address=config.getAttr(CT6DashConfig.LOCAL_GUI_SERVER_ADDRESS),
                          bokehPort=config.getAttr(CT6DashConfig.LOCAL_GUI_SERVER_PORT),
                          credentialsJsonFile=loginCredentialsFile,
-                         loginHTMLFile=os.path.join(GUI.LOCAL_PATH, "assets/login.html"),
+                         loginHTMLFile=GUI.GetLoginPage(),
                          accessLogFile=config.getAttr(CT6DashConfig.SERVER_ACCESS_LOG_FILE) )
         self._uio = uio
         self._options = options
