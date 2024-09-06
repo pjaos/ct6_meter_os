@@ -798,6 +798,7 @@ class GUI(MultiAppServer):
                     self._cdsDict[dbName + plotNames[i]] = cds
                     self._plotPanel.line(GUI.X_AXIS_NAME, GUI.DEFAULT_YAXIS_NAME, source=cds, name=plotNames[i], legend_label=plotNames[i], line_color=next(colors), line_width=3)
                     self._plotPanel.legend.click_policy="hide"
+            self._plotPanel.legend.location = 'bottom_left'
 
             # The dBname = the device name = the tab name
             self._tabList.append( TabPanel(child=self._plotPanel,  title=dbName) )
