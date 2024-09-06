@@ -139,10 +139,6 @@ class GUI(MultiAppServer):
 
         self._startupShow = True
 
-        self._connectToDB()
-
-        self._metaDataDict = self._getMetaDict()
-
         self._plotPanel = None
         self._updatePlotType = GUI.PLOT_TYPE_POWER_ACTIVE
         self._cmdButtonList = []
@@ -738,6 +734,11 @@ class GUI(MultiAppServer):
         """@brief create the GUI page.
            @param doc The document to add the plot to."""
         self._startupShow = True
+
+        self._connectToDB()
+
+        self._metaDataDict = self._getMetaDict()
+
         # Clear the queue once we have the lock to ensure it's
         # not being read inside the _update() method.
         while not self._commsQueue.empty():
