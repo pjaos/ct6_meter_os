@@ -32,6 +32,7 @@ from lib.db_handler import DBHandler
 from lib.base_constants import BaseConstants
 
 from ct6.ct6_dash_mgr import CRED_JSON_FILE
+from ct6.ct6_tool import CT6Base
 
 class CT6DashConfig(ConfigBase):
     DEFAULT_CONFIG_FILENAME = "ct6Dash.cfg"
@@ -131,6 +132,7 @@ class GUI(MultiAppServer):
         self._dbHandler = None
         self._dbIF = None
         self._startUpdateTime = None
+        self._programVersion = CT6Base.GetProgramVersion()
 
         # this queue is used to send commands from the GUI thread and read responses received from outside the GUI thread.
         self._commsQueue = Queue()
@@ -820,6 +822,8 @@ class GUI(MultiAppServer):
 
         # On Startup set the start/stop dates to show today's data.
         self._todayButtonHandler(None)
+
+        self._showStatus(5, f"Software Version: {self._programVersion}")
 
     def _updateYAxis(self):
         """@brief Add the callbacks to set the Y Axis label."""

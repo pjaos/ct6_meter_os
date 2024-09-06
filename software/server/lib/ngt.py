@@ -48,6 +48,8 @@ class TabbedNiceGui(object):
     GUI_TIMER_SECONDS           = 0.1
     UPDATE_SECONDS              = "UPDATE_SECONDS"
     DEFAULT_GUI_RESPONSE_TIMEOUT= 30.0
+    POETRY_CONFIG_FILE          = "pyproject.toml"
+    LOCAL_PATH                  = os.path.dirname(os.path.abspath(__file__))
 
     @staticmethod
     def GetDateTimeStamp():
@@ -70,6 +72,30 @@ class TabbedNiceGui(object):
         logFileName = f"{logFilePrefix}_{dateTimeStamp}.log"
         return logFileName
     
+    @staticmethod
+    def GetProgramVersion():
+        """@brief Get the program version from the poetry pyproject.toml file.
+           @return The version of the installed program (string value)."""
+        poetryConfigFile = os.path.join(TabbedNiceGui.LOCAL_PATH, TabbedNiceGui.POETRY_CONFIG_FILE)
+        if not os.path.isfile(poetryConfigFile):
+            poetryConfigFile = os.path.join(TabbedNiceGui.LOCAL_PATH, ".." + os.sep + TabbedNiceGui.POETRY_CONFIG_FILE)
+            poetryConfigFile2 = poetryConfigFile
+            if not os.path.isfile(poetryConfigFile):
+                raise Exception(f"{poetryConfigFile} and {poetryConfigFile2} file not found.")
+        programVersion = None
+        with open(poetryConfigFile, 'r') as fd:
+            lines = fd.readlines()
+            for line in lines:
+                line=line.strip("\r\n")
+                if line.startswith('version'):
+                    elems = line.split("=")
+                    if len(elems) == 2:
+                        programVersion = elems[1].strip('" ')
+                        break
+        if programVersion is None:
+            raise Exception(f"Failed to extract program version from '{line}' line of {poetryConfigFile} file.")
+        return programVersion
+    
     def __init__(self, debugEnabled, logPath=None):
         """@brief Constructor
            @param debugEnabled True if debugging is enabled.
@@ -79,6 +105,7 @@ class TabbedNiceGui(object):
         self._buttonList        = []
         self._logMessageCount   = 0
         self._progressStepValue = 0
+        self._programVersion    = TabbedNiceGui.GetProgramVersion()
 
         self._logPath           = None
         if logPath:
@@ -367,6 +394,9 @@ class TabbedNiceGui(object):
             ui.button('Quit', on_click=self.close)
             ui.button('Log Message Count', on_click=self._showLogMsgCount)
             ui.button('Clear Log', on_click=self._clearLog)
+
+        with ui.row():
+            ui.label(f"Software Version: {self._programVersion}")
 
         ui.timer(interval=TabbedNiceGui.GUI_TIMER_SECONDS, callback=self.periodicTimer)
         ui.run(host=address, port=port, title=pageTitle, dark=True, uvicorn_logging_level=guiLogLevel, reload=reload)
