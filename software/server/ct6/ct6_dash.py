@@ -865,7 +865,8 @@ class GUI(MultiAppServer):
         """@brief Show a single value list on the plot area
            @param plotName The name of the plot.
            @param units The unit (Y axis label).
-           @param appPlotField The field in the dict to plot."""
+           @param appPlotField The field in the dict to plot.
+           @param rxDict The dict containing the value/s to plot."""
         try:
             self._showStatus(0, "Plotting Data...")
 
@@ -896,11 +897,16 @@ class GUI(MultiAppServer):
                     ct6Dict = {GUI.X_AXIS_NAME: [], GUI.DEFAULT_YAXIS_NAME: []}
 
                     # Remove all data from other traces and use CT1 to display the single trace of interest
-                    self._cdsDict[ct2TraceKey].data = ct2Dict
-                    self._cdsDict[ct3TraceKey].data = ct3Dict
-                    self._cdsDict[ct4TraceKey].data = ct4Dict
-                    self._cdsDict[ct5TraceKey].data = ct5Dict
-                    self._cdsDict[ct6TraceKey].data = ct6Dict
+                    if ct2TraceKey in self._cdsDict:
+                        self._cdsDict[ct2TraceKey].data = ct2Dict
+                    if ct3TraceKey in self._cdsDict:
+                        self._cdsDict[ct3TraceKey].data = ct3Dict
+                    if ct4TraceKey in self._cdsDict:
+                        self._cdsDict[ct4TraceKey].data = ct4Dict
+                    if ct5TraceKey in self._cdsDict:
+                        self._cdsDict[ct5TraceKey].data = ct5Dict
+                    if ct6TraceKey in self._cdsDict:
+                        self._cdsDict[ct6TraceKey].data = ct6Dict
 
                     for recordDict in data:
                         if appPlotField in recordDict and \
