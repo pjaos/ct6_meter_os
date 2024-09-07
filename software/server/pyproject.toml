@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ct6"
-version = "8.5"
+version = "8.6"
 description = ""
 authors = ["Paul Austen <pjaos@gmail.com>"]
 readme = "README.md"
@@ -10,7 +10,8 @@ packages = [
     { include = "picow" }
 ]
 include = [
-    { path = "assets", format = ["sdist", "wheel"] }
+    { path = "assets", format = ["sdist", "wheel"] },
+    { path = "pyproject.toml", format = ["sdist", "wheel"] },
 ]
 
 
