@@ -9,7 +9,7 @@ import os
 import shutil
 import json
 
-from lib.ngt import TabbedNiceGui, YesNoDialog
+from p3lib.ngt import TabbedNiceGui, YesNoDialog
 
 from p3lib.uio import UIO
 from p3lib.helper import logTraceBack
