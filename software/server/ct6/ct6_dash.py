@@ -26,6 +26,7 @@ from bokeh.models.widgets import HTMLTemplateFormatter
 from p3lib.helper import logTraceBack
 from p3lib.uio import UIO
 from p3lib.bokeh_gui import MultiAppServer
+from p3lib.boot_manager import BootManager
 
 from lib.config import ConfigBase
 from lib.db_handler import DBHandler
@@ -1512,6 +1513,7 @@ def main():
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
         # Default plot points allows 1 week of minute resolution (60*24*7 = 10080)
         parser.add_argument("-m", "--maxpp",        help="The maximum number of plot points (default=11000).", type=int, default=11000)
+        BootManager.AddCmdArgs(parser)
 
         options = parser.parse_args()
         uio.enableDebug(options.debug)
@@ -1521,13 +1523,15 @@ def main():
             uio.info("Syslog enabled")
 
         dashConfig = CT6DashConfig(uio, options.config_file, CT6DashConfig.DEFAULT_CONFIG)
+        ctAppServer = CTAppServer(uio, options, dashConfig)
 
-        if options.configure:
-            dashConfig.configure(editConfigMethod=dashConfig.edit)
-
-        else:
-            ctAppServer = CTAppServer(uio, options, dashConfig)
-            ctAppServer.start()
+        handled = BootManager.HandleOptions(uio, options, options.enable_syslog)
+        if not handled:
+            if options.configure:
+                dashConfig.configure(editConfigMethod=dashConfig.edit)
+            
+            else:
+                ctAppServer.start()
 
     #If the program throws a system exit exception
     except SystemExit:
