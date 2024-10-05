@@ -59,6 +59,7 @@ from p3lib.helper import logTraceBack
 from p3lib.uio import UIO
 from p3lib.database_if import DBConfig, DatabaseIF
 from p3lib.ssh import SSH
+from p3lib.boot_manager import BootManager
 
 from lib.config import ConfigBase
 from lib.db_handler import DBHandler
@@ -1104,6 +1105,7 @@ def main():
         parser.add_argument("--create_dt",          help=f"This option creates the tables derived from the main sensor table ({BaseConstants.CT6_TABLE_NAME}). These tables contain lower resolution data (min, hour and day) for faster data access.", action="store_true", default=False)
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
         parser.add_argument("-e", "--exclude",      help="A comma separated list of addresses of CT6 units to exclude from data collection.")
+        BootManager.AddCmdArgs(parser)
 
         options = parser.parse_args()
         uio.enableDebug(options.debug)
@@ -1115,45 +1117,48 @@ def main():
         ctDBClientConfig = CTDBClientConfig(uio, options.config_file, CTDBClientConfig.DEFAULT_CONFIG)
         mySQLDBClient = MySQLDBClient(uio, options, ctDBClientConfig)
 
-        if options.configure:
-            ctDBClientConfig.configure(editConfigMethod=ctDBClientConfig.edit)
+        handled = BootManager.HandleOptions(uio, options, options.enable_syslog)
+        if not handled:
 
-        elif options.create_db:
-            mySQLDBClient.createDB()
+            if options.configure:
+                ctDBClientConfig.configure(editConfigMethod=ctDBClientConfig.edit)
 
-        elif options.delete_db:
-            mySQLDBClient.deleteDB()
+            elif options.create_db:
+                mySQLDBClient.createDB()
 
-        elif options.create_table:
-            mySQLDBClient.createTable()
+            elif options.delete_db:
+                mySQLDBClient.deleteDB()
 
-        elif options.delete_table:
-            mySQLDBClient.deleteTable()
+            elif options.create_table:
+                mySQLDBClient.createTable()
 
-        elif options.show_dbs:
-            mySQLDBClient.showDBS()
+            elif options.delete_table:
+                mySQLDBClient.deleteTable()
 
-        elif options.show_tables:
-            mySQLDBClient.showTables()
+            elif options.show_dbs:
+                mySQLDBClient.showDBS()
 
-        elif options.read:
-            mySQLDBClient.readTable()
+            elif options.show_tables:
+                mySQLDBClient.showTables()
 
-        elif options.sql:
-            mySQLDBClient.executeSQL()
+            elif options.read:
+                mySQLDBClient.readTable()
 
-        elif options.show_table_schema:
-            mySQLDBClient.showSchema()
+            elif options.sql:
+                mySQLDBClient.executeSQL()
 
-        elif options.ex_schema:
-            mySQLDBClient.showExSchema()
+            elif options.show_table_schema:
+                mySQLDBClient.showSchema()
 
-        elif options.create_dt:
-            mySQLDBClient.createLowResTablesLock()
+            elif options.ex_schema:
+                mySQLDBClient.showExSchema()
 
-        else:
-            ctAppServer = CTAppServer(uio, options, ctDBClientConfig)
-            ctAppServer.startLock(mySQLDBClient)
+            elif options.create_dt:
+                mySQLDBClient.createLowResTablesLock()
+
+            else:
+                ctAppServer = CTAppServer(uio, options, ctDBClientConfig)
+                ctAppServer.startLock(mySQLDBClient)
 
     #If the program throws a system exit exception
     except SystemExit:
