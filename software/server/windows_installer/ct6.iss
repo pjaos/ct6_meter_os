@@ -43,6 +43,7 @@ Name: "{group}\Uninstall CT6"; Filename: "{uninstallexe}"
 
 [Files]
 Source: "../../../LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "../../../README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "../pyproject.toml"; DestDir: "{app}"; Flags: ignoreversion
 Source: "../assets/*"; DestDir: "{app}/assets/"; Flags: ignoreversion
 Source: "../ct6/*"; DestDir: "{app}/ct6/"; Flags: ignoreversion recursesubdirs
