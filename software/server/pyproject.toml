@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ct6"
-version = "9.1"
+version = "9.2"
 description = ""
 authors = ["Paul Austen <pjaos@gmail.com>"]
 readme = "README.md"
@@ -27,8 +27,8 @@ numpy = "*"
 # to install mysqlclient
 mysqlclient = "*"
 paho-mqtt = "*"
-p3lib = "^1.1.82"
-bokeh = "3.1.0"
+p3lib = "^1.1.93"
+bokeh = "3.6.0"
 requests = "*"
 ifaddr = "*"
 pandas = "*"
