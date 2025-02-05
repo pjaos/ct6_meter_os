@@ -13,6 +13,8 @@ from lib.umqttsimple import MQTTClient
 from lib.base_machine import BaseMachine
 from lib.config import MachineConfig
 
+from time import sleep
+
 class Display(Constants):
 
     # This must be an int value
@@ -25,7 +27,7 @@ class Display(Constants):
     COL1_START_PIXEL        = 60
     FIELD_TYPE_KW           = 1
     FIELD_TYPE_AMPS         = 2
-    DISPLAY_TIMEOUT_SECONDS = 60        # The number of seconds that the display will stay on after 
+    DISPLAY_TIMEOUT_SECONDS = 60        # The number of seconds that the display will stay on after
                                         # power up or the WiFi button is pressed.
 
     def __init__(self, uo):
@@ -74,19 +76,19 @@ class Display(Constants):
         self._displayPowerPin.value(on)
         if on:
             # We reset these so that any subsequent waring message is displayed.
-            self._lastWarningLines = None 
+            self._lastWarningLines = None
             self._warningLines = None
-        
+
     def _isDisplayPowered(self):
         """@brief Determine if the display has power to it.
            @return True if the display has power."""
         return self._displayPowerPin.value()
-        
+
     def _init(self):
         """@brief Init the display."""
         # Ensure the display is powered up
         self._setDisplayPower(True)
-        
+
         rotation =0
         self._tft = self._config(rotation=rotation)
         self._tft.init()
@@ -139,7 +141,7 @@ class Display(Constants):
         if statsDict:
 
             pwrDict = statsDict
-            
+
             for ct in range(1,7):
                 key = f"CT{ct}"
                 if key in pwrDict:
@@ -152,7 +154,7 @@ class Display(Constants):
                             pWatts = ctStatsDict[Constants.PRMS]
                             pKW = pWatts/1000.0
                             self._setText(Display.COL1_START_PIXEL, yPos, f"{pKW:.3f} {unit}    ")
-                            
+
                     if self._ctFieldType == Display.FIELD_TYPE_AMPS:
                         unit="A"
                         if Constants.IRMS in ctStatsDict:
@@ -195,24 +197,24 @@ class Display(Constants):
             if self._isDisplayPowered():
                 if self._ctFieldType == Display.FIELD_TYPE_KW:
                     self._ctFieldType = Display.FIELD_TYPE_AMPS
-    
+
                 elif self._ctFieldType == Display.FIELD_TYPE_AMPS:
                     self._ctFieldType = Display.FIELD_TYPE_KW
-                                
+
             self._tft.fill_rect(Display.LAST_COL_PIXEL-font.WIDTH, Display.LAST_ROW_PIXEL-font.HEIGHT+1, font.WIDTH, font.HEIGHT-1, st7789.RED)
-            
+
         else:
             # If the button is not pressed and has not been pressed for the display timeout period
             delta = utime.ticks_diff(now, self._lastButtonPressedMS)
             if delta > Display.DISPLAY_TIMEOUT_SECONDS*1000 and self._isDisplayPowered():
                 # Turn the display off
                 self._displayOff()
-    
+
     def update(self, statsDict, buttonPressed):
         """@brief Update the display.
            @param statsDict The stats dict that contains the information to display.
            @param buttonPressed If True then the WiFi button is pressed."""
-        
+
         # If the unit has just started up
         if self._startup:
             # Init the display
@@ -225,20 +227,20 @@ class Display(Constants):
             if buttonPressed and not self._isDisplayPowered():
                 # Turn the display on.
                 self._init()
-                
+
             now = utime.ticks_ms()
             self._setButtonPressed(buttonPressed, now)
             delta = utime.ticks_diff(now, self._lastDisplayUpdateMS)
             # If it's time to display the stats
             if delta > Display.UPDATE_MILLI_SECONDS:
-                # If a warning message is defined then display this 
+                # If a warning message is defined then display this
                 # rather than the normal display.
                 if self._warningLines:
                     self._showWarning(statsDict)
                 else:
                     self._updateParams(statsDict, now)
                 self._lastDisplayUpdateMS = now
-                
+
     def _showWarning(self, statsDict):
         """@brief Show a warning message on the display."""
         if self._warningLines != self._lastWarningLines:
@@ -251,21 +253,21 @@ class Display(Constants):
                 yPos = (row*self._rowH)+(Display.ROW_HEIGHT_MARGIN/2)+1
                 self._setText(Display.COL0_START_PIXEL, yPos, line)
                 row = row + 1
-                        
+
         # We still show the IP address of the unit at the bottom of the display
         # when a waring message is displayed
         ipAddress = self._getIPMethod()
         if ipAddress:
             self._setText(0, self._rowMax, f"{ipAddress}    ")
-            
+
         # Only update if we seen changes in the warning message
         self._lastWarningLines = self._warningLines
-            
+
     def setWarning(self, warningLines):
         """@brief Set a warning message on the display.
            @param warningLines The lines of text to display."""
         self._warningLines = warningLines
-        
+
 class ThisMachine(BaseMachine):
     """@brief Implement functionality required by this project."""
 
@@ -281,7 +283,7 @@ class ThisMachine(BaseMachine):
         # Call base class constructor
         super().__init__(uo, configFile, activeAppKey, activeApp, wdt)
         self._statsDict = None
-        
+
         # Init the display to display the booting message as early as possible.
         self._display = Display(uo)
 
@@ -308,6 +310,7 @@ class ThisMachine(BaseMachine):
         self._connectedMQTTPort = None
         self._mqttClient = None
         self._assyStr = self._machineConfig.get(Constants.ASSY_KEY)
+        self._startWiFiDisconnectTime = None
 
     def _isFactoryConfigPresent(self):
         """@brief Check if the factory config file is present.
@@ -320,7 +323,7 @@ class ThisMachine(BaseMachine):
         except OSError:
             pass
         return factoryConfPresent
-    
+
     def _isNextStatsUpdateTime(self):
         """@brief Determine if it's time to update the stats.
            @return True if it's time."""
@@ -336,7 +339,7 @@ class ThisMachine(BaseMachine):
         """@brief a single method to save all persistent data on the device."""
         self._machineConfig.store()
         self._uo.info("Saved all persistent data on unit.")
-        
+
     def _getParams(self):
         """@brief Get the parameters (in a dict) we wish to include in the AYT response message."""
         return self._statsDict
@@ -363,11 +366,11 @@ class ThisMachine(BaseMachine):
            @param keepAlive The MQTT connection keepalive period in seconds."""
         mqttClientID = ubinascii.hexlify(self._assyStr)
         if len(mqttUsername) > 0 and len(mqttPassword) > 0:
-            self._mqttClient = MQTTClient(mqttClientID, 
-                                          address, 
-                                          port=port, 
-                                          user=mqttUsername, 
-                                          password=mqttPassword, 
+            self._mqttClient = MQTTClient(mqttClientID,
+                                          address,
+                                          port=port,
+                                          user=mqttUsername,
+                                          password=mqttPassword,
                                           keepalive=keepAlive)
         else:
             self._mqttClient = MQTTClient(mqttClientID,
@@ -389,7 +392,7 @@ class ThisMachine(BaseMachine):
         except Exception as ex:
             self._uo.error('Error shutting down MQTT connection: ' + str(ex))
         self._mqttClient = None
-      
+
     def _sendToMQTT(self):
         """@brief Send data to the MQTT server."""
         mqttServerAddress = self._machineConfig.get(Constants.MQTT_SERVER_ADDRESS)
@@ -416,20 +419,43 @@ class ThisMachine(BaseMachine):
                      mqttServerPort != self._connectedMQTTPort:
                     #Drop the connection ready for a reconnect attempt next time round.
                     self._disconnectMQTT()
-                                     
+
                 #If we have a connection to the MQTT server
                 if self._mqttClient:
                     # Send json string to the MQTT server
                     jsonStr = json.dumps( self._statsDict )
                     self._mqttClient.publish(mqttTopic, jsonStr)
                     self._uo.info(f"Sent stats to MQTT server ({self._connectedMQTTAddress}:{self._connectedMQTTPort}): {self._elapsedMS} ms.")
-                                               
+
                 else:
                     self._uo.info(f"{mqttServerAddress}:{mqttServerPort}: {self._elapsedMS} ms connection timeout.")
-                    
+
                 self._lastMQTTtxMS = self._thisMQTTtxMS
-                
+
                 # PJA Do we need to read from socket to make sure data doesn't fill input buffers ???
+
+    def _wifiDownRestart(self, wifiConnected, timeoutMS=10000):
+        """@brief If the WiFi goes down for a period of time then power cycle the CT6 unit
+                  to keep the CT6 unit active. Without this it may go into a dormant state.
+           @param wifiConnected True if the WiFi is currently connected.
+           @param timeoutMS If the WiFi stays down for this period of time we power cycle the CT6 device."""
+        # If WiFi is connected then reset disconnected time.
+        if wifiConnected:
+            self._startWiFiDisconnectTime = None
+
+        # If WiFi is disconnected but this is the first time here since
+        # it dropped record the time it dropped.
+        elif self._startWiFiDisconnectTime is None:
+            self._startWiFiDisconnectTime = utime.ticks_ms()
+
+        else:
+            now_ms = utime.ticks_ms()
+            elapsed_ms = now_ms - self._startWiFiDisconnectTime
+            self._debug(f"WiFi has been down for {elapsed_ms} milliseconds.")
+            if elapsed_ms > timeoutMS:
+                self._debug(f"WiFi down timeout ({timeoutMS} ms). Power cycling CT6 device.")
+                sleep(0.25)
+                self._projectCmdHandler.powerCycle()
 
     def serviceRunningMode(self):
         """@brief Perform actions required when up and running.
@@ -440,8 +466,12 @@ class ThisMachine(BaseMachine):
 
            @return The time in seconds before this method is expected to be called again."""
 
+
         self._updateBlueTooth()
-        self._updateWiFi()
+        wifiConnected = self._updateWiFi()
+        # We only get here if the WiFi comes up, so we check if it goes down
+        # and reboot if it stays down for a period of time.
+        self._wifiDownRestart(wifiConnected)
         self._updateStats()
         active = self._machineConfig.get(Constants.ACTIVE)
         if active:

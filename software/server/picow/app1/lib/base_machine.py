@@ -40,7 +40,7 @@ class BaseMachine(Constants):
         self._projectCmdHandler = None
         self._macAddress = ""
         self._statsDict = {}
-        
+
         # If the max speed value is set in constants then bump the CPU speed.
         if Constants.MAX_CPU_FREQ_HZ > 0:
             machine.freq(Constants.MAX_CPU_FREQ_HZ)
@@ -49,7 +49,7 @@ class BaseMachine(Constants):
         VFS.ShowFSInfo(self._uo)
 
         self._updateActiveApp()
-        
+
         # Define the time we show the system ram usage on stdout
         self._showRamTime = time() + Constants.SHOW_RAM_POLL_SECS
 
@@ -64,7 +64,7 @@ class BaseMachine(Constants):
            @param msg The message to display."""
         if self._uo:
             UO.debug(self._uo, msg)
-            
+
     def _updateActiveApp(self):
         """@brief Update the active app in the default config and the persistent config."""
         defaultConfigDict = Constants.DEFAULT_CONFIG
@@ -90,7 +90,7 @@ class BaseMachine(Constants):
         self._debug("wifiConfigDict: {}".format(wifiConfigDict))
         self._wifi.setWiFiConfigDict(wifiConfigDict)
         # Returns a network.WLAN instance or None if we failed to connect to the WiFi
-        wlan = self._wifi.setup()       
+        wlan = self._wifi.setup()
         # If the user wishes to reset the WiFi settings
         if self._wifi.userWiFiReset():
             self._setDefaultConfig()
@@ -107,7 +107,7 @@ class BaseMachine(Constants):
                 self._debug("WiFi failed to register, rebooting unit.")
                 sleep(0.25)
                 self.reboot()
-                
+
         self._setMACAddress(self._wifi.getMAC())
 
     def _initBlueTooth(self):
@@ -234,7 +234,7 @@ class BaseMachine(Constants):
         if preRestartDelay > 0.0:
             sleep(preRestartDelay)
         machine.reset()
-        
+
     def _updateBlueTooth(self):
         """@brief Update the state of the bluetooth radio.
                   The app that sets up the WiFi turns off bluetooth by sending a command over bluetooth to
@@ -244,7 +244,7 @@ class BaseMachine(Constants):
             self._machineConfig.set(Constants.BLUETOOTH_ON_KEY, 0)
             self._machineConfig.store()
             self._info("Bluetooth shutdown now the unit has an IP address via DHCP.")
-            
+
         # If we didn't receive a command over the bluetooth interface to shutdown bluetooth
         else:
             btOn = self._machineConfig.get(Constants.BLUETOOTH_ON_KEY)
@@ -253,8 +253,10 @@ class BaseMachine(Constants):
                 self._blueTooth.shutdown()
 
     def _updateWiFi(self):
-        # Check if the user wishes to reset the WiFi config
+        """@brief Check if the user wishes to reset the WiFi config
+           @return True if the Wifi is connected."""
         resetWiFiConfig = self._wifi.checkWiFiSetupMode()
         if resetWiFiConfig:
             self._setDefaultConfig()
             self.reboot()
+        return self._wifi.connected()
