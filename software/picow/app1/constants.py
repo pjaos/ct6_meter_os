@@ -4,7 +4,7 @@ class Constants(BaseConstants):
     """@brief Define the constants used by this project.
               This extends BaseContants to make a more specialised configuration for this machine."""
 
-    FIRMWARE_VERSION            = "2.61"
+    FIRMWARE_VERSION            = "2.63"
 
     # Override the BaseConstants GPIO pins to those connected on this hardware
     WIFI_SETUP_BUTTON_PIN       = 14
@@ -105,29 +105,29 @@ class Constants(BaseConstants):
     ACTIVE                      = "ACTIVE"
 
     MQTT_SERVER_ADDRESS         = "MQTT_SERVER_ADDRESS"
-    
+
     MQTT_SERVER_PORT            = "MQTT_SERVER_PORT"
-    
-    MQTT_TX_PERIOD_MS           = "MQTT_TX_PERIOD_MS" 
+
+    MQTT_TX_PERIOD_MS           = "MQTT_TX_PERIOD_MS"
 
     MQTT_TOPIC                  = "MQTT_TOPIC"
 
     MQTT_USERNAME               = "MQTT_USERNAME"
 
-    MQTT_PASSWORD               = "MQTT_PASSWORD"  
-    
+    MQTT_PASSWORD               = "MQTT_PASSWORD"
+
     FACTORY_CONFIG_KEYS = [BaseConstants.ASSY_KEY,
-                           
+
                            CS0_VOLTAGE_GAIN_KEY,
                            CS4_VOLTAGE_GAIN_KEY,
-                           
+
                            CT1_IGAIN_KEY,
                            CT2_IGAIN_KEY,
                            CT3_IGAIN_KEY,
                            CT4_IGAIN_KEY,
                            CT5_IGAIN_KEY,
                            CT6_IGAIN_KEY,
-                           
+
                            CT1_IOFFSET_KEY,
                            CT2_IOFFSET_KEY,
                            CT3_IOFFSET_KEY,
@@ -135,9 +135,9 @@ class Constants(BaseConstants):
                            CT5_IOFFSET_KEY,
                            CT6_IOFFSET_KEY,
                            LINE_FREQ_HZ_KEY
-                           
+
                            ]
-        
+
     # Override the Constants.DEFAULT_CONFIG
     DEFAULT_CONFIG = {
 
@@ -164,7 +164,7 @@ class Constants(BaseConstants):
                 BaseConstants.PASSWORD_KEY:         "12345678"
                 },
 
-        # This is a good starting point for the calibration of current using SCT013 100A 1V 
+        # This is a good starting point for the calibration of current using SCT013 100A 1V
         # sensors. Low side on all HW tested.
         CT1_IGAIN_KEY:                  45000,
         CT2_IGAIN_KEY:                  45000,
@@ -222,7 +222,7 @@ class Constants(BaseConstants):
         MQTT_TOPIC:                     "",         # The MQTT topic to which the CT6 MQTT client may subscribe
         MQTT_USERNAME:                  "",         # The MQTT username. If empty then an anonymous MQTT connection will be attempted.
         MQTT_PASSWORD:                  "",         # The MQTT password. If empty then an anonymous MQTT connection will be attempted.
-        MQTT_TX_PERIOD_MS:              2000        # Default send to the MQTT server every 2000 milliseconds/2 seconds 
+        MQTT_TX_PERIOD_MS:              2000        # Default send to the MQTT server every 2000 milliseconds/2 seconds
 
      }
 
