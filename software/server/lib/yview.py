@@ -11,6 +11,7 @@ from threading import Thread
 
 from p3lib.ssh import SSH, SSHTunnelManager
 from p3lib.helper import GetFreeTCPPort, printDict
+from    p3lib.netif import NetIF
 
 from .config import ConfigBase
 from .base_constants import BaseConstants
@@ -121,9 +122,9 @@ class YViewMQTTReader(BaseConstants):
                                          # key = the device assy
                                          # value = A dict containing
                                          #     key = Service name
-                                         #     value = The localhost TCP port that is forwarded to the server.  
-        self._validProuctIDList     = [] # A list of YView product ID's that we're interested in hearing from.  
-        
+                                         #     value = The localhost TCP port that is forwarded to the server.
+        self._validProuctIDList     = [] # A list of YView product ID's that we're interested in hearing from.
+
     def setSSHTunnelManager(self, sshTunnelManager):
         """@brief Set a referenece to the associated SSH tunnerl manager."""
         self._sshTunnelManager = sshTunnelManager
@@ -139,7 +140,7 @@ class YViewMQTTReader(BaseConstants):
         self._uio.info("MQTT client connecting to {}:{}".format(YViewCollector.LOCALHOST, self._mqttPort))
         client.connect(YViewCollector.LOCALHOST, self._mqttPort, 60)
         topic = location
-        # Subscribe to the location topic       
+        # Subscribe to the location topic
         self._uio.debug(topic)
         # If required to subscribe to all topics
         if self._options.all:
@@ -172,10 +173,10 @@ class YViewMQTTReader(BaseConstants):
                             ctDevDict[YView.NAME]= urllib.parse.unquote(ctDevDict[YView.NAME])
         else:
             ensureConectable = True
-            
+
         if ensureConectable:
             self._ensureConnectability(rxDict)
-            
+
         if self._options.show:
             self._showDevData(rxDict)
         self._updateListenersMethod(rxDict)
@@ -289,39 +290,39 @@ class YViewMQTTReader(BaseConstants):
             self._uio.info("")
             self._uio.info("********** {}/{} DEVICE ATTRIBUTES **********".format(location, unitName))
         printDict(self._uio, devDict)
-               
+
     def getPortForwardingDict(self):
         """@brief Get a dict that details the localhost TCP ports forwarded to the remote device.
-           @return A dict that holds the 
-                   key = assy of the device, 
+           @return A dict that holds the
+                   key = assy of the device,
                    value = a dict that holds
-                       key = the service name, 
+                       key = the service name,
                        value = the local TCP port forwarded to that service on the device."""
         return self._portForwardingDict
-    
+
     def getForwardedPort(self, deviceAssy):
         """@brief Get the first TCP port forwarded from localhost to a device.
-                  If the device only presents a service on one TCP port this can be used. 
+                  If the device only presents a service on one TCP port this can be used.
                   If the device presents services on more than one TCP port then getPortForwardingDict() should be used.
            @param deviceAssy The device assembly label of the device of interest.
-           @return The TCP port forwarded from localhost to the device or -1 if no data has yet been received from 
+           @return The TCP port forwarded from localhost to the device or -1 if no data has yet been received from
                    the device detailing a port that the device is presenting a service on."""
         self._uio.debug("self._portForwardingDict={}".format(self._portForwardingDict))
         tcpPort = -1
         assys = list( self._portForwardingDict.keys() )
-        for assy in assys:   
+        for assy in assys:
             if assy == deviceAssy:
                 devServiceDict = self._portForwardingDict[deviceAssy]
                 if 'WEB' in devServiceDict:
                     tcpPort = devServiceDict['WEB']
                     break
         return tcpPort
-    
+
     def setValidProuctIDList(self, validProductIDList):
         """@brief Set a list of product ID's that we're interested in.
            @param validProductIDList The list we're interested in."""
         self._validProuctIDList = validProductIDList
-        
+
 class YViewCollector(BaseConstants):
     """@brief Responsible for
         - Connecting to and receiving data from the YView ICON server.
@@ -341,7 +342,7 @@ class YViewCollector(BaseConstants):
         self._running               = False
         self._devListenerList       = []       # A list of all the parties interested in receiving device data messages
         self._validProuctIDList     = []
-        
+
     def close(self, halt=False):
         """@brief Close down the collector.
            @param halt If True When closed the collector will not restart."""
@@ -378,12 +379,12 @@ class YViewCollector(BaseConstants):
                 self._uio.error(str(ex))
                 self._uio.info("Waiting {} seconds before attempting to ICONS reconnect.".format(YViewCollector.RECONNECT_DELAY_SECS))
                 sleep(YViewCollector.RECONNECT_DELAY_SECS)
-                
+
     def addDevListener(self, devListener):
         """@brief Add to the list of entities that are interested in the device data.
            @param devListener The device listener (must implement the hear(devDict) method."""
         self._devListenerList.append(devListener)
-        
+
     def removeAllListeners(self):
         """@brief Remove all listeners for device data."""
         self._devListenerList = []
@@ -392,26 +393,26 @@ class YViewCollector(BaseConstants):
         """@brief Update all listeners with the device data."""
         for devListener in self._devListenerList:
             devListener.hear(devData)
-            
+
     def getPortForwardingDict(self):
         """@brief Get a dict that details the localhost TCP ports forwarded to the remote device.
            @return A dict a dict that holds the Service Name = TCP port list for all the TCP ports forwarded from localhost to the remote device."""
         return self._yViewMQTTReader.getPortForwardingDict()
-    
+
     def getForwardedPort(self, deviceName):
         """@brief Get the first TCP port forwarded from localhost to the device.
-                  If the device only presents a service on one TCP port this can be used. 
-                  If the device presents services on more than one TCP port then getPortForwardingDict() should be used.       
+                  If the device only presents a service on one TCP port this can be used.
+                  If the device presents services on more than one TCP port then getPortForwardingDict() should be used.
            @param deviceName The name of the device of interest.
-           @return The TCP port forwarded from localhost to the device or -1 if no data has yet been received from 
+           @return The TCP port forwarded from localhost to the device or -1 if no data has yet been received from
                    the device detailing a port that the device is presenting a service on."""
         return self._yViewMQTTReader.getForwardedPort(deviceName)
-    
+
     def setValidProuctIDList(self, validProductIDList):
         """@brief Set a list of product ID's that we're interested in.
            @param validProductIDList The list we're interested in."""
         self._validProuctIDList = validProductIDList
-              
+
 class LocalYViewCollector(BaseConstants):
     """@brief This collects data from YView devices on the local LAN only as opposed to connecting to the
               ICONS server and collecting data from there.
@@ -419,7 +420,7 @@ class LocalYViewCollector(BaseConstants):
         - Forwarding device data to listeners."""
 
     UDP_SERVER_PORT = 29340
-    
+
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance
@@ -442,17 +443,18 @@ class LocalYViewCollector(BaseConstants):
         if halt:
             self._running = False
 
-    def start(self):
-        """@brief Start the App server."""
+    def start(self, net_if=None):
+        """@brief Start the App server.
+           @param net_if If defined send the discovery broadcast messages out of this interface."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.bind(('', LocalYViewCollector.UDP_SERVER_PORT))
-    
+
         self._uio.info('Sending AYT messages.')
-        self._areYouThereThread = AreYouThereThread(sock)
+        self._areYouThereThread = AreYouThereThread(sock, net_if=net_if)
         self._areYouThereThread.start()
-    
+
         self._uio.info("Listening on UDP port %d" % (LocalYViewCollector.UDP_SERVER_PORT) )
         self._running = True
         while self._running:
@@ -469,7 +471,7 @@ class LocalYViewCollector(BaseConstants):
                             # Add the time we received the message to the rx_dict
                             rx_dict[YView.RX_TIME_SECS]=rxTime
                             self._updateListeners(rx_dict)
-                            
+
                         if BaseConstants.IP_ADDRESS in rx_dict:
                             ipAddress = rx_dict[BaseConstants.IP_ADDRESS]
                             if ipAddress not in self._deviceIPAddressList:
@@ -479,15 +481,15 @@ class LocalYViewCollector(BaseConstants):
                 except KeyboardInterrupt:
                     self.close()
                     break
-    
+
                 except Exception as ex:
                     raise
-                
+
     def addDevListener(self, devListener):
         """@brief Add to the list of entities that are interested in the device data.
            @param devListener The device listener (must implement the hear(devDict) method."""
         self._devListenerList.append(devListener)
-        
+
     def removeAllListeners(self):
         """@brief Remove all listeners for device data."""
         self._devListenerList = []
@@ -498,14 +500,14 @@ class LocalYViewCollector(BaseConstants):
             startTime = time()
             dataLen = len(devData)
             devListener.hear(devData)
-            exeSecs = time() - startTime 
+            exeSecs = time() - startTime
             self._uio.debug(f"EXET: devListener.hear(devData) Took {exeSecs:.6f} seconds to execute.")
-                
+
     def setValidProuctIDList(self, validProductIDList):
         """@brief Set a list of product ID's that we're interested in.
            @param validProductIDList The list we're interested in."""
         self._validProuctIDList = validProductIDList
-        
+
 class AreYouThereThread(Thread):
     """Class to are you there messages to devices"""
 
@@ -513,27 +515,76 @@ class AreYouThereThread(Thread):
     PERIODICITY_SECONDS = 1.0
     MULTICAST_ADDRESS   = "255.255.255.255"
 
-    def __init__(self, sock):
+    def __init__(self, sock, net_if=None):
         Thread.__init__(self)
         self._running = None
         self.setDaemon(True)
-
         self._sock = sock
+        self._net_if = net_if
+
+    @staticmethod
+    def UpdateMultiCastAddressList(subNetMultiCastAddressList, ipList):
+        """@brief Update a mulicast address list from a given list of IP addresses."""
+        for elem in ipList:
+            elems = elem.split("/")
+            if len(elems) == 2:
+                # Extract the interface IP address. Calc the multicast IP address
+                # for the subnet and add this to the list for the interface.
+                try:
+                    ipAddress = elems[0]
+                    subNetMaskBitCount = int(elems[1])
+                    intIP = NetIF.IPStr2int(ipAddress)
+                    subNetBits = (1<<(32-subNetMaskBitCount))-1
+                    intMulticastAddress = intIP | subNetBits
+                    subNetMultiCastAddress = NetIF.Int2IPStr(intMulticastAddress)
+                    subNetMultiCastAddressList.append( (subNetMultiCastAddress, LocalYViewCollector.UDP_SERVER_PORT) )
+                except ValueError as ex:
+                    # Ignore errors
+                    pass
+
+        return subNetMultiCastAddressList
+
+    @staticmethod
+    def GetSubnetMultiCastAddress(ifName, ifDownDelay=10):
+        """@brief Get the subnet multicast IP address for the given interface.
+           @param ifName The name of a local network interface.
+           @param ifDownDelay The delay in seconds to wait for the interface to come up if it's not found.
+                              This may occur if the WiFi interface is down.
+           @return A tuple of all the subnet multicast IP addresses."""
+        subNetMultiCastAddressList = []
+        netIF = NetIF()
+        # Don't exit until we have the multicast address
+        while len(subNetMultiCastAddressList) == 0:
+            ifDict = netIF.getIFDict()
+            if ifName is None or len(ifName) == 0:
+                for _ifName in ifDict:
+                    ipList = ifDict[_ifName]
+                    AreYouThereThread.UpdateMultiCastAddressList(subNetMultiCastAddressList, ipList)
+
+            if ifName in ifDict:
+                ipList = ifDict[ifName]
+                AreYouThereThread.UpdateMultiCastAddressList(subNetMultiCastAddressList, ipList)
+
+            else:
+                sleep(ifDownDelay)
+        return tuple(subNetMultiCastAddressList)
 
     def run(self):
         self._running = True
+        addressList = AreYouThereThread.GetSubnetMultiCastAddress(self._net_if)
+
         while self._running:
             try:
-                self._sock.sendto(AreYouThereThread.AreYouThereMessage.encode(), (AreYouThereThread.MULTICAST_ADDRESS, LocalYViewCollector.UDP_SERVER_PORT))
+                for address in addressList:
+                    self._sock.sendto(AreYouThereThread.AreYouThereMessage.encode(), address)
             # If the local interface goes down this error will be generated. In this situation we want to keep trying to
-            # send an AYT message in order to hear from Yview devices when the interface comes back up. This ensures the 
+            # send an AYT message in order to hear from Yview devices when the interface comes back up. This ensures the
             # AYT messages continue to be sent if the house power drops for a short while as occurred recently.
             except OSError as ex:
                 pass
             sleep(AreYouThereThread.PERIODICITY_SECONDS)
-            
+
     def stop(self):
         """@brief Stop the server running."""
         self._running = False
-              
-    
+

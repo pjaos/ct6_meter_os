@@ -48,7 +48,7 @@ class CT6Base(BaseConstants):
             if port.vid is not None:
                 portList.append(port)
         return portList
-    
+
     @staticmethod
     def GetInstallFolder():
         """@return The folder where the apps are installed."""
@@ -56,7 +56,7 @@ class CT6Base(BaseConstants):
         if not os.path.isdir(installFolder):
             raise Exception(f"{installFolder} folder not found.")
         return installFolder
-    
+
     @staticmethod
     def GetSrcPicoWFolder():
         """@return The folder where the MCU code is held."""
@@ -107,7 +107,7 @@ class CT6Base(BaseConstants):
         if programVersion is None:
             raise Exception(f"Failed to extract program version from '{line}' line of {poetryConfigFile} file.")
         return programVersion
-    
+
     HOUSE_WIFI_CFG_FILE         = os.path.join(os.path.join(os.path.expanduser('~')), "ct6_house_wifi.cfg" )
     WIFI_CFG_KEY                = "WIFI"
     CT6_MACHINE_CONFIG_FILE     = "this.machine.cfg"
@@ -152,7 +152,7 @@ class CT6Base(BaseConstants):
                                    LINE_FREQ_HZ_KEY]
     TCP_PORT                    = 80
     LINUX_MPY_CMDLINE_PREFIX = "poetry run python3 -m mpy_cross "
-    # When pipenv is executed on windows the python comand must be executed to ensure the 
+    # When pipenv is executed on windows the python comand must be executed to ensure the
     # env is loaded.
     WINDOWS_MPY_CMDLINE_PREFIX = "python -m mpy_cross "
     RPI_PICO_SERIAL_MATCH_TEXT = "/dev/ttyA"
@@ -165,9 +165,9 @@ class CT6Base(BaseConstants):
            @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
            @param options An instance of the OptionParser command line options."""
         self._uio       = uio
-        self._options   = options   
+        self._options   = options
         self._ipAddress = None          # The IP address for the UUT
-        self._ser       = None      
+        self._ser       = None
         self._windowsPlatform = any(platform.win32_ver())
         # Define the prefix for using the micro python X compiler
         if self._windowsPlatform:
@@ -208,7 +208,7 @@ class CT6Base(BaseConstants):
         srcPicoWFolder = CT6Base.GetSrcPicoWFolder()
         if not os.path.isdir(srcPicoWFolder):
             raise Exception(f"{srcPicoWFolder} folder not found.")
-     
+
         if self._windowsPlatform:
             # On windows platforms the src folder should be writable.
             # Therefore just remove the drive as if this is left in rshell commands fail.
@@ -223,12 +223,12 @@ class CT6Base(BaseConstants):
                 shutil.rmtree(destPicoWFolder)
             shutil.copytree(srcPicoWFolder, destPicoWFolder)
             self._picowFolder = destPicoWFolder
-            
+
         self._app1Folder =  os.path.join(destPicoWFolder, "app1")
         self._upgradeAppRoot = self._app1Folder
         if not os.path.isdir(self._app1Folder):
             raise Exception(f"{self._app1Folder} folder not found.")
-        
+
         tPath = os.path.join(destPicoWFolder, "tools")
         self._uf2ImagePath = os.path.join(tPath, "picow_flash_images")
         if not os.path.isdir(self._uf2ImagePath):
@@ -239,12 +239,12 @@ class CT6Base(BaseConstants):
 
         if not os.path.isdir(self._picowFolder):
             raise Exception(f"{self._picowFolder} folder not found.")
-        
+
         if not os.path.isdir(self._app1Folder):
             raise Exception(f"{self._app1Folder} folder not found.")
-        
+
     def _ensureMCUCodeAvailable(self):
-        """@brief Ensure we have access to the RPI Pico W code."""           
+        """@brief Ensure we have access to the RPI Pico W code."""
         requiredFolder = self._picowFolder
         if not os.path.isdir(requiredFolder):
             srcFolder = requiredFolder
@@ -291,7 +291,7 @@ class CT6Base(BaseConstants):
         if "ERROR" in rDict:
             msg = rDict["ERROR"]
             raise Exception(msg)
-        
+
     def setIPAddress(self, ipAddress):
         """@brief Set the IP address of the CT6 unit being tested."""
         if ipAddress is None:
@@ -317,7 +317,7 @@ class CT6Base(BaseConstants):
             except:
                 pass
         return pingSec
-            
+
     def _waitForWiFiDisconnect(self, restartTimeout=60, showMessage=True):
         """@brief Wait for the CT6 unit to disconnect from the WiFi network.
            @param restartTimeout The number of seconds before an exception is thrown if the WiFi does not disconnect.
@@ -332,14 +332,14 @@ class CT6Base(BaseConstants):
 
             if time() >= startT+restartTimeout:
                 raise Exception("Timeout waiting for the device to reboot.")
-        
+
             sleep(0.25)
-            
+
     def _waitForPingSuccess(self, restartTimeout=60, pingHoldSecs = 3):
         """@brief Wait for a reconnect to the WiFi network.
            @param restartTimeout The number of seconds before an exception is thrown if the WiFi does not reconnect.
            @param pingHoldSecs The number of seconds of constant pings before we determine the WiFi has reconnected.
-                               This is required because the Pico W may ping and then stop pinging before pinging 
+                               This is required because the Pico W may ping and then stop pinging before pinging
                                again when reconnecting to the Wifi."""
         startT = time()
         pingRestartTime = None
@@ -357,11 +357,11 @@ class CT6Base(BaseConstants):
 
             if time() >= startT+restartTimeout:
                 raise Exception(f"Timeout waiting for {self._ipAddress} to become pingable.")
-            
+
             sleep(0.25)
-            
+
         self._info(f"{self._ipAddress} ping success.")
-        
+
 
     def _loadJSONFile(self, filename):
         """@brief Load a dict from a JSON formatted file.
@@ -370,13 +370,13 @@ class CT6Base(BaseConstants):
         with open(filename) as fd:
             fileContents = fd.read()
             return json.loads(fileContents)
-        
+
     def _saveDictToJSONFile(self, theDict, filename):
         """@brief Save a dict to a file (JSON format)."""
         self._debug(f"Saving to {filename}")
         with open(filename, 'w') as fd:
             json.dump(theDict, fd, ensure_ascii=False)
-        
+
     def _getRShellCmd(self, port, cmdFile, picow=True, serialTimeout=5):
         """@brief Get the RSHell command line.
            @param port The serial port to use.
@@ -418,7 +418,7 @@ class CT6Base(BaseConstants):
         self._ser.xonxoff = False
         self._ser.open()
         self._debug(f"Opened serial port {self._serialPort}")
-                    
+
     def _getSerialPort(self, matchText, timeout=30):
         """@brief Get a serial port that should be connected to the RPi Pico W
            @param matchText The text to match the serial ports.
@@ -439,22 +439,22 @@ class CT6Base(BaseConstants):
                 raise Exception(f"{timeout} second timeout waiting for a serial port to appear.")
             # Don't spin to fast here
             sleep(0.1)
-            
+
         for serialPort in serialPortList:
             if serialPort.device.find(matchText) >= 0:
                 matchingSerialPortList.append(serialPort.device)
 
         if len(matchingSerialPortList) == 0:
             raise Exception('No RPi Pico W serial port detected.')
-                        
+
         self._info("Checking that only one serial port is connected to this machine.")
-        
+
         if len(matchingSerialPortList) > 1:
             raise Exception(f'Multiple serial ports detected: {",".join(matchingSerialPortList)}')
-        
+
         self._info(f"Found {matchingSerialPortList[0]}")
         return matchingSerialPortList[0]
-        
+
     def _checkMicroPython(self, closeSerialPort=True):
         """@brief Check micropython is loaded.
            @param closeSerialPort If True then close the serial port on exit.
@@ -465,7 +465,7 @@ class CT6Base(BaseConstants):
             try:
                 self._openSerialPort()
                 timeToSendCTRLC = time()
-    
+
                 while True:
                     now = time()
                     # Send CTRL C periodically
@@ -490,23 +490,23 @@ class CT6Base(BaseConstants):
 
             except serial.SerialException:
                 self._debug(f"SerialException: {traceback.format_exc()}")
-    
+
             except OSError:
                 self._debug(f"SerialException: {traceback.format_exc()}")
 
         finally:
             if closeSerialPort:
                 self._closeSerialPortIfOpen()
-                
+
         self._debug("_checkMicroPython(): STOP")
         return success
-        
+
     def restart(self):
         """@brief Restart the CT6 unit via a machine.reset()"""
         try:
             self._checkMicroPython(closeSerialPort=False)
             self._ser.write(b"import machine ; machine.reset()\r")
-        
+
         finally:
             self._closeSerialPortIfOpen()
 
@@ -532,7 +532,7 @@ class CT6Base(BaseConstants):
                             fileContents = line
                             break
         return line
-    
+
     def _updateWiFiConfig(self):
         """@brief Update the WiFi config on the CT6 unit from the house wifi config file to
                   ensure it will connect to the wiFi network when the software is started.
@@ -558,7 +558,7 @@ class CT6Base(BaseConstants):
         self._closeSerialPortIfOpen()
         self._runRShell((f'cp "{localMachineCfgFile}" /pyboard/',) )
         return thisMachineDict[CT6Base.WIFI_CFG_KEY]['SSID']
-        
+
     def _rebootUnit(self):
         """@brief reboot a CT6 unit."""
         self._info("Rebooting the MCU")
@@ -571,7 +571,7 @@ class CT6Base(BaseConstants):
         except:
             pass
         self._closeSerialPortIfOpen()
-           
+
     def _closeSerialPortIfOpen(self):
         """@brief Close an open serial port."""
         if self._ser:
@@ -585,7 +585,7 @@ class CT6Base(BaseConstants):
         ssid = self._uio.getInput("The local WiFi SSID: ")
         password = self._uio.getInput("The local WiFi password: ")
         self._storeWiFiCredentials(ssid, password)
-         
+
     def _storeWiFiCredentials(self, ssid, password):
         """@brief Stroe the WiFi credentials locally.
            @param ssid The Wifi SSID/network.
@@ -622,11 +622,11 @@ class CT6Base(BaseConstants):
                                 line=line.rstrip("\r\n")
                                 self._debug(line)
 
-                        if waitForIPAddress:                                
+                        if waitForIPAddress:
                             pos = data.find(", IP Address=")
                             if pos != -1:
                                 elems = data.split("=")
-                                if len(elems) > 0:    
+                                if len(elems) > 0:
                                     ipAddress = elems[-1].rstrip("\r\n")
                                     self._info(f"CT6 IP address = {ipAddress}")
                                     self._info("Waiting for firmware to startup on CT6 device.")
@@ -639,16 +639,16 @@ class CT6Base(BaseConstants):
                             pos = data.find("Activating WiFi")
                             if pos != -1:
                                 break
-                                
+
             except serial.SerialException:
                 self._debug(f"SerialException: {traceback.format_exc()}")
 
             except OSError:
                 self._debug(f"SerialException: {traceback.format_exc()}")
-            
+
         finally:
             self._closeSerialPortIfOpen()
-                
+
         return ipAddress
 
     def loadCT6Firmware(self, factoryConfigFile=None):
@@ -658,8 +658,8 @@ class CT6Base(BaseConstants):
         # If factory config defined check the contents of the file.
         if factoryConfigFile:
             self._checkFactoryConfFile(factoryConfigFile)
-            
-        # This will clean all the files including all config from the MCU flash memory 
+
+        # This will clean all the files including all config from the MCU flash memory
         mcuLoader = MCULoader(self._uio, self._options)
         mcuLoader.load()
         self._info("Running the CT6 firmware")
@@ -667,7 +667,7 @@ class CT6Base(BaseConstants):
         self._runApp(waitForIPAddress=False)
         if factoryConfigFile:
             self.restoreFactoryConfig(factoryConfigFile)
-            
+
         self._info("Updating the MCU WiFi configuration.")
         # Now the this.machine.cfg file is present we can setup the configuration.
         self._updateWiFiConfig()
@@ -686,7 +686,7 @@ class CT6Base(BaseConstants):
         response = self._runRESTCmd(url)
         rDict = response.json()
         return rDict[filename]
-    
+
     def _checkFactoryConfFile(self, factoryConfigLogFile):
         """@brief Get the name of the factory.conf file to load onto the CT6 unit.
                   _initTest must be called before calling this method.
@@ -703,12 +703,12 @@ class CT6Base(BaseConstants):
             pass
         if factoryCfgDict is None:
             raise Exception(f"{factoryConfigLogFile} is not a JSON formatted file.")
-        
+
         # Ensure the file has all the required keys
         for key in CT6Base.FACTORY_CONFIG_KEYS:
             if key not in factoryCfgDict:
                 raise Exception(f"The {key} parameter is not defined in the {factoryConfigLogFile} file.")
-            
+
         assyStr = factoryCfgDict[CT6Base.ASSY_KEY]
         # If the ASSY is not set
         if assyStr.startswith("ASY0197"):
@@ -722,10 +722,10 @@ class CT6Base(BaseConstants):
                 self._warn(f"Corrected assembly number in the {factoryConfigLogFile} file.")
             else:
                 raise Exception(f"{filename} invalid. Should have 'ASY0398_V03.2000_SN00001834_20240211094915_factory.cfg' form.")
-            
+
         # We've completed the checks required on the contents of the config file.
         return factoryConfigLogFile
-        
+
     def _sendFileOverWiFi(self, address, localFile, destPath):
         """@brief Send a file to the device.
            @param address The IP address of the CT6 device.
@@ -756,7 +756,7 @@ class CT6Base(BaseConstants):
            @param serialCon If True then the factory config file is loaded to the unit over the CT6 serial port.
                             If False then it is loaded over the WiFi interface."""
         srcFactoryCfgFile = self._checkFactoryConfFile(factoryConfigFile)
-        
+
         if serialCon:
             # Attempt to connect to the board under test python prompt
             self._checkMicroPython(closeSerialPort=False)
@@ -766,9 +766,9 @@ class CT6Base(BaseConstants):
             shutil.copyfile(srcFactoryCfgFile, tmpLocalFile)
             self._sendFileOverWiFi(self._ipAddress, tmpLocalFile, "/")
             os.remove(tmpLocalFile)
-            
+
         self._info("Loaded the factory.cfg data to the CT6 board.")
-        
+
 
     def _runCommand(self, cmd, returnDict = False):
         """@brief send a command to the device and get response.
@@ -785,7 +785,7 @@ class CT6Base(BaseConstants):
                 raise Exception("'{}' failed to return a dict.".format(cmd))
         else:
             return requests.get(url)
-        
+
     def receiveFile(self, receiveFile, localPath):
         """@brief Receive a file from the device.
            @param receiveFile The file to receive.
@@ -826,8 +826,8 @@ class MCULoader(CT6Base):
                 "mkdir /pyboard/app2/lib/drivers"]
     DEL_ALL_FILES_CMD_LIST = ["rm -r /pyboard/*"]
     MCU_MP_CACHE_FOLDER = "mcu_app.cache"
-        
-    def __init__(self, uio, 
+
+    def __init__(self, uio,
                        options,
                        mcu = VALID_MCU_LIST[0]):
         """@brief Constructor
@@ -840,7 +840,7 @@ class MCULoader(CT6Base):
             raise Exception(f"{mcu} is an unsupported MCU ({','.join(MCULoader.VALID_MCU_LIST)} are valid).")
         self._mcu = mcu
         self._mcuCodeFolders = [self._app1Folder, os.path.join(self._app1Folder, 'lib'), os.path.join(self._app1Folder, 'lib/drivers')]
-        
+
     def _checkApp1(self):
         """@brief Run pyflakes3 on the app1 folder code to check for errors before loading it."""
         self._info("Checking python code in the app1 folder using pyflakes")
@@ -849,7 +849,7 @@ class MCULoader(CT6Base):
         if warnings > 0:
             raise Exception("Fix issues with the code in the app1 folder and then try again.")
         self._info("pyflakes found no issues with the app1 folder code.")
-        
+
     def _getFileList(self, extension):
         """@brief Get a list of files with the given extension."""
         fileList = []
@@ -865,14 +865,14 @@ class MCULoader(CT6Base):
                     fileList.append( _file )
 
         return fileList
-    
+
     def _deleteFiles(self, fileList):
         """@brief Delete files details in the file list."""
         for aFile in fileList:
             if os.path.isfile(aFile):
                 os.remove(aFile)
                 self._info("Deleted local {}".format(aFile))
-                
+
     def deleteMPYFiles(self):
         """@brief Delete existing *.mpy files"""
         # Be careful with this code !!!
@@ -889,21 +889,21 @@ class MCULoader(CT6Base):
             mpyFileList.append(mpyFile)
 
         return mpyFileList
-            
+
     def _runCmd(self, port, cmdFile):
         """@brief Run an rshell command file.
            @param port The serial port to run the command over.
            @param cmdFile The rshell command file to execute.
            @return the output from the command executed as a string."""
         rshellCmd = self._getRShellCmd(port, cmdFile)
-        self._debug(f"EXECUTING: {rshellCmd}")   
+        self._debug(f"EXECUTING: {rshellCmd}")
         return check_output(rshellCmd, shell=True).decode()
 
     def _loadFiles(self, fileList, port):
         """@brief Load files onto the micro controller device.
            @param fileList The list of files to load.
-           @param port The serial port to use."""      
-        self._info("Loading CT6 firmware. This may take several minutes...")                 
+           @param port The serial port to use."""
+        self._info("Loading CT6 firmware. This may take several minutes...")
         cmdList = copy(MCULoader.CMD_LIST)
         for srcFile in fileList:
             picoWPos = srcFile.find("picow")
@@ -926,9 +926,9 @@ class MCULoader(CT6Base):
             self._debug(l)
         for _file in fileList:
             if cmdOutput.find(_file) == -1:
-                raise Exception(f"Failed to load the {_file} file onto the CT6 device.") 
+                raise Exception(f"Failed to load the {_file} file onto the CT6 device.")
         self._info(f"Loaded all {len(fileList)} python files.")
-    
+
     def _deleteAllCT6Files(self, port):
         """@brief Delete all files from the CT6 device.
            @param port The serial port to use."""
@@ -939,7 +939,7 @@ class MCULoader(CT6Base):
         fd.close()
         self._runCmd(port, MCULoader.RSHELL_CMD_LIST_FILE)
         self._info("Deleted all files from CT6 unit.")
-        
+
     def load(self):
         """@brief Load the python code onto the micro controller device."""
         self._checkApp1()
@@ -949,7 +949,7 @@ class MCULoader(CT6Base):
         self._serialPort = self._getSerialPort(CT6Base.RPI_PICO_SERIAL_MATCH_TEXT)
         self._deleteAllCT6Files(self._serialPort)
         # We now need to reboot the device in order to ensure the WDT is disabled
-        # as there is no way to disable the WDT once enabled and the WDT runs 
+        # as there is no way to disable the WDT once enabled and the WDT runs
         # on a CT6 device.
         self._rebootUnit()
         # Regain the python prompt from the CT6 unit.
@@ -1056,7 +1056,7 @@ class YDevManager(CT6Base):
         if not os.path.isfile(outputFile):
             raise Exception("Failed to create {} python bytecode file.".format(outputFile))
         return outputFile
-        
+
     def __init__(self, uio, options, ssid=None, password=None):
         """@brief Constructor
            @param uio A UIO instance for user input output.
@@ -1074,7 +1074,7 @@ class YDevManager(CT6Base):
 
         elif not os.path.isfile(CT6Base.HOUSE_WIFI_CFG_FILE):
             self._handleHouseWiFiConfigFileNotFound()
-            
+
         self._orgActiveAppFolder = None
 
     def _checkModulesInstalled(self):
@@ -1122,7 +1122,7 @@ class YDevManager(CT6Base):
         self._info(f"The CT6 unit ({self._ipAddress}) has rebooted.")
         self._info("Waiting for the CT6 device to connect to the WiFi network.")
         self._waitForPingSuccess()
-        
+
         retDict = self._runCommand(YDevManager.GET_ACTIVE_APP_FOLDER, returnDict=True)
         activeApp = retDict['ACTIVE_APP_FOLDER']
         if self._orgActiveAppFolder == activeApp:
@@ -1154,7 +1154,7 @@ class YDevManager(CT6Base):
                     # Reconnect to the device and check the unit is now running the new app
                     self._checkRunningNewApp()
                     break
-    
+
                 if response.lower() == 'n':
                     self._info("The device will run the new software when it is manually restarted.")
                     break
@@ -1200,7 +1200,7 @@ class YDevManager(CT6Base):
                 byteCount = self._getSize(absEntry, byteCount=byteCount)
 
         return byteCount
-    
+
     def _genByteCode(self, pythonFile):
         """@brief Convert the python file to a python bytecode file (.mpy suffix).
            @return The bytecode (*.mpy) file"""
@@ -1235,7 +1235,7 @@ class YDevManager(CT6Base):
         with ZipFile(zipFile, 'r') as zip_ref:
             zip_ref.extractall(packagePath)
         return packagePath
-    
+
     def _checkDiskSpace(self, appSize):
         """@brief Check that there is sufficient space to store the new app. This should
            take a maximum of 1/2 the available disk space."""
@@ -1277,7 +1277,7 @@ class YDevManager(CT6Base):
                     destPath = os.path.dirname(destPath)
                     destPath = inactiveAppFolder + destPath
                     self.sendFile(localFile, destPath)
-            
+
         else:
             raise Exception("Failed to determine the devices inactive app folder.")
 
@@ -1359,7 +1359,7 @@ class YDevManager(CT6Base):
             localFile = self._genByteCode(localFile)
 
         self._sendFileOverWiFi(self._ipAddress, localFile, destPath)
-        
+
     def makeDir(self):
         """@brief Make a dir on the devices file system."""
         dirToMake = self._options.mkdir
@@ -1407,13 +1407,25 @@ class YDevManager(CT6Base):
         if self._uio.getBoolInput("Reboot unit y/n"):
             self._reboot()
 
-    def configureWiFi(self):
-        """@brief configure the CT6 WiFi interface from the house_wifi.cfg file."""
+    def configureWiFi(self, powerCycleHW=False):
+        """@brief configure the CT6 WiFi interface from the house_wifi.cfg file.
+           @param powerCycleHW If True power cycle the hardware. This maybe required because
+                  the WiFi may not register (wifi status = -1)."""
         self._info("Setting up CT6 WiFi interface.")
         ssid = self._updateWiFiConfig()
         self._info(f"WiFi SSID: {ssid}")
         self._info("The CT6 WiFi interface is now configured.")
-        
+        if powerCycleHW:
+            self._closeSerialPortIfOpen()
+            self._openFirstAvailableSerialPort()
+            self._checkMicroPython(closeSerialPort=False)
+
+            # Send command to cause the CT6 board to power cycle.
+            cmd = "import machine ; machine.Pin(13, machine.Pin.OUT, value=1)\r"
+            self._ser.write(cmd.encode())
+            self._debug(f"Sent: {cmd}")
+            self._closeSerialPortIfOpen()
+
     def _openFirstAvailableSerialPort(self):
         """@brief Attempt to get the name of the first available serial port."""
         checking = True
@@ -1432,7 +1444,7 @@ class YDevManager(CT6Base):
             # Spin, not too quickly if no serial port found.
             if self._serialPort is None:
                 sleep(0.1)
-    
+
     def viewSerialOut(self):
         """@brief View serial port output quickly after a Pico W reset.
                   This is useful when debugging Pico W firmware issues."""
@@ -1440,24 +1452,64 @@ class YDevManager(CT6Base):
         while running:
             self._openFirstAvailableSerialPort()
             try:
-                try:           
+                try:
                     while running:
                         bytesRead = self._ser.read_until()
                         sRead = bytesRead.decode()
                         sRead = sRead.rstrip('\r\n')
                         if len(sRead) > 0:
                             self._info(sRead)
-                            
+
                 except KeyboardInterrupt:
                     running = False
                 except:
                     sleep(0.1)
-                                                
+
             finally:
                 if self._ser:
                     self._closeSerialPortIfOpen()
                     self._info(f"Closed {self._serialPort}")
-                
+
+    def waitForIP(self, timeout=-1):
+        """@brief Wait for a DHCP server to serve an IP address to a CT6 unit after a reboot.
+           @return The CT6 IP address or an empty string if no IP address was assigned."""
+        ipAddress = ""
+        running = True
+        startTime = time()
+        while running:
+            self._openFirstAvailableSerialPort()
+            try:
+                try:
+                    while running:
+                        bytesRead = self._ser.read_until()
+                        sRead = bytesRead.decode()
+                        sRead = sRead.rstrip('\r\n')
+                        if len(sRead) > 0:
+                            self._debug(sRead)
+                            pos = sRead.find("WiFi interface IP address: ")
+                            if pos != -1:
+                                elems = sRead.split(" ")
+                                if len(elems) > 0:
+                                    ipAddress = elems[-1]
+                                    running = False
+                                    break
+
+                        elapsedSecs = time()-startTime
+                        if timeout > 0 and elapsedSecs > timeout:
+                            running = False
+                            break
+
+                except KeyboardInterrupt:
+                    running = False
+                except:
+                    sleep(0.1)
+
+            finally:
+                if self._ser:
+                    self._closeSerialPortIfOpen()
+
+        return ipAddress
+
 class CT6Scanner(CT6Base):
     """@brief Responsible for scanning for CT6 devices."""
 
@@ -1681,7 +1733,7 @@ def getCT6ToolCmdOpts():
 
     options = parser.parse_args()
     return options
-    
+
 def main():
     """@brief Program entry point"""
     uio = UIO()
@@ -1697,7 +1749,7 @@ def main():
 
         if options.setup_wifi:
             yDevManager.configureWiFi()
-            
+
         elif options.config:
             ct6Config.configure()
 

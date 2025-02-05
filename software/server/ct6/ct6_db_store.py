@@ -58,7 +58,6 @@ from tempfile import gettempdir
 from p3lib.helper import logTraceBack
 from p3lib.uio import UIO
 from p3lib.database_if import DBConfig, DatabaseIF
-from p3lib.ssh import SSH
 from p3lib.boot_manager import BootManager
 
 from lib.config import ConfigBase
@@ -68,15 +67,12 @@ from lib.base_constants import BaseConstants
 
 class CTDBClientConfig(ConfigBase):
     DEFAULT_CONFIG = {
-        ConfigBase.ICONS_ADDRESS:              "127.0.0.1",
-        ConfigBase.ICONS_PORT:                 22,
-        ConfigBase.ICONS_USERNAME:             "",
-        ConfigBase.ICONS_SSH_KEY_FILE:         SSH.GetPrivateKeyFile(),
         ConfigBase.MQTT_TOPIC:                 "#",
         ConfigBase.DB_HOST:                    "127.0.0.1",
         ConfigBase.DB_PORT:                    3306,
         ConfigBase.DB_USERNAME:                "",
-        ConfigBase.DB_PASSWORD:                ""
+        ConfigBase.DB_PASSWORD:                "",
+        ConfigBase.CT6_DEVICE_DISCOVERY_INTERFACE: "",
     }
 
 class LockFile(object):
@@ -1033,6 +1029,7 @@ class CTAppServer(object):
         """@Start the App server running.
            @param mySQLDBClient An instance of MySQLDBClient."""
         try:
+
             # Connect to the database
             self._dbHandler = CTDBClient(self._uio, self._options, self._config, mySQLDBClient)
             self._dbHandler.connect()
@@ -1044,7 +1041,8 @@ class CTAppServer(object):
             # Register the dBHandler as a listener for device data so that it can be
             # stored in the database.
             self._localYViewCollector.addDevListener(self._dbHandler)
-            self._localYViewCollector.start()
+            net_if = self._config.getAttr(CTDBClientConfig.CT6_DEVICE_DISCOVERY_INTERFACE)
+            self._localYViewCollector.start(net_if=net_if)
 
         finally:
             self.close()
