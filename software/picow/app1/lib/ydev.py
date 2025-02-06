@@ -84,7 +84,6 @@ class YDev(UOBase):
             try:
                 rxData, addressPort = sock.recvfrom(YDev.UDP_RX_BUFFER_SIZE)
                 rxDict = json.loads(rxData)
-                print(f"PJA: rxDict={rxDict}")
                 if YDev.AYT_KEY in rxDict:
                     id_str = rxDict[YDev.AYT_KEY]
                     if id_str == YDev.ID_STRING:
