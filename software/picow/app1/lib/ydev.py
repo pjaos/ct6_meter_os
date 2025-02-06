@@ -39,7 +39,7 @@ class YDev(UOBase):
         self._running = False
         self._getParamsMethod = None
         self.listen()
-                    
+
     def _send_response(self, sock, remoteAddressPort):
         """@brief sock The UDP socket to send the response on.
            @param remoteAddressPort A tuple containing the address and port to send the response to."""
@@ -58,7 +58,7 @@ class YDev(UOBase):
             paramsDict = self._getParamsMethod()
             for key in paramsDict.keys():
                 jsonDict[key] = paramsDict[key]
-        
+
         active = True
         if Constants.ACTIVE in jsonDict:
             active = jsonDict[Constants.ACTIVE]
@@ -71,19 +71,20 @@ class YDev(UOBase):
     def setGetParamsMethod(self, getParamsMethod):
         """@brief Set reference to a method that will retrieve parameters to be included in the AYT response message."""
         self._getParamsMethod = getParamsMethod
-        
+
     async def listen(self):
         """@brief Listen for YVIEW AYT messages and send responses when received."""
         # Open UDP socket to be used for discovering devices
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(('', self._yDevAYTPort))
+        sock.bind(('0.0.0.0', self._yDevAYTPort))
         sock.setblocking(False)
         self._running = True
         while self._running:
             try:
                 rxData, addressPort = sock.recvfrom(YDev.UDP_RX_BUFFER_SIZE)
                 rxDict = json.loads(rxData)
+                print(f"PJA: rxDict={rxDict}")
                 if YDev.AYT_KEY in rxDict:
                     id_str = rxDict[YDev.AYT_KEY]
                     if id_str == YDev.ID_STRING:
