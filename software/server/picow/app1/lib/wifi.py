@@ -194,8 +194,12 @@ class WiFi(object):
 
     def getMAC(self):
         """@return The MAC address of the WiFi interface on this device."""
-        ap = network.WLAN(network.AP_IF)
-        ap.active(True)
+        mode = network.STA_IF
+        if self._wifiConfigDict[WiFi.MODE_KEY] == WiFi.MODE_AP:
+            mode = network.AP_IF
+        ap = network.WLAN(mode)
+        if not ap.active():
+            ap.active(True)
         ap_mac = ap.config('mac')
         return "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}".format(ap_mac[0], ap_mac[1], ap_mac[2], ap_mac[3], ap_mac[4], ap_mac[5])
 
