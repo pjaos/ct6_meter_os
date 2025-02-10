@@ -11,7 +11,7 @@ async def start(configFile, activeAppKey, activeApp):
        @param configFile The config file that holds all machine config including the active application ID.
        @param activeAppKey The key in the config dict that details which app (1 or 2) we are running from.
        @param activeApp The active app. Either 1 or 2."""
-    
+
     if Constants.SHOW_MESSAGES_ON_STDOUT:
         uo = UO(enabled=True, debug_enabled=True)
         uo.info("Started app")
@@ -22,7 +22,7 @@ async def start(configFile, activeAppKey, activeApp):
     wdt = WDT(timeout=Constants.WDT_TIMEOUT_MSECS)  # Enable watchdog timer here.
                                                     # If the WiFi goes down then we can
                                                     # drop out to the REPL prompt.
-                                                    # The WDT will then trigger a reboot.      
+                                                    # The WDT will then trigger a reboot.
 
     # Contains the machine specific code in here.
     thisMachine = ThisMachine(uo, configFile, activeAppKey, activeApp, wdt)
@@ -46,7 +46,7 @@ async def start(configFile, activeAppKey, activeApp):
             await asyncio.sleep(1)
 
     while True:
-        delaySeconds = thisMachine.serviceRunningMode()
+        delaySeconds = await thisMachine.serviceRunningMode()
         if wdt:
             wdt.feed()
         await asyncio.sleep(delaySeconds)
