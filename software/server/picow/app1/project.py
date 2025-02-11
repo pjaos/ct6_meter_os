@@ -12,6 +12,7 @@ import ubinascii
 from lib.umqttsimple import MQTTClient
 from lib.base_machine import BaseMachine
 from lib.config import MachineConfig
+from lib.ydev import YDev
 
 from time import sleep
 
@@ -271,7 +272,7 @@ class Display(Constants):
 class ThisMachine(BaseMachine):
     """@brief Implement functionality required by this project."""
 
-    STATS_UPDATE_PERIOD_MSECS = 400
+    STATS_UPDATE_PERIOD_MSECS = 200
 
     def __init__(self, uo, configFile, activeAppKey, activeApp, wdt):
         """@brief Constuctor
@@ -282,7 +283,6 @@ class ThisMachine(BaseMachine):
            @param wdt A WDT instance."""
         # Call base class constructor
         super().__init__(uo, configFile, activeAppKey, activeApp, wdt)
-        self._statsDict = None
 
         # Init the display to display the booting message as early as possible.
         self._display = Display(uo)
@@ -307,9 +307,18 @@ class ThisMachine(BaseMachine):
 
         # The client interface to an MQTT server.
         self._mqttInterface = MQTTInterface(self._machineConfig, uo=self._uo)
+
         self._lastStatsUpdateMS = utime.ticks_ms()
+        self._lastMQTTTxMS = self._lastStatsUpdateMS
 
         self._startWiFiDisconnectTime = None
+
+        # statsDict's sent in response to received AYT messages are sent from this instance.
+        self._aytStatsDict = MeanCT6StatsDict()
+        # statsDict's sent to MQTT servers are sent from this instance.
+        self._mqttStatsDict = MeanCT6StatsDict()
+        # statsDict's used to update the display values.
+        self._displayStatsDict = MeanCT6StatsDict()
 
     def _isFactoryConfigPresent(self):
         """@brief Check if the factory config file is present.
@@ -323,8 +332,8 @@ class ThisMachine(BaseMachine):
             pass
         return factoryConfPresent
 
-    def _isNextStatsUpdateTime(self):
-        """@brief Determine if it's time to update the stats.
+    def _isReadPwrStatsTime(self):
+        """@brief Determine if it's time to read the ATM90E32 device stats.
            @return True if it's time."""
         updateStats = False
         now = utime.ticks_ms()
@@ -341,14 +350,22 @@ class ThisMachine(BaseMachine):
 
     def _getParams(self):
         """@brief Get the parameters (in a dict) we wish to include in the AYT response message."""
-        return self._statsDict
+        statsDict = None
+        active = self._machineConfig.get(Constants.ACTIVE)
+        # We don't send a response if not active
+        if active:
+            statsDict = self._aytStatsDict.getStatsDict()
+        return statsDict
 
     def _updateStats(self):
         """@brief Periodically update the stats we read from the ATM90E32 devices.
            @return True if stats updated."""
         updated = False
-        if self._isNextStatsUpdateTime():
-            self._statsDict = self._projectCmdHandler.getStatsDict()
+        if self._isReadPwrStatsTime():
+            statsDict = self._projectCmdHandler.getStatsDict()
+            self._aytStatsDict.addStatsDict(statsDict)
+            self._mqttStatsDict.addStatsDict(statsDict)
+            self._displayStatsDict.addStatsDict(statsDict)
             updated = True
         return updated
 
@@ -375,7 +392,24 @@ class ThisMachine(BaseMachine):
                 sleep(0.25)
                 self._projectCmdHandler.powerCycle()
 
-    async def serviceRunningMode(self):
+    def _isNextMQTTTXTime(self):
+        """@brief Determine if it's time to send the stats to the MQTT server.
+           @return True if it's time."""
+        mqttTX = False
+        active = self._machineConfig.get(Constants.ACTIVE)
+        # We don't send if not active
+        if active:
+            txPeriodMS = self._machineConfig.get(Constants.MQTT_TX_PERIOD_MS)
+            # Every 200 milliseconds is as fast as we will send stats to an MQTT server.
+            if txPeriodMS >= 200:
+                now = utime.ticks_ms()
+                delta = utime.ticks_diff(now, self._lastMQTTTxMS)
+                if delta >= txPeriodMS:
+                    mqttTX=True
+                    self._lastMQTTTxMS = now
+        return mqttTX
+
+    def serviceRunningMode(self):
         """@brief Perform actions required when up and running.
                   If self._initWifi() and self._initBlueTooth() are called in the constructor
                   then WiFi should be connected by the time we get here.
@@ -383,25 +417,23 @@ class ThisMachine(BaseMachine):
                   This should be called periodically when connecting to a WiFi network.
 
            @return The time in seconds before this method is expected to be called again."""
-
-
         self._updateBlueTooth()
         wifiConnected = self._updateWiFi()
         # We only get here if the WiFi comes up, so we check if it goes down
         # and reboot if it stays down for a period of time.
         self._wifiDownRestart(wifiConnected)
         self._updateStats()
-        active = self._machineConfig.get(Constants.ACTIVE)
-        if active:
-            # This method connects to the MQTT server. The connect process could block or fail therefore
-            # we handle this inm the event loop. Hence await.
-            await self._mqttInterface.sendToMQTT(self._statsDict)
+        if self._isNextMQTTTXTime():
+            # Connect to the MQTT server and send data
+            statsDict = self._mqttStatsDict.getStatsDict()
+            self._mqttInterface.sendToMQTT(statsDict)
 
         # Show the RAM usage on the serial port. This can be useful when debugging.
         self._showRAMInfo()
         if not self._isFactoryConfigPresent():
             self._display.setWarning("Uncalibrated\nCT6 device.")
-        self._display.update( self._statsDict, self._wifi.isWiFiButtonPressed() )
+        statsDict = self._displayStatsDict.getStatsDict()
+        self._display.update( statsDict, self._wifi.isWiFiButtonPressed() )
 
         return Constants.POLL_SECONDS
 
@@ -438,18 +470,18 @@ class MQTTInterface(object):
         if self._uo:
             self._uo.error(msg)
 
-    async def sendToMQTT(self, statsDict):
+    def sendToMQTT(self, statsDict):
         """@brief As per _sendToMQTT() but exceptions are displayed as error messages on the serial port.
            @param statsDict This dict is sent to the MQTT server as JSON formatted text."""
         # We don't want errors sending to an MQTT server to crash the CT6 code.
         try:
-            await self._sendToMQTT_ThrowE(statsDict)
+            self._sendToMQTT_ThrowE(statsDict)
 
         except Exception as ex:
             self._error(f"Error sending to MQTT server: {str(ex)}")
             self._disconnectMQTT()
 
-    async def _sendToMQTT_ThrowE(self, statsDict):
+    def _sendToMQTT_ThrowE(self, statsDict):
         """@brief Send data to the MQTT server. This method may throw an Exception if an error occurs.
            @param statsDict This dict is sent to the MQTT server as JSON formatted text."""
         mqttServerAddress = self._config.get(Constants.MQTT_SERVER_ADDRESS)
@@ -457,43 +489,33 @@ class MQTTInterface(object):
         mqttTopic = self._config.get(Constants.MQTT_TOPIC)
         mqttUsername = self._config.get(Constants.MQTT_USERNAME)
         mqttPassword = self._config.get(Constants.MQTT_PASSWORD)
-        txPeriodMS = self._config.get(Constants.MQTT_TX_PERIOD_MS)
         # If we have the required arguments to connect to an MQTT server
         if mqttServerAddress and \
            len(mqttServerAddress) > 0 and \
            mqttServerPort >= 1 and mqttServerPort < 65536 and \
-           txPeriodMS >= 200 and \
            len(mqttTopic) > 0:
-            self._thisMQTTtxMS = utime.ticks_ms()
-            self._elapsedMS = self._thisMQTTtxMS-self._lastMQTTtxMS
-            if self._elapsedMS >= txPeriodMS:
 
-                # If we havn't yet connected to the MQTT server
-                if self._mqttClient is None:
-                    await self._connectToMQTTServer(mqttServerAddress, mqttServerPort, mqttUsername, mqttPassword)
+            # If we havn't yet connected to the MQTT server
+            if self._mqttClient is None:
+                self._connectToMQTTServer(mqttServerAddress, mqttServerPort, mqttUsername, mqttPassword)
 
-                #If connected to the server and the MQTT server address or port has changed
-                elif mqttServerAddress != self._connectedMQTTAddress or \
-                     mqttServerPort != self._connectedMQTTPort:
-                    #Drop the connection ready for a reconnect attempt next time round.
-                    self._disconnectMQTT()
+            #If connected to the server and the MQTT server address or port has changed
+            elif mqttServerAddress != self._connectedMQTTAddress or \
+                    mqttServerPort != self._connectedMQTTPort:
+                #Drop the connection ready for a reconnect attempt next time round.
+                self._disconnectMQTT()
 
-                #If we have a connection to the MQTT server
-                if self._mqttClient:
-                    # Send json string to the MQTT server
-                    jsonStr = json.dumps( statsDict )
-                    self._mqttClient.publish(mqttTopic, jsonStr)
-
-                else:
-                    self._info(f"{mqttServerAddress}:{mqttServerPort}: {self._elapsedMS} ms connection timeout.")
-
-                self._lastMQTTtxMS = self._thisMQTTtxMS
+            #If we have a connection to the MQTT server
+            if self._mqttClient:
+                # Send json string to the MQTT server
+                jsonStr = json.dumps( statsDict )
+                self._mqttClient.publish(mqttTopic, jsonStr)
 
                 # Attempt to read from the MQTT server in case data has been received so that the
                 # input buffers do not fill up.
                 self._mqttClient.check_msg()
 
-    async def _connectToMQTTServer(self, address, port, mqttUsername, mqttPassword, keepAlive=60):
+    def _connectToMQTTServer(self, address, port, mqttUsername, mqttPassword, keepAlive=60):
         """@brief Connect to the MQTT server.
            @param address The address of the MQTT server.
            @param port The TCP port for the MQTT server connection.
@@ -515,7 +537,7 @@ class MQTTInterface(object):
                                           port=port,
                                           keepalive=keepAlive)
         self._mqttClient.set_callback(self.mqttCallBack)
-        await self._mqttClient.connect()
+        self._mqttClient.connect()
         self._connectedMQTTAddress = address
         self._connectedMQTTPort = port
         self._info(f"Connected to MQTT server {address}:{port}")
@@ -534,3 +556,101 @@ class MQTTInterface(object):
     def mqttCallBack(self, topic, msg):
         """@brief show the MQTT callback message."""
         self._debug(f"{topic}: {msg}")
+
+class MeanCT6StatsDict(object):
+    """@brief Responsible for accepting CT6 stats dicts and averaging the values
+              to provide a mean stats dict when required."""
+
+    NUMERIC_CT_FIELD_LIST = (Constants.PRMS,
+                             Constants.PAPPARENT,
+                             Constants.PF,
+                             Constants.PREACT,
+                             Constants.VRMS,
+                             Constants.TEMP,
+                             Constants.FREQ,
+                             Constants.IRMS,
+                             Constants.IPEAK)
+
+    NON_NUMERIC_CT_FIELD_LIST = (Constants.TYPE_KEY,
+                                 Constants.NAME )
+
+    NUMERIC_FIELD_LIST = (Constants.RSSI,
+                          Constants.BOARD_TEMPERATURE_KEY,
+                          Constants.READ_TIME_NS_KEY)
+
+    NON_NUMERIC_FIELD_LIST = (Constants.ASSY_KEY,
+                              Constants.YDEV_UNIT_NAME_KEY,
+                              Constants.FIRMWARE_VERSION_STR,
+                              Constants.ACTIVE,
+                              YDev.IP_ADDRESS_KEY,
+                              YDev.OS_KEY,
+                              YDev.UNIT_NAME_KEY,
+                              YDev.DEVICE_TYPE_KEY,
+                              YDev.PRODUCT_ID_KEY,
+                              YDev.SERVICE_LIST_KEY,
+                              YDev.GROUP_NAME_KEY)
+
+    @staticmethod
+    def GetAverage(value, readingCount):
+        """@brief Return the average given a value and the number of readings.
+                  -1 is returned if readings <= 0"""
+        result = -1
+        if readingCount > 0:
+            result = value / float(readingCount)
+        return result
+
+    def __init__(self):
+        self._statsDict = None
+        self._statsDictCount = 0
+
+    def addStatsDict(self, statsDict):
+        """@brief Add a CT6 stats dict."""
+        if self._statsDict:
+            for ct in Constants.VALID_CT_ID_LIST:
+                ct = f"CT{ct}"
+                if ct in statsDict and ct in self._statsDict:
+                    srcSubDict = statsDict[ct]
+                    destSubDict = self._statsDict[ct]
+
+                    # Update numeric CT port fields
+                    # Update a rolling average of this and the previous value. The previous value may be a previous average value.
+                    # This is reset when getStatsDict() is called when the averaging restarts.
+                    for key in MeanCT6StatsDict.NUMERIC_CT_FIELD_LIST:
+                        if key in srcSubDict and key in destSubDict:
+                            destSubDict[key] += srcSubDict[key]
+                            destSubDict[key] = destSubDict[key] / 2.0
+
+                    # For non numeric CT port fields, copy the latest values across.
+                    for key in MeanCT6StatsDict.NON_NUMERIC_CT_FIELD_LIST:
+                        if key in srcSubDict and key in destSubDict:
+                            destSubDict[key] = srcSubDict[key]
+
+                # Calc averages for top level numeric fields
+                for key in MeanCT6StatsDict.NUMERIC_FIELD_LIST:
+                    if key in statsDict and key in self._statsDict:
+                        self._statsDict[key] += statsDict[key]
+                        self._statsDict[key] = self._statsDict[key] / 2.0
+
+                # For non numeric top level fields, copy the latest values across.
+                for key in MeanCT6StatsDict.NON_NUMERIC_FIELD_LIST:
+                    if key in statsDict and key in self._statsDict:
+                        self._statsDict[key] = statsDict[key]
+
+        else:
+            if statsDict:
+                # We need a deepcopy of the statsDict as we need to ensure there are no references to the dict
+                # that could be updated outside this MeanCT6StatsDict instance.
+                # copy.deepcopy is not available in micropython by default.
+                # Therefore we convert to and from a json string to get a copy of the statsDict.
+                statsDictStr = json.dumps(statsDict)
+                self._statsDict = json.loads(statsDictStr)
+
+    def getStatsDict(self):
+        """@brief Get the CT6 stats dict. This is not thread safe. It must not be called while
+                  addStatsDict is beining executed.
+           @return The CT6 stats dict all relevant values will be the average of all values added.
+                   None is returned if no statsDict """
+        statsDict = self._statsDict
+        # Reset so we start with a new statsDict
+        self._statsDict = None
+        return statsDict

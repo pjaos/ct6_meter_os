@@ -33,7 +33,7 @@ class MQTTClient:
         self.lw_qos = 0
         self.lw_retain = False
 
-    async def _connect_socket(self, address, port, connectTimeoutMS):
+    def _connect_socket(self, address, port, connectTimeoutMS):
         """@brief Attempt to connect a socket connection to a server with a timeout.
                   Due to an issue with the current (1.20) Micropython version the
                   settimeout() socket method does not change the connect timeout.
@@ -48,7 +48,7 @@ class MQTTClient:
         poller.register(sock, select.POLLIN | select.POLLOUT)
 
         try:
-            await sock.connect(addr)
+            sock.connect(addr)
         except:
             pass
 
@@ -92,10 +92,10 @@ class MQTTClient:
         self.lw_qos = qos
         self.lw_retain = retain
 
-    async def connect(self, clean_session=True):
+    def connect(self, clean_session=True):
         # We only try to connect for 1/2 the watchdog timeout period or the WDT will fire while attempting to connect.
         sTimeout = int(Constants.WDT_TIMEOUT_MSECS/2)
-        self.sock = await self._connect_socket(self.server, self.port, sTimeout)
+        self.sock = self._connect_socket(self.server, self.port, sTimeout)
         if self.ssl:
             import ussl
             self.sock = ussl.wrap_socket(self.sock, **self.ssl_params)

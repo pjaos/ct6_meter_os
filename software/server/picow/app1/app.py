@@ -46,7 +46,7 @@ async def start(configFile, activeAppKey, activeApp):
             await asyncio.sleep(1)
 
     while True:
-        delaySeconds = await thisMachine.serviceRunningMode()
+        delaySeconds = thisMachine.serviceRunningMode()
         if wdt:
             wdt.feed()
         await asyncio.sleep(delaySeconds)
