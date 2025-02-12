@@ -3,18 +3,24 @@ try:
 except:
     import socket
 import ustruct as struct
-#from ubinascii import hexlify
 import select
-from constants import Constants
-from utime import ticks_ms, sleep
+from utime import ticks_ms
 
 class MQTTException(Exception):
     pass
 
 class MQTTClient:
 
-    def __init__(self, client_id, server, port=0, user=None, password=None, keepalive=0,
-                 ssl=False, ssl_params={}):
+    def __init__(self,
+                 client_id,
+                 server,
+                 port=0,
+                 user=None,
+                 password=None,
+                 keepalive=0,
+                 connect_timeout_ms=10000,
+                 ssl=False,
+                 ssl_params={}):
         if port == 0:
             port = 8883 if ssl else 1883
         self.client_id = client_id
@@ -28,44 +34,56 @@ class MQTTClient:
         self.user = user
         self.pswd = password
         self.keepalive = keepalive
+        self.connect_timeout_ms = connect_timeout_ms
         self.lw_topic = None
         self.lw_msg = None
         self.lw_qos = 0
         self.lw_retain = False
+        self.sock = None
+        self.poller = None
+        self._start_connecting_ms = None
 
-    def _connect_socket(self, address, port, connectTimeoutMS):
-        """@brief Attempt to connect a socket connection to a server with a timeout.
-                  Due to an issue with the current (1.20) Micropython version the
-                  settimeout() socket method does not change the connect timeout.
-                  This method is a workaround for this issue.
-           @param address The address to connect to.
-           @param port The port number to connect to.
-           @param connectTimeoutMS The max amount of time (in milli seconds) to wait for the connection."""
-        addr = socket.getaddrinfo(address, port)[0][-1]
+    def start_connecting(self):
+        """@brief Start the process of connecting to the server.
+                  This provides a non blocking approach to building a connection to an MQTT server."""
+        addr = socket.getaddrinfo(self.server, self.port)[0][-1]
         sock = socket.socket()
         sock.setblocking(False)
-        poller = select.poll()
-        poller.register(sock, select.POLLIN | select.POLLOUT)
-
+        self.poller = select.poll()
+        self.poller.register(sock, select.POLLIN | select.POLLOUT)
         try:
             sock.connect(addr)
         except:
             pass
+        self.sock = sock
+        self._start_connecting_ms = ticks_ms()
 
-        timeoutMS = ticks_ms()+connectTimeoutMS
-        while True:
-            res = poller.poll(connectTimeoutMS)
+    def is_connected(self):
+        """@return True if the socket is connected."""
+        connected = False
+        if self.poller:
+            res = self.poller.poll()
             resStr = str(res)
             # Found that this appears in socket state when connected.
             if resStr.find(" state=3 ") > 0:
-                break
-            sleep(0.1)
-            if ticks_ms() >= timeoutMS:
-                poller.unregister(sock)
-                raise OSError(f"{connectTimeoutMS} milli second timeout connecting to {address}:{port}")
+                connected = True
+                if self.sock:
+                    self.poller.unregister(self.sock)
+                    self._post_connect()
+                self.poller = None
+        return connected
 
-        sock.setblocking(True)
-        return sock
+    def _connect_attempt_timed_out(self):
+        """@brief Determine if a connection attempt has timed out.
+           @return True if a connect attempt has timed out."""
+        connect_timed_out = False
+        if self._start_connecting_ms is not None:
+            elapsed_ms = ticks_ms() - self._start_connecting_ms
+            if elapsed_ms >= self.connect_timeout_ms:
+                if self.poller and self.sock:
+                    self.poller.unregister(self.sock)
+                connect_timed_out = True
+        return connect_timed_out
 
     def _send_str(self, s):
         self.sock.write(struct.pack("!H", len(s)))
@@ -92,10 +110,10 @@ class MQTTClient:
         self.lw_qos = qos
         self.lw_retain = retain
 
-    def connect(self, clean_session=True):
+    def _post_connect(self, clean_session=True):
+        """@brief Called when we detect a connection to the MQTT server."""
+        self.sock.setblocking(True)
         # We only try to connect for 1/2 the watchdog timeout period or the WDT will fire while attempting to connect.
-        sTimeout = int(Constants.WDT_TIMEOUT_MSECS/2)
-        self.sock = self._connect_socket(self.server, self.port, sTimeout)
         if self.ssl:
             import ussl
             self.sock = ussl.wrap_socket(self.sock, **self.ssl_params)
@@ -140,8 +158,15 @@ class MQTTClient:
         return resp[2] & 1
 
     def disconnect(self):
+        if self.poller and self.sock:
+            try:
+                self.poller.unregister(self.sock)
+            except:
+                pass
+            self.poller = None
         self.sock.write(b"\xe0\0")
         self.sock.close()
+        self.sock = None
 
     def ping(self):
         self.sock.write(b"\xc0\0")

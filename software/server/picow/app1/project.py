@@ -309,7 +309,6 @@ class ThisMachine(BaseMachine):
         self._mqttInterface = MQTTInterface(self._machineConfig, uo=self._uo)
 
         self._lastStatsUpdateMS = utime.ticks_ms()
-        self._lastMQTTTxMS = self._lastStatsUpdateMS
 
         self._startWiFiDisconnectTime = None
 
@@ -392,23 +391,6 @@ class ThisMachine(BaseMachine):
                 sleep(0.25)
                 self._projectCmdHandler.powerCycle()
 
-    def _isNextMQTTTXTime(self):
-        """@brief Determine if it's time to send the stats to the MQTT server.
-           @return True if it's time."""
-        mqttTX = False
-        active = self._machineConfig.get(Constants.ACTIVE)
-        # We don't send if not active
-        if active:
-            txPeriodMS = self._machineConfig.get(Constants.MQTT_TX_PERIOD_MS)
-            # Every 200 milliseconds is as fast as we will send stats to an MQTT server.
-            if txPeriodMS >= 200:
-                now = utime.ticks_ms()
-                delta = utime.ticks_diff(now, self._lastMQTTTxMS)
-                if delta >= txPeriodMS:
-                    mqttTX=True
-                    self._lastMQTTTxMS = now
-        return mqttTX
-
     def serviceRunningMode(self):
         """@brief Perform actions required when up and running.
                   If self._initWifi() and self._initBlueTooth() are called in the constructor
@@ -422,11 +404,10 @@ class ThisMachine(BaseMachine):
         # We only get here if the WiFi comes up, so we check if it goes down
         # and reboot if it stays down for a period of time.
         self._wifiDownRestart(wifiConnected)
+        # Get power stats to be sent to the display, in response to an AYT msg or to sn MQTT server.
         self._updateStats()
-        if self._isNextMQTTTXTime():
-            # Connect to the MQTT server and send data
-            statsDict = self._mqttStatsDict.getStatsDict()
-            self._mqttInterface.sendToMQTT(statsDict)
+        # Send data to an MQTT server if required.
+        self._mqttInterface.update(self._mqttStatsDict)
 
         # Show the RAM usage on the serial port. This can be useful when debugging.
         self._showRAMInfo()
@@ -441,6 +422,11 @@ class ThisMachine(BaseMachine):
 class MQTTInterface(object):
     """@brief Responsible for connecting to and sending stats to an MQTT server."""
 
+    STATE_UNCONNECTED = 0
+    STATE_CONNECTING = 1
+    STATE_CONNECT_TIMEOUT = 2
+    STATE_CONNECTED = 3
+
     def __init__(self, config, uo=None):
         self._config = config
         self._uo = uo
@@ -448,9 +434,16 @@ class MQTTInterface(object):
         self._connectedMQTTAddress = None
         self._connectedMQTTPort = None
         self._mqttClient = None
+        self._poller = None
+        self._startConnectingMS = None
+        self._connectTimeoutMS = int(Constants.WDT_TIMEOUT_MSECS/2)
 
-        self._lastMQTTtxMS = utime.ticks_ms()
         self._assyStr = self._config.get(Constants.ASSY_KEY)
+
+        self._conState = MQTTInterface.STATE_UNCONNECTED
+        self._loadConfig()
+
+        self._lastMQTTTxMS = utime.ticks_ms()
 
     def _info(self, msg):
         """@brief Display an info message on the serial port if
@@ -470,79 +463,103 @@ class MQTTInterface(object):
         if self._uo:
             self._uo.error(msg)
 
-    def sendToMQTT(self, statsDict):
-        """@brief As per _sendToMQTT() but exceptions are displayed as error messages on the serial port.
-           @param statsDict This dict is sent to the MQTT server as JSON formatted text."""
-        # We don't want errors sending to an MQTT server to crash the CT6 code.
-        try:
-            self._sendToMQTT_ThrowE(statsDict)
+    def isUnconnected(self):
+        """@return True if connected to an MQTT server."""
+        return self._conState == MQTTInterface.STATE_UNCONNECTED
 
-        except Exception as ex:
-            self._error(f"Error sending to MQTT server: {str(ex)}")
-            self._disconnectMQTT()
+    def isConnected(self):
+        """@return True if connected to an MQTT server."""
+        return self._conState == MQTTInterface.STATE_CONNECTED
 
-    def _sendToMQTT_ThrowE(self, statsDict):
-        """@brief Send data to the MQTT server. This method may throw an Exception if an error occurs.
-           @param statsDict This dict is sent to the MQTT server as JSON formatted text."""
-        mqttServerAddress = self._config.get(Constants.MQTT_SERVER_ADDRESS)
-        mqttServerPort = int(self._config.get(Constants.MQTT_SERVER_PORT))
-        mqttTopic = self._config.get(Constants.MQTT_TOPIC)
-        mqttUsername = self._config.get(Constants.MQTT_USERNAME)
-        mqttPassword = self._config.get(Constants.MQTT_PASSWORD)
+    def isConnecting(self):
+        """@return True if connected to an MQTT server."""
+        return self._conState == MQTTInterface.STATE_CONNECTING
+
+    def _loadConfig(self):
+        """@brief Load the MQTT config parameters."""
+        self._mqttServerAddress = self._config.get(Constants.MQTT_SERVER_ADDRESS)
+        self._mqttServerPort = int(self._config.get(Constants.MQTT_SERVER_PORT))
+        self._mqttTopic = self._config.get(Constants.MQTT_TOPIC)
+        self._mqttUsername = self._config.get(Constants.MQTT_USERNAME)
+        self._mqttPassword = self._config.get(Constants.MQTT_PASSWORD)
+
+    def isConfigured(self):
+        """@brief Determine if the CT6 unit is configured to connect to a MQTT server.
+           @return True if configured."""
+        self._loadConfig()
+        configured = False
         # If we have the required arguments to connect to an MQTT server
-        if mqttServerAddress and \
-           len(mqttServerAddress) > 0 and \
-           mqttServerPort >= 1 and mqttServerPort < 65536 and \
-           len(mqttTopic) > 0:
+        if self._mqttServerAddress and \
+           len(self._mqttServerAddress) > 0 and \
+           self._mqttServerPort >= 1 and self._mqttServerPort < 65536 and \
+           self._mqttTopic and \
+           len(self._mqttTopic) > 0:
+            configured = True
+        return configured
 
-            # If we havn't yet connected to the MQTT server
-            if self._mqttClient is None:
-                self._connectToMQTTServer(mqttServerAddress, mqttServerPort, mqttUsername, mqttPassword)
+    def startConnecting(self, keepAlive=60):
+        """@brief Initiate an attempt to connect to an MQTT server."""
+        # Only initiate a connection in the unconnected state
+        if self._conState == MQTTInterface.STATE_UNCONNECTED:
+            mqttClientID = ubinascii.hexlify(self._assyStr)
 
-            #If connected to the server and the MQTT server address or port has changed
-            elif mqttServerAddress != self._connectedMQTTAddress or \
-                    mqttServerPort != self._connectedMQTTPort:
-                #Drop the connection ready for a reconnect attempt next time round.
-                self._disconnectMQTT()
+            if len(self._mqttUsername) > 0 and len(self._mqttPassword) > 0:
+                self._info(f"Connecting to MQTT server {self._mqttServerAddress}:{self._mqttServerPort} username={self._mqttUsername}, password={self._mqttPassword}")
+                self._mqttClient = MQTTClient(mqttClientID,
+                                            self._mqttServerAddress,
+                                            port=self._mqttServerPort,
+                                            user=self._mqttUsername,
+                                            password=self._mqttPassword,
+                                            keepalive=keepAlive,
+                                            connect_timeout_ms=self._connectTimeoutMS)
+            else:
+                self._info(f"Connecting to MQTT server {self._mqttServerAddress}:{self._mqttServerPort}")
+                self._mqttClient = MQTTClient(mqttClientID,
+                                            self._mqttServerAddress,
+                                            port=self._mqttServerPort,
+                                            keepalive=keepAlive,
+                                            connect_timeout_ms=self._connectTimeoutMS)
+            self._mqttClient.set_callback(self.mqttCallBack)
+            self._conState = MQTTInterface.STATE_CONNECTING
+            self._poller = self._mqttClient.start_connecting()
 
-            #If we have a connection to the MQTT server
-            if self._mqttClient:
-                # Send json string to the MQTT server
-                jsonStr = json.dumps( statsDict )
-                self._mqttClient.publish(mqttTopic, jsonStr)
+    def updateState(self):
+        """@brief Called to update the connection status during a connection
+                  attempt. Should only be called while connecting to an MQTT server.
+           @return The connection state."""
+        if self._mqttClient.is_connected():
+            self._conState = MQTTInterface.STATE_CONNECTED
+            # Record the address and port so that if they are changed we disconnect.
+            self._connectedMQTTAddress = self._mqttServerAddress
+            self._connectedMQTTPort = self._mqttServerPort
 
-                # Attempt to read from the MQTT server in case data has been received so that the
-                # input buffers do not fill up.
-                self._mqttClient.check_msg()
+        elif self._mqttClient._connect_attempt_timed_out():
+            self._conState = MQTTInterface.STATE_UNCONNECTED
 
-    def _connectToMQTTServer(self, address, port, mqttUsername, mqttPassword, keepAlive=60):
-        """@brief Connect to the MQTT server.
-           @param address The address of the MQTT server.
-           @param port The TCP port for the MQTT server connection.
-           @param mqttUsername The MQTT username. If empty an anonymous connection MQTT server connection is attempted.
-           @param mqttPassword The MQTT password. If empty an anonymous connection MQTT server connection is attempted.
-           @param keepAlive The MQTT connection keepalive period in seconds."""
-        mqttClientID = ubinascii.hexlify(self._assyStr)
-        self._info(f"Connecting to MQTT server {address}:{port}")
-        if len(mqttUsername) > 0 and len(mqttPassword) > 0:
-            self._mqttClient = MQTTClient(mqttClientID,
-                                          address,
-                                          port=port,
-                                          user=mqttUsername,
-                                          password=mqttPassword,
-                                          keepalive=keepAlive)
-        else:
-            self._mqttClient = MQTTClient(mqttClientID,
-                                          address,
-                                          port=port,
-                                          keepalive=keepAlive)
-        self._mqttClient.set_callback(self.mqttCallBack)
-        self._mqttClient.connect()
-        self._connectedMQTTAddress = address
-        self._connectedMQTTPort = port
-        self._info(f"Connected to MQTT server {address}:{port}")
+        return self._conState
 
-    def _disconnectMQTT(self):
+    def sendToMQTT(self, statsDict):
+        """@brief Send data to the MQTT server. The connection must be built before this
+                  method is called. This method may throw an Exception if an error occurs.
+           @param statsDict This dict is sent to the MQTT server as JSON formatted text."""
+        self._loadConfig()
+        #If connected to the server and the MQTT server address or port has changed
+        if self._mqttServerAddress != self._connectedMQTTAddress or \
+           self._mqttServerPort != self._connectedMQTTPort:
+            #Drop the connection ready for a reconnect attempt next time round.
+            self.disconnectMQTT()
+
+        #If we have a connection to the MQTT server
+        if self._mqttClient:
+            # Send json string to the MQTT server
+            jsonStr = json.dumps( statsDict )
+            self._mqttClient.publish(self._mqttTopic, jsonStr)
+
+            # Attempt to read from the MQTT server in case data has been received so that the
+            # input buffers do not fill up.
+            self._mqttClient.check_msg()
+
+    def disconnectMQTT(self):
         """@brief Disconnect from the MQTT server."""
         try:
             if self._mqttClient:
@@ -552,10 +569,54 @@ class MQTTInterface(object):
         self._mqttClient = None
         self._connectedMQTTAddress = None
         self._connectedMQTTPort = None
+        self._conState = MQTTInterface.STATE_UNCONNECTED
 
     def mqttCallBack(self, topic, msg):
         """@brief show the MQTT callback message."""
         self._debug(f"{topic}: {msg}")
+
+    def _isNextMQTTTXTime(self):
+        """@brief Determine if it's time to send the stats to the MQTT server.
+           @return True if it's time."""
+        mqttTX = False
+        active = self._config.get(Constants.ACTIVE)
+        # We don't send if not active
+        if active:
+            txPeriodMS = self._config.get(Constants.MQTT_TX_PERIOD_MS)
+            # Every 200 milliseconds is as fast as we will send stats to an MQTT server.
+            if txPeriodMS >= 200:
+                now = utime.ticks_ms()
+                delta = utime.ticks_diff(now, self._lastMQTTTxMS)
+                if delta >= txPeriodMS:
+                    mqttTX=True
+                    self._lastMQTTTxMS = now
+        return mqttTX
+
+    def update(self, mqttStatsDict):
+        """@brief Handle connecting to and sending messages to an MQTT server.
+           @param mqttStatsDict The MeanCT6StatsDict instance that provides power usage
+                                data to be sent to the MQTT server."""
+        try:
+            if self.isConfigured():
+
+                if self.isUnconnected():
+                    self.startConnecting()
+
+                elif self.isConnecting():
+                    self.updateState()
+
+                elif self.isConnected():
+                    if self._isNextMQTTTXTime():
+                        statsDict = mqttStatsDict.getStatsDict()
+                        self.sendToMQTT(statsDict)
+
+            # If we are no longer configured but are connected drop the connection
+            elif self.isConnected():
+                self.disconnectMQTT()
+
+        except Exception as ex:
+            self._error(f"MQTT error: {str(ex)}")
+            self.disconnectMQTT()
 
 class MeanCT6StatsDict(object):
     """@brief Responsible for accepting CT6 stats dicts and averaging the values

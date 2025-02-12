@@ -59,6 +59,12 @@ class BaseMachine(Constants):
         if self._uo:
             UO.info(self._uo, msg)
 
+    def _error(self, msg):
+        """@brief Show an error message.
+           @param msg The message to display."""
+        if self._uo:
+            UO.error(self._uo, msg)
+
     def _debug(self, msg):
         """@brief Show a debug message.
            @param msg The message to display."""
