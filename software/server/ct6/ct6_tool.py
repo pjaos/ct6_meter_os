@@ -1728,6 +1728,7 @@ def getCT6ToolCmdOpts():
     parser.add_argument("--defaults",               help="Reset a device to the default configuration.", action='store_true')
     parser.add_argument("--check_mpy_cross",        action='store_true', help="Check that the mpy_cross (bytecode compiler) is installed.")
     parser.add_argument("-v", "--view",             action='store_true', help="View received data on first /dev/ttyUSB* or /dev/ttyACM* serial port quickly after a Pico W reset.")
+    parser.add_argument("-l", "--log",              help="A log file to record stdout text into.")
     parser.add_argument("-a", "--address",          help="The address of the CT6 unit. This is used where the address of the device is required. If the -f option is used this is used to display just the device of interest.", default=None)
     parser.add_argument("-d", "--debug",            action='store_true', help="Enable debugging.")
 
@@ -1746,6 +1747,10 @@ def main():
         yDevManager = YDevManager(uio, options)
         ct6Config = CT6Config(uio, options)
         ct6Scanner = CT6Scanner(uio, options)
+
+        if options.log:
+            uio.setLogFile(options.log)
+            uio.info(f"Log File: {options.log}")
 
         if options.setup_wifi:
             yDevManager.configureWiFi()
