@@ -19,7 +19,7 @@ include = [
 pyreadline3 = "*"
 python = "^3.10.12"
 # Fix security vulnerability reported by github dependabot.
-cryptography = "^43.0.1"
+cryptography = "^44.0.1"
 paramiko = "^3.4.0"
 numpy = "*"
 # requires (on debian based Linux platforms)
