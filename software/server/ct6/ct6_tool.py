@@ -404,10 +404,11 @@ class CT6Base(BaseConstants):
         self._debug(f"EXECUTING: {rshellCmd}")
         check_call(rshellCmd, shell=True, stdout=DEVNULL, stderr=STDOUT)
 
-    def _openSerialPort(self, matchStr=RPI_PICO_SERIAL_MATCH_TEXT):
+    def _openSerialPort(self, matchStr=RPI_PICO_SERIAL_MATCH_TEXT, showMsgs=True):
         """@brief Open the selected serial port.
-           @param matchStr A string to match for any serial port found."""
-        self._serialPort = self._getSerialPort(matchStr)
+           @param matchStr A string to match for any serial port found.
+           @param showMsgs If True then show serial port messages."""
+        self._serialPort = self._getSerialPort(matchStr, showMsgs=showMsgs)
         self._debug(f"Attempting to open serial port {self._serialPort}")
         self._ser = serial.serial_for_url(self._serialPort, do_not_open=True, exclusive=True)
         self._ser.baudrate = 115200
@@ -419,12 +420,14 @@ class CT6Base(BaseConstants):
         self._ser.open()
         self._debug(f"Opened serial port {self._serialPort}")
 
-    def _getSerialPort(self, matchText, timeout=30):
+    def _getSerialPort(self, matchText, timeout=30, showMsgs=True):
         """@brief Get a serial port that should be connected to the RPi Pico W
            @param matchText The text to match the serial ports.
            @param timeout The timeout in seconds to wait for a serial port to appear.
+           @param showMsgs If True then show serial port messages.
            @return The serial device string."""
-        self._info(f"Checking serial connections for CT6 device (timeout = {timeout} seconds).")
+        if showMsgs:
+            self._info(f"Checking serial connections for CT6 device (timeout = {timeout} seconds).")
         # If windows then force a COM port
         if self._windowsPlatform:
             matchText = "COM"
@@ -447,12 +450,14 @@ class CT6Base(BaseConstants):
         if len(matchingSerialPortList) == 0:
             raise Exception('No RPi Pico W serial port detected.')
 
-        self._info("Checking that only one serial port is connected to this machine.")
+        if showMsgs:
+            self._info("Checking that only one serial port is connected to this machine.")
 
         if len(matchingSerialPortList) > 1:
             raise Exception(f'Multiple serial ports detected: {",".join(matchingSerialPortList)}')
 
-        self._info(f"Found {matchingSerialPortList[0]}")
+        if showMsgs:
+            self._info(f"Found {matchingSerialPortList[0]}")
         return matchingSerialPortList[0]
 
     def _checkMicroPython(self, closeSerialPort=True):
