@@ -1,6 +1,8 @@
 from machine import SPI, Pin
 import st7789
 import vga2_bold_16x16 as font
+import ntptime
+
 
 from lib.rest_server import RestServer
 from cmd_handler import CmdHandler
@@ -284,6 +286,8 @@ class ThisMachine(BaseMachine):
         # Call base class constructor
         super().__init__(uo, configFile, activeAppKey, activeApp, wdt)
 
+        self._ntp = None
+
         # Init the display to display the booting message as early as possible.
         self._display = Display(uo)
 
@@ -415,6 +419,17 @@ class ThisMachine(BaseMachine):
             self._display.setWarning("Uncalibrated\nCT6 device.")
         statsDict = self._displayStatsDict.getStatsDict()
         self._display.update( statsDict, self._wifi.isWiFiButtonPressed() )
+
+        # If we have not yet created an NTP instance. We create this here
+        # becuse know the WiFi is connected if serviceRunningMode() is called.
+        if self._ntp is None:
+            # Update the MCU time via NTP every 2 hours.
+            self._ntp = NTP(self._uo, 3600*2)
+
+        else:
+            # handle() won't update NTP every time it's called, only
+            # at the required intervals.
+            self._ntp.handle()
 
         return Constants.POLL_SECONDS
 
@@ -706,12 +721,84 @@ class MeanCT6StatsDict(object):
                 statsDictStr = json.dumps(statsDict)
                 self._statsDict = json.loads(statsDictStr)
 
+    def _add_send_time(self, stats_dict):
+        """@brief Ad the timesent to the stats_dict."""
+        # Add the time (UTC) that it's being sent to the stats dict.
+        # This method is called to get a snapshot of the stats before it is sent to its destination.
+        # An NTP server is used to update this system time periodically on the CT6 unit.
+        # This returns a list containing
+        #
+        # year includes the century (for example 2014).
+        # month is 1-12
+        # mday is 1-31
+        # hour is 0-23
+        # minute is 0-59
+        # second is 0-59
+        # weekday is 0-6 for Mon-Sun
+        # yearday is 1-366
+        # The epoch time in seconds for the above.
+        epoch_time = utime.time()
+        t_list = list(utime.gmtime(epoch_time))
+        t_list.append(epoch_time)
+        stats_dict[Constants.TIMESENT] = t_list
+
     def getStatsDict(self):
         """@brief Get the CT6 stats dict. This is not thread safe. It must not be called while
                   addStatsDict is beining executed.
            @return The CT6 stats dict all relevant values will be the average of all values added.
                    None is returned if no statsDict """
         statsDict = self._statsDict
+        if statsDict:
+            self._add_send_time(statsDict)
         # Reset so we start with a new statsDict
         self._statsDict = None
         return statsDict
+
+class NTP(object):
+    """@brief Responsible for setting the MCU time with time received from an NTP server."""
+
+    NTP_HOST                    = "pool.ntp.org"
+
+    def __init__(self, uo, interval_seconds):
+        """@brief Constructor.
+           @param uo A UO instance for msg output."""
+        self._uo = uo
+        self._interval_seconds = interval_seconds
+        # Try to ensure we update the NTP time soon after (~ 1 second) after the WiFi is connected.
+        self._next_update_seconds = utime.time() + 1
+        # Set the NTP server to use.
+        ntptime.host = NTP.NTP_HOST
+
+    def handle(self):
+        """@brief Called periodically in order to update the MCU time via NTP.
+                  This may block for up to 1 second if the server is unreachable.
+                  However as it's not called often we can live with this.
+                  Generally this method executes (when an NTP sync is required)
+                  in ~ 30 to 90 milli seconds although this is dependant upon
+                  the internet connection RTT.
+                  Tried executing this in a background _thread but this made the CT6
+                  platform unstable."""
+        # If it's time to set the time via NTP
+        if utime.time() >= self._next_update_seconds:
+            self._sync_time()
+            self._next_update_seconds = utime.time() + self._interval_seconds
+
+    def _sync_time(self):
+        """@brief Attempt to sync the system time usiong an NTP server.
+                  This method may block for some time if the NTP server is not reachable.
+           @return interval_seconds The number of seconds to elapse between each ntp sync attempt."""
+        # We don't want to output to much data on the serial port here to ensure
+        # we don't use to much time sending data over the serial port compared to the time
+        # taken to update the NTP time.
+        success = False
+        start_t = utime.ticks_us()
+        try:
+            ntptime.settime()
+            success = True
+        except:
+            pass
+        elapsed_us = utime.ticks_us() - start_t
+        if success:
+            self._uo.info(f"NTP sync success. Took {elapsed_us} microseconds.")
+        else:
+            self._uo.error(f"NTP sync failure. Took {elapsed_us} microseconds.")
