@@ -983,6 +983,7 @@ class YDevManager(CT6Base):
     POWER_CYCLE_DEVICE      = "/power_cycle"
     RESET_TODEFAULT_CONFIG  = "/reset_to_default_config"
     GET_FILE_CMD            = "/get_file"
+    GET_FW_VERSION          = "/fw_version"
 
     RAM_USED_BYTES          = "RAM_USED_BYTES"
     RAM_FREE_BYTES          = "RAM_FREE_BYTES"
@@ -992,6 +993,7 @@ class YDevManager(CT6Base):
     DISK_PERCENTAGE_USED    = "DISK_PERCENTAGE_USED"
     ACTIVE_APP_FOLDER_KEY   = "ACTIVE_APP_FOLDER"
     INACTIVE_APP_FOLDER_KEY = "INACTIVE_APP_FOLDER"
+    FIRMWARE_VERSION        = "FIRMWARE_VERSION"
 
     REQUIRED_PYPI_MODULES = ["mpy_cross"]
 
@@ -1411,6 +1413,18 @@ class YDevManager(CT6Base):
         # Ask user if they wish to reboot the unit now its set to default configuration.
         if self._uio.getBoolInput("Reboot unit y/n"):
             self._reboot()
+
+    def getFWVersion(self):
+        """@brief Get the CT6 firmware version over the WiFi interface."""
+        fwVersion = None
+        requestsInstance = self._runCommand(YDevManager.GET_FW_VERSION)
+        cfgDict = requestsInstance.json()
+        if YDevManager.FIRMWARE_VERSION in cfgDict:
+            try:
+                fwVersion = float(cfgDict[YDevManager.FIRMWARE_VERSION])
+            except ValueError:
+                pass
+        return fwVersion
 
     def configureWiFi(self, powerCycleHW=False):
         """@brief configure the CT6 WiFi interface from the house_wifi.cfg file.

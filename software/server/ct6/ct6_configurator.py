@@ -57,6 +57,7 @@ class CT6GUIServer(TabbedNiceGui):
     MQTT_TOPIC                  = "MQTT_TOPIC"
     MQTT_USERNAME               = "MQTT_USERNAME"
     MQTT_PASSWORD               = "MQTT_PASSWORD"
+    UI_NOTIFY_MSG               = "UI_NOTIFY_MSG"
 
     MIN_CAL_CURRENT             = 1
     MAX_CAL_CURRENT             = 100
@@ -237,6 +238,10 @@ class CT6GUIServer(TabbedNiceGui):
         elif CT6GUIServer.CURRENT_CAL_COMPLETE_TO_GUI_CMD in rxDict:
             ui.notify(f"Port {self._ctPortInput.value} current calibration complete.")
 
+        elif CT6GUIServer.UI_NOTIFY_MSG in rxDict:
+            msg = rxDict[CT6GUIServer.UI_NOTIFY_MSG]
+            ui.notify(msg)
+
     def _initWiFiTab(self):
         """@brief Create the Wifi tab contents."""
         markDownText = """
@@ -355,6 +360,10 @@ class CT6GUIServer(TabbedNiceGui):
                         devManager._powerCycle()
                         devManager._checkRunningNewApp()
                         self.info("CT6 upgrade completed successfully.")
+
+                        fwVersion = devManager.getFWVersion()
+                        msgDict = {CT6GUIServer.UI_NOTIFY_MSG: f"The CT6 unit firmware has been updated to version {fwVersion}"}
+                        self.updateGUI(msgDict)
 
                     else:
                         self.error(f"Unable to ping {ct6IPAddress}")
