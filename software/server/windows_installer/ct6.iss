@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "CT6"
-#define MyAppVersion "9.5"
+#define MyAppVersion "9.6"
 #define MyAppPublisher "Paul Austen"
 #define MyAppURL "https://github.com/pjaos/ct6_meter_os"
 
@@ -64,7 +64,7 @@ Source: "uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [UninstallRun]
 Filename: "{app}\uninstall.bat"; RunOnceId: "pipxuninstall"
-; Flags: runhidden; 
+; Flags: runhidden;
 
 [Code]
 var
