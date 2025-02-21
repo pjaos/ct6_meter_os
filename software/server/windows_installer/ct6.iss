@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "CT6"
-#define MyAppVersion "9.6"
+#define MyAppVersion "9.7"
 #define MyAppPublisher "Paul Austen"
 #define MyAppURL "https://github.com/pjaos/ct6_meter_os"
 
@@ -37,8 +37,8 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Icons]
-Name: "{group}\CT6 Configurator"; Filename: "{app}\ct6_configurator.bat"; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"
-Name: "{group}\CT6 Shell"; Filename: "{app}\start_powershell.bat"; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"
+Name: "{group}\CT6 Configurator"; Filename: "{app}\ct6_configurator.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\CT6 Shell"; Filename: "{app}\start_powershell.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\Uninstall CT6"; Filename: "{uninstallexe}"
 
 [Files]
