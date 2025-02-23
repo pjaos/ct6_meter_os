@@ -54,7 +54,7 @@ class BuiltInCmdHandler(object):
         self._activeAppKey = activeAppKey
         self._savePersistentDataMethod = None
         self._startTime = time()
-                
+
     def handle(self, cmdDict):
         """@brief Process the commands and return a response dict.
            @return A dict in response to the command or None if the command was not handled."""
@@ -111,7 +111,7 @@ class BuiltInCmdHandler(object):
                 responseDict = RestServer.GetOKDict()
 
             elif cmd.startswith(BuiltInCmdHandler.UPTIME_CMD):
-                responseDict = RestServer.GetOKDict()                
+                responseDict = RestServer.GetOKDict()
                 responseDict["UPTIME_SECONDS"] = time()-self._startTime
 
         return responseDict
@@ -207,7 +207,7 @@ class BuiltInCmdHandler(object):
         else:
             responseDict = RestServer.GetErrorDict("No dir passed to /rmdir")
         return responseDict
-    
+
     def _getFile(self, cmdDict):
         """@brief Get the contents of a file on the devices file system.
            @param cmdDict The command dictionary.
@@ -232,7 +232,7 @@ class BuiltInCmdHandler(object):
                 responseDict["ERROR"]=str(ex)
 
         return responseDict
-        
+
     def _makeDir(self, cmdDict):
         """@brief Create a dir on the devices file system.
            @return The response dict."""
@@ -257,12 +257,12 @@ class BuiltInCmdHandler(object):
             for entry in entryList:
                 if IO.DirExists(entry):
                     self._removeDir(entry)
-                    
+
                 elif IO.FileExists(entry):
                     os.remove(entry)
             # All contents removed so remove the top level.
-            os.remove(theDirectory)  
-        
+            os.remove(theDirectory)
+
     def _eraseOfflineApp(self):
         """@brief Erase the offline app."""
         runningApp = self._machineConfig.get(self._activeAppKey)
@@ -325,7 +325,13 @@ class BuiltInCmdHandler(object):
                   This method will be called before a reboot or power cycle in order to save the current system state.
            @param savePersistentDataMethod The method to be called to save all persistent data on the unit."""
         self._savePersistentDataMethod = savePersistentDataMethod
-        
+
+
+    def setStartTime(self, startTime):
+        """@brief Update the CT6 start time.
+           @param startTime The RTC time when the CT6 unit was started."""
+        self._startTime = startTime
+
 class RestServer(UOBase):
     """@brief Responsible for providing a REST interface to allow clients to
               collect data but could be extended to send arguments to the Pico W."""
@@ -374,7 +380,7 @@ class RestServer(UOBase):
            @param savePersistentDataMethod The method to be called to save all persistent data on the unit."""
         self._builtInCmdHandler.setSavePersistentDataMethod(savePersistentDataMethod)
         self._projectCmdHandler.setSavePersistentDataMethod(savePersistentDataMethod)
-        
+
     def startServer(self):
         asyncio.create_task(asyncio.start_server(self._serve_client, "0.0.0.0", RestServer.TCP_PORT))
         self._serverRunning = True
@@ -553,3 +559,8 @@ class RestServer(UOBase):
                                     return_dict[keyValue[0].lower()]=keyValue[1]
 
         return return_dict
+
+    def setStartTime(self, startTime):
+        """@brief Update the CT6 start time.
+           @param startTime The RTC time when the CT6 unit was started."""
+        self._builtInCmdHandler.setStartTime(startTime)

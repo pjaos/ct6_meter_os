@@ -329,6 +329,7 @@ class ThisMachine(BaseMachine):
         # This server will be started later when the WiFi connects
         self._restServer = RestServer(self._machineConfig, self._activeAppKey, self._projectCmdHandler, uo=uo)
         self._restServer.setSavePersistentDataMethod(self._savePersistentData)
+        self._restServer.setStartTime(self._startTime)
         self._initWifi()
         self._initBlueTooth()
         # Pass a reference to the WiFi so that the RSSI can be included in the stats dict if required
@@ -361,6 +362,9 @@ class ThisMachine(BaseMachine):
                                                   ThisMachine.NON_NUMERIC_CT_FIELD_LIST,
                                                   ThisMachine.NUMERIC_FIELD_LIST,
                                                   ThisMachine.NON_NUMERIC_FIELD_LIST)
+
+        self._ntp_sync_success_once = False
+        self._savedUpTime = 0
 
     def _isFactoryConfigPresent(self):
         """@brief Check if the factory config file is present.
@@ -466,9 +470,27 @@ class ThisMachine(BaseMachine):
             self._ntp = NTP(self._uo, 3600*2)
 
         else:
-            # handle() won't update NTP every time it's called, only
-            # at the required intervals.
-            self._ntp.handle()
+            # If we have not yet had an NTP sync
+            if not self._ntp_sync_success_once:
+                # Save the current uptime in order to deduct it from the post NTP sync start time
+                # to ensure the uptime is valid either side of an NTP sync.
+                self._savedUpTime = utime.time() - self._startTime
+
+            # handle() won't update NTP every time it's called.
+            ntp_sync_success = self._ntp.handle()
+            # If this is the first time NTP sync occured.
+            if not self._ntp_sync_success_once and ntp_sync_success:
+                # Reset the startTime as the previous start time will be incorrect
+                # because the NTP sync adjusts the MCU time.
+                self._startTime = utime.time() - self._savedUpTime
+                # Update the start time held by the rest servers BuiltInCmdHandler.
+                # so that the /get_uptime REST cmd returns the correct uptime.
+                self._restServer.setStartTime(self._startTime)
+                self._ntp_sync_success_once = True
+                # We feed the WDT or the NTP sync may cause a reboot due to a sudden large shift in
+                # the MCU time.
+                if self._wdt:
+                    self._wdt.feed()
 
         return Constants.POLL_SECONDS
 
@@ -696,11 +718,14 @@ class NTP(object):
                   in ~ 30 to 90 milli seconds although this is dependant upon
                   the internet connection RTT.
                   Tried executing this in a background _thread but this made the CT6
-                  platform unstable."""
+                  platform unstable.
+            @param True if an NTP sync was performed and succeeded."""
+        ntp_sync_success = False
         # If it's time to set the time via NTP
         if utime.time() >= self._next_update_seconds:
-            self._sync_time()
+            ntp_sync_success = self._sync_time()
             self._next_update_seconds = utime.time() + self._interval_seconds
+        return ntp_sync_success
 
     def _sync_time(self):
         """@brief Attempt to sync the system time usiong an NTP server.
@@ -721,3 +746,4 @@ class NTP(object):
             self._uo.info(f"NTP sync success. Took {elapsed_us} microseconds.")
         else:
             self._uo.error(f"NTP sync failure. Took {elapsed_us} microseconds.")
+        return success
