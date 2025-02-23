@@ -1,0 +1,1 @@
+python -m poetry env info --path

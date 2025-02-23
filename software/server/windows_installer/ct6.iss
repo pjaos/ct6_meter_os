@@ -55,6 +55,7 @@ Source: "ct6_dash.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_db_store.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_mfg_tool.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_tool.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "show_env_path.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "start_powershell.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
