@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 import  os
+import  platform
 from    p3lib.uio import UIO
 from    p3lib.bokeh_auth import CredentialsManager
 
 CRED_JSON_FILE = os.path.join( os.path.expanduser("~"), ".ct6_dash_credentials.json")
-# If root user then the above can return an incorrect path (/home/root/...). Fix this.
-if os.geteuid()  == 0:
+# If Linux root user then the above can return an incorrect path (/home/root/...). Fix this.
+if platform.system() == 'Linux' and os.geteuid()  == 0:
     CRED_JSON_FILE = os.path.join( '/root', ".ct6_dash_credentials.json")
 
 def main():
