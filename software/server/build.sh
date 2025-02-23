@@ -3,7 +3,7 @@ set -e
 
 # Run some tests on the codebase. If this fails then
 # the installer file is not built.
-python tests/tests.py
+python3 tests/tests.py
 
 # Create the git hash to be included in the installer file
 # for version tracking purposes.
