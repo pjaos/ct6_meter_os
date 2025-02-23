@@ -3,10 +3,11 @@ import st7789
 import vga2_bold_16x16 as font
 import ntptime
 
-
 from lib.rest_server import RestServer
 from cmd_handler import CmdHandler
 from constants import Constants
+from mean_stats import MeanCT6StatsDict
+
 import utime
 import json
 import ubinascii
@@ -276,6 +277,35 @@ class ThisMachine(BaseMachine):
 
     STATS_UPDATE_PERIOD_MSECS = 200
 
+    NUMERIC_CT_FIELD_LIST = (Constants.PRMS,
+                             Constants.PAPPARENT,
+                             Constants.PF,
+                             Constants.PREACT,
+                             Constants.VRMS,
+                             Constants.TEMP,
+                             Constants.FREQ,
+                             Constants.IRMS,
+                             Constants.IPEAK)
+
+    NON_NUMERIC_CT_FIELD_LIST = (Constants.TYPE_KEY,
+                                 Constants.NAME )
+
+    NUMERIC_FIELD_LIST = (Constants.RSSI,
+                          Constants.BOARD_TEMPERATURE_KEY,
+                          Constants.READ_TIME_NS_KEY)
+
+    NON_NUMERIC_FIELD_LIST = (Constants.ASSY_KEY,
+                              Constants.YDEV_UNIT_NAME_KEY,
+                              Constants.FIRMWARE_VERSION_STR,
+                              Constants.ACTIVE,
+                              YDev.IP_ADDRESS_KEY,
+                              YDev.OS_KEY,
+                              YDev.UNIT_NAME_KEY,
+                              YDev.DEVICE_TYPE_KEY,
+                              YDev.PRODUCT_ID_KEY,
+                              YDev.SERVICE_LIST_KEY,
+                              YDev.GROUP_NAME_KEY)
+
     def __init__(self, uo, configFile, activeAppKey, activeApp, wdt):
         """@brief Constuctor
            @param uo A UO instance.
@@ -317,11 +347,20 @@ class ThisMachine(BaseMachine):
         self._startWiFiDisconnectTime = None
 
         # statsDict's sent in response to received AYT messages are sent from this instance.
-        self._aytStatsDict = MeanCT6StatsDict()
+        self._aytStatsDict = MeanCT6StatsDict(ThisMachine.NUMERIC_CT_FIELD_LIST,
+                                              ThisMachine.NON_NUMERIC_CT_FIELD_LIST,
+                                              ThisMachine.NUMERIC_FIELD_LIST,
+                                              ThisMachine.NON_NUMERIC_FIELD_LIST)
         # statsDict's sent to MQTT servers are sent from this instance.
-        self._mqttStatsDict = MeanCT6StatsDict()
+        self._mqttStatsDict = MeanCT6StatsDict(ThisMachine.NUMERIC_CT_FIELD_LIST,
+                                               ThisMachine.NON_NUMERIC_CT_FIELD_LIST,
+                                               ThisMachine.NUMERIC_FIELD_LIST,
+                                               ThisMachine.NON_NUMERIC_FIELD_LIST)
         # statsDict's used to update the display values.
-        self._displayStatsDict = MeanCT6StatsDict()
+        self._displayStatsDict = MeanCT6StatsDict(ThisMachine.NUMERIC_CT_FIELD_LIST,
+                                                  ThisMachine.NON_NUMERIC_CT_FIELD_LIST,
+                                                  ThisMachine.NUMERIC_FIELD_LIST,
+                                                  ThisMachine.NON_NUMERIC_FIELD_LIST)
 
     def _isFactoryConfigPresent(self):
         """@brief Check if the factory config file is present.
@@ -633,126 +672,6 @@ class MQTTInterface(object):
             self._error(f"MQTT error: {str(ex)}")
             self.disconnectMQTT()
 
-class MeanCT6StatsDict(object):
-    """@brief Responsible for accepting CT6 stats dicts and averaging the values
-              to provide a mean stats dict when required."""
-
-    NUMERIC_CT_FIELD_LIST = (Constants.PRMS,
-                             Constants.PAPPARENT,
-                             Constants.PF,
-                             Constants.PREACT,
-                             Constants.VRMS,
-                             Constants.TEMP,
-                             Constants.FREQ,
-                             Constants.IRMS,
-                             Constants.IPEAK)
-
-    NON_NUMERIC_CT_FIELD_LIST = (Constants.TYPE_KEY,
-                                 Constants.NAME )
-
-    NUMERIC_FIELD_LIST = (Constants.RSSI,
-                          Constants.BOARD_TEMPERATURE_KEY,
-                          Constants.READ_TIME_NS_KEY)
-
-    NON_NUMERIC_FIELD_LIST = (Constants.ASSY_KEY,
-                              Constants.YDEV_UNIT_NAME_KEY,
-                              Constants.FIRMWARE_VERSION_STR,
-                              Constants.ACTIVE,
-                              YDev.IP_ADDRESS_KEY,
-                              YDev.OS_KEY,
-                              YDev.UNIT_NAME_KEY,
-                              YDev.DEVICE_TYPE_KEY,
-                              YDev.PRODUCT_ID_KEY,
-                              YDev.SERVICE_LIST_KEY,
-                              YDev.GROUP_NAME_KEY)
-
-    @staticmethod
-    def GetAverage(value, readingCount):
-        """@brief Return the average given a value and the number of readings.
-                  -1 is returned if readings <= 0"""
-        result = -1
-        if readingCount > 0:
-            result = value / float(readingCount)
-        return result
-
-    def __init__(self):
-        self._statsDict = None
-        self._statsDictCount = 0
-
-    def addStatsDict(self, statsDict):
-        """@brief Add a CT6 stats dict."""
-        if self._statsDict:
-            for ct in Constants.VALID_CT_ID_LIST:
-                ct = f"CT{ct}"
-                if ct in statsDict and ct in self._statsDict:
-                    srcSubDict = statsDict[ct]
-                    destSubDict = self._statsDict[ct]
-
-                    # Update numeric CT port fields
-                    # Update a rolling average of this and the previous value. The previous value may be a previous average value.
-                    # This is reset when getStatsDict() is called when the averaging restarts.
-                    for key in MeanCT6StatsDict.NUMERIC_CT_FIELD_LIST:
-                        if key in srcSubDict and key in destSubDict:
-                            destSubDict[key] += srcSubDict[key]
-                            destSubDict[key] = destSubDict[key] / 2.0
-
-                    # For non numeric CT port fields, copy the latest values across.
-                    for key in MeanCT6StatsDict.NON_NUMERIC_CT_FIELD_LIST:
-                        if key in srcSubDict and key in destSubDict:
-                            destSubDict[key] = srcSubDict[key]
-
-                # Calc averages for top level numeric fields
-                for key in MeanCT6StatsDict.NUMERIC_FIELD_LIST:
-                    if key in statsDict and key in self._statsDict:
-                        self._statsDict[key] += statsDict[key]
-                        self._statsDict[key] = self._statsDict[key] / 2.0
-
-                # For non numeric top level fields, copy the latest values across.
-                for key in MeanCT6StatsDict.NON_NUMERIC_FIELD_LIST:
-                    if key in statsDict and key in self._statsDict:
-                        self._statsDict[key] = statsDict[key]
-
-        else:
-            if statsDict:
-                # We need a deepcopy of the statsDict as we need to ensure there are no references to the dict
-                # that could be updated outside this MeanCT6StatsDict instance.
-                # copy.deepcopy is not available in micropython by default.
-                # Therefore we convert to and from a json string to get a copy of the statsDict.
-                statsDictStr = json.dumps(statsDict)
-                self._statsDict = json.loads(statsDictStr)
-
-    def _add_send_time(self, stats_dict):
-        """@brief Ad the timesent to the stats_dict."""
-        # Add the time (UTC) that it's being sent to the stats dict.
-        # This method is called to get a snapshot of the stats before it is sent to its destination.
-        # An NTP server is used to update this system time periodically on the CT6 unit.
-        # This returns a list containing
-        #
-        # year includes the century (for example 2014).
-        # month is 1-12
-        # mday is 1-31
-        # hour is 0-23
-        # minute is 0-59
-        # second is 0-59
-        # weekday is 0-6 for Mon-Sun
-        # yearday is 1-366
-        # The epoch time in seconds for the above.
-        epoch_time = utime.time()
-        t_list = list(utime.gmtime(epoch_time))
-        t_list.append(epoch_time)
-        stats_dict[Constants.TIMESENT] = t_list
-
-    def getStatsDict(self):
-        """@brief Get the CT6 stats dict. This is not thread safe. It must not be called while
-                  addStatsDict is beining executed.
-           @return The CT6 stats dict all relevant values will be the average of all values added.
-                   None is returned if no statsDict """
-        statsDict = self._statsDict
-        if statsDict:
-            self._add_send_time(statsDict)
-        # Reset so we start with a new statsDict
-        self._statsDict = None
-        return statsDict
 
 class NTP(object):
     """@brief Responsible for setting the MCU time with time received from an NTP server."""
