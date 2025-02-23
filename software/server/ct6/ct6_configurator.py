@@ -359,12 +359,12 @@ class CT6GUIServer(TabbedNiceGui):
                         devManager.upgrade(promptReboot=False)
                         devManager._powerCycle()
                         devManager._checkRunningNewApp()
-                        self.info("CT6 upgrade completed successfully.")
 
                         fwVersion = devManager.getFWVersion()
                         msgDict = {CT6GUIServer.UI_NOTIFY_MSG: f"The CT6 unit firmware has been updated to version {fwVersion}"}
                         self.updateGUI(msgDict)
 
+                        self.info(f"CT6 firmware upgrade completed successfully to version {fwVersion}")
                     else:
                         self.error(f"Unable to ping {ct6IPAddress}")
 
