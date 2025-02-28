@@ -307,7 +307,7 @@ class ThisMachine(BaseMachine):
                               YDev.GROUP_NAME_KEY)
 
     def __init__(self, uo, configFile, activeAppKey, activeApp, wdt):
-        """@brief Constuctor
+        """@brief Constuctor.
            @param uo A UO instance.
            @param configFile The config file that holds all machine config including the active application ID.
            @param activeAppKey The key in the config dict that details which app (1 or 2) we are running from.
@@ -629,6 +629,8 @@ class MQTTInterface(object):
         if self._mqttClient:
             # Send json string to the MQTT server
             jsonStr = json.dumps( statsDict )
+            # PJA, REMOVE
+            print(jsonStr)
             self._mqttClient.publish(self._mqttTopic, jsonStr)
 
             # Attempt to read from the MQTT server in case data has been received so that the

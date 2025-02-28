@@ -4,7 +4,7 @@ class Constants(BaseConstants):
     """@brief Define the constants used by this project.
               This extends BaseContants to make a more specialised configuration for this machine."""
 
-    FIRMWARE_VERSION            = "2.67"
+    FIRMWARE_VERSION            = "2.68"
 
     # Override the BaseConstants GPIO pins to those connected on this hardware
     WIFI_SETUP_BUTTON_PIN       = 14
@@ -118,6 +118,8 @@ class Constants(BaseConstants):
 
     TIMESENT                    = "TIMESENT"
 
+    PF_WATTS_THRESHOLD          = "PF_WATTS_THRESHOLD"
+
     FACTORY_CONFIG_KEYS = [BaseConstants.ASSY_KEY,
 
                            CS0_VOLTAGE_GAIN_KEY,
@@ -224,8 +226,11 @@ class Constants(BaseConstants):
         MQTT_TOPIC:                     "",         # The MQTT topic to which the CT6 MQTT client may subscribe
         MQTT_USERNAME:                  "",         # The MQTT username. If empty then an anonymous MQTT connection will be attempted.
         MQTT_PASSWORD:                  "",         # The MQTT password. If empty then an anonymous MQTT connection will be attempted.
-        MQTT_TX_PERIOD_MS:              2000        # Default send to the MQTT server every 2000 milliseconds/2 seconds
-
+        MQTT_TX_PERIOD_MS:              2000,       # Default send to the MQTT server every 2000 milliseconds/2 seconds
+        PF_WATTS_THRESHOLD:             50          # The threshold in watts before the power factor is measured. Below this the PF is set to 0.0.
+                                                    # This makes the power factor parameter more usable as it should only be measured when power is present.
+                                                    # This can be set from the REST interface (E.G http://<CT6 IP ADDRESS>/set_config?PF_WATTS_THRESHOLD=25)
+                                                    # This is saved persistently.
      }
 
     #Define the attributes in the above configuration the you wish to be setable via the REST interface for this machine.
@@ -276,7 +281,8 @@ class Constants(BaseConstants):
                                    MQTT_TOPIC,
                                    MQTT_USERNAME,
                                    MQTT_PASSWORD,
-                                   MQTT_TX_PERIOD_MS
+                                   MQTT_TX_PERIOD_MS,
+                                   PF_WATTS_THRESHOLD
                                    )
 
     # --- END CONFIG SECTION ---
