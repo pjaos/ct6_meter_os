@@ -142,8 +142,7 @@ class Display(Constants):
            @param statsDict The stats dict that contains the information to display.
            @param now The time now in micro seconds. From utime.ticks_us() call."""
         vRMS = None
-        if statsDict:
-
+        if statsDict is not None:
             pwrDict = statsDict
 
             for ct in range(1,7):
@@ -227,7 +226,7 @@ class Display(Constants):
             self._startup = False
 
         else:
-            # If the WiFi button has just been pressed and the display is not on as a display timeout has occured.
+            # If the WiFi button has just been pressed and the display is not on as a display timeout has occurred.
             if buttonPressed and not self._isDisplayPowered():
                 # Turn the display on.
                 self._init()
@@ -461,7 +460,8 @@ class ThisMachine(BaseMachine):
         if not self._isFactoryConfigPresent():
             self._display.setWarning("Uncalibrated\nCT6 device.")
         statsDict = self._displayStatsDict.getStatsDict()
-        self._display.update( statsDict, self._wifi.isWiFiButtonPressed() )
+        if statsDict is not None:
+            self._display.update( statsDict, self._wifi.isWiFiButtonPressed() )
 
         # If we have not yet created an NTP instance. We create this here
         # becuse know the WiFi is connected if serviceRunningMode() is called.
@@ -478,7 +478,7 @@ class ThisMachine(BaseMachine):
 
             # handle() won't update NTP every time it's called.
             ntp_sync_success = self._ntp.handle()
-            # If this is the first time NTP sync occured.
+            # If this is the first time NTP sync occurred.
             if not self._ntp_sync_success_once and ntp_sync_success:
                 # Reset the startTime as the previous start time will be incorrect
                 # because the NTP sync adjusts the MCU time.
@@ -629,8 +629,6 @@ class MQTTInterface(object):
         if self._mqttClient:
             # Send json string to the MQTT server
             jsonStr = json.dumps( statsDict )
-            # PJA, REMOVE
-            print(jsonStr)
             self._mqttClient.publish(self._mqttTopic, jsonStr)
 
             # Attempt to read from the MQTT server in case data has been received so that the

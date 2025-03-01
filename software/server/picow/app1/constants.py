@@ -4,7 +4,7 @@ class Constants(BaseConstants):
     """@brief Define the constants used by this project.
               This extends BaseContants to make a more specialised configuration for this machine."""
 
-    FIRMWARE_VERSION            = "2.68"
+    FIRMWARE_VERSION            = "2.69"
 
     # Override the BaseConstants GPIO pins to those connected on this hardware
     WIFI_SETUP_BUTTON_PIN       = 14

@@ -32,8 +32,6 @@ class MeanCT6StatsDict(object):
         """@brief Add a CT6 stats dict.
            @param statsDict The dict holding the port stats and CT6 unit stats."""
         if statsDict:
-            self._statsDictCount += 1
-
             if self._statsDict:
                 for ct in Constants.VALID_CT_ID_LIST:
                     ct = f"CT{ct}"
@@ -64,12 +62,17 @@ class MeanCT6StatsDict(object):
                         self._statsDict[key] = statsDict[key]
 
             else:
-                # We need a deepcopy of the statsDict as we need to ensure there are no references to the dict
-                # that could be updated outside this MeanCT6StatsDict instance.
-                # copy.deepcopy is not available in micropython by default.
-                # Therefore we convert to and from a json string to get a copy of the statsDict.
-                statsDictStr = json.dumps(statsDict)
-                self._statsDict = json.loads(statsDictStr)
+                self._statsDict = self._get_copy(statsDict)
+
+            self._statsDictCount += 1
+
+    def _get_copy(self, statsDict):
+            # We need a deepcopy of the statsDict as we need to ensure there are no references to the dict
+            # that could be updated outside this MeanCT6StatsDict instance.
+            # copy.deepcopy is not available in micropython by default.
+            # Therefore we convert to and from a json string to get a copy of the statsDict.
+            statsDictStr = json.dumps(statsDict)
+            return json.loads(statsDictStr)
 
     def _add_send_time(self, stats_dict):
         """@brief Add the timesent to the stats_dict."""
@@ -92,13 +95,22 @@ class MeanCT6StatsDict(object):
         t_list.append(epoch_time)
         stats_dict[Constants.TIMESENT] = t_list
 
+    def _areStatsAvail(self):
+        """@return True if stats are available."""
+        available = False
+        if self._statsDictCount > 0:
+            available = True
+        return available
+
     def getStatsDict(self):
         """@brief Get the CT6 stats dict. This is not thread safe. It must not be called during
                   addStatsDict execution.
            @return The CT6 stats dict all numeric values will be the average of all values added.
                    None is returned if no statsDict data is available."""
-        statsDict = self._statsDict
-        if statsDict:
-            self._add_send_time(statsDict)
-        self._init_stats()
+        statsDict = None
+        if self._areStatsAvail():
+            statsDict = self._statsDict
+            if statsDict:
+                self._add_send_time(statsDict)
+            self._init_stats()
         return statsDict
