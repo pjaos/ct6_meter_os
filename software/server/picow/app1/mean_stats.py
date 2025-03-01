@@ -32,6 +32,7 @@ class MeanCT6StatsDict(object):
         """@brief Add a CT6 stats dict.
            @param statsDict The dict holding the port stats and CT6 unit stats."""
         if statsDict:
+            self._statsDictCount += 1
             if self._statsDict:
                 for ct in Constants.VALID_CT_ID_LIST:
                     ct = f"CT{ct}"
@@ -63,8 +64,6 @@ class MeanCT6StatsDict(object):
 
             else:
                 self._statsDict = self._get_copy(statsDict)
-
-            self._statsDictCount += 1
 
     def _get_copy(self, statsDict):
             # We need a deepcopy of the statsDict as we need to ensure there are no references to the dict
