@@ -585,7 +585,10 @@ class FactorySetup(CT6Base):
         url=f"http://{self._ipAddress}{FactorySetup.SET_CONFIG_CMD}?{FactorySetup.ASSY_KEY}={newAssy}"
         response = requests.get(url)
         self._checkResponse(response)
+        self.saveFactoryCfg()
 
+    def saveFactoryCfg(self):
+        """@brief The factory conf bvalues held on the CT6 unit to the factory.cfg file on the CT6 unit."""
         url=f"http://{self._ipAddress}/save_factory_cfg"
         self._runRESTCmd(url)
 
@@ -873,6 +876,10 @@ class FactorySetup(CT6Base):
         with open(localFile, 'w') as fd:
             fd.write(fileContents)
         self._uio.info(f"Saved to {localFile}")
+
+    def storeFactoryConf(self):
+        # Save the CT6 calibration file (factory.cfg) locally to a unique filename
+        self._storeConfig()
 
     def _storeConfig(self):
         """@brief Store the configuration files from the unit tested in the local folder along with the test logs."""

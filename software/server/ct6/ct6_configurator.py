@@ -1167,6 +1167,8 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
                         cmdDict = {CT6GUIServer.CURRENT_CAL_COMPLETE_TO_GUI_CMD: None}
                         responseDict = self._updateGUI(cmdDict)
                         self.info(f"Port {port} current calibration complete.")
+                    # Save the calibration values persistently on the CT6 unit
+                    factorySetup.saveFactoryCfg()
 
                 else:
                     self.error("The measured current must be at least 1 amp to calibrate the CT port.")
@@ -1214,6 +1216,8 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
                     factorySetup = FactorySetup(self, factorySetupOptions)
                     factorySetup._calVoltageGain(1, maxError=0.3, acVoltage=acVoltage)
                     factorySetup._calVoltageGain(4, maxError=0.3, acVoltage=acVoltage)
+                    # Save the calibration values persistently on the CT6 unit
+                    factorySetup.saveFactoryCfg()
                     self.info("Voltage calibration completed successfully.")
                 else:
                     self.error("The measured voltage must be at least 80 volts.")
