@@ -142,7 +142,7 @@ class CmdHandler(BaseCmdHandler):
                 freq = self._cs0ATM90E32.Freq
 
             pf_watts_threshold = self._machineConfig.get(Constants.PF_WATTS_THRESHOLD)
-            if pRMS < pf_watts_threshold:
+            if abs(pRMS) < pf_watts_threshold:
                 pf = 0.0
 
             # PJA move these names to Constants

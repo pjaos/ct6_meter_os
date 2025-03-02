@@ -227,7 +227,7 @@ class Constants(BaseConstants):
         MQTT_USERNAME:                  "",         # The MQTT username. If empty then an anonymous MQTT connection will be attempted.
         MQTT_PASSWORD:                  "",         # The MQTT password. If empty then an anonymous MQTT connection will be attempted.
         MQTT_TX_PERIOD_MS:              2000,       # Default send to the MQTT server every 2000 milliseconds/2 seconds
-        PF_WATTS_THRESHOLD:             50          # The threshold in watts before the power factor is measured. Below this the PF is set to 0.0.
+        PF_WATTS_THRESHOLD:             5           # The threshold in watts before the power factor is measured. Below this the PF is set to 0.0.
                                                     # This makes the power factor parameter more usable as it should only be measured when power is present.
                                                     # This can be set from the REST interface (E.G http://<CT6 IP ADDRESS>/set_config?PF_WATTS_THRESHOLD=25)
                                                     # This is saved persistently.
