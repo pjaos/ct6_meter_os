@@ -49,6 +49,7 @@ class Display(Constants):
         self._lastWarningLines = None
         self._ctFieldType = Display.FIELD_TYPE_KW
         self._lastButtonPressedMS = utime.ticks_ms()
+        self._statsDict = None
 
     def _setText(self, row, col, text):
         self._tft.text( font, text.encode(), int(row), int(col), st7789.YELLOW, st7789.BLACK )
@@ -143,12 +144,11 @@ class Display(Constants):
            @param now The time now in micro seconds. From utime.ticks_us() call."""
         vRMS = None
         if statsDict is not None:
-            pwrDict = statsDict
 
             for ct in range(1,7):
                 key = f"CT{ct}"
-                if key in pwrDict:
-                    ctStatsDict = pwrDict[key]
+                if key in statsDict:
+                    ctStatsDict = statsDict[key]
                     yPos = ((ct-1)*self._rowH)+(Display.ROW_HEIGHT_MARGIN/2)+1
                     self._setText(Display.COL0_START_PIXEL, yPos, f"CT{ct}")
                     if self._ctFieldType == Display.FIELD_TYPE_KW:
@@ -217,6 +217,10 @@ class Display(Constants):
         """@brief Update the display.
            @param statsDict The stats dict that contains the information to display.
            @param buttonPressed If True then the WiFi button is pressed."""
+        # If we have a valid statsDict save a ref to it as we may not have one when we get
+        # here and it's time to update the display further down this method.
+        if statsDict is not None:
+            self._statsDict = statsDict
 
         # If the unit has just started up
         if self._startup:
@@ -239,15 +243,15 @@ class Display(Constants):
                 # If a warning message is defined then display this
                 # rather than the normal display.
                 if self._warningLines:
-                    self._showWarning(statsDict)
+                    self._showWarning()
                 else:
-                    self._updateParams(statsDict, now)
+                    self._updateParams(self._statsDict, now)
                 self._lastDisplayUpdateMS = now
 
-    def _showWarning(self, statsDict):
+    def _showWarning(self):
         """@brief Show a warning message on the display."""
         if self._warningLines != self._lastWarningLines:
-            # Clear the screen to make space for lines of waring text
+            # Clear the screen to make space for lines of warning text
             self._tft.init()
             self._tft.fill(st7789.BLACK)
             lines = self._warningLines.split("\n")
