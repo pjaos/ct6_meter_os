@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "CT6"
-#define MyAppVersion "10.1"
+#define MyAppVersion "10.2"
 #define MyAppPublisher "Paul Austen"
 #define MyAppURL "https://github.com/pjaos/ct6_meter_os"
 
@@ -55,6 +55,7 @@ Source: "ct6_dash.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_db_store.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_mfg_tool.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_tool.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "ct6_stats.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "show_env_path.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "start_powershell.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install.bat"; DestDir: "{app}"; Flags: ignoreversion
