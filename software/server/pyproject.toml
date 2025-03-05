@@ -42,6 +42,7 @@ pyflakes = "*"
 psutil = "*"
 objgraph = "*"
 nicegui = "*"
+rich = "*"
 #ip2geotools = "*" # Remove the # comment at the start of this line if you wish the server
                    # access log file to contain country, region and city information.
                    # The down side to this is that about 70 extra python modules are pulled
