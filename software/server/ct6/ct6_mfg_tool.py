@@ -21,6 +21,7 @@ from   p3lib.uio import UIO
 from   p3lib.helper import logTraceBack
 from   p3lib.ate import TestCaseBase
 
+from test_equipment.shelly import Shelly1PMPlusInterface
 from   ct6.ct6_tool import CT6Base, YDevManager
 
 class FactorySetup(CT6Base):
@@ -90,6 +91,11 @@ class FactorySetup(CT6Base):
             self.setIPAddress(self._options.address)
             self._readAssyDetails()
 
+        if self._options.shelly:
+            self._s1pmplus_address = self._options.shelly
+            self.cal_smart_sw = Shelly1PMPlusInterface(uio=self._uio)
+            self.cal_smart_sw.set_address(self._s1pmplus_address)
+
     def _readAssyDetails(self):
         """@brief Read the assembly details from the unit."""
         fileContents = self._getFileContentsOverWifi(FactorySetup.CT6_MACHINE_CONFIG_FILE, self._ipAddress)
@@ -156,13 +162,19 @@ class FactorySetup(CT6Base):
            @return The AC voltage as measured by an external meter.."""
         self._uio.info("")
         if acVoltage is None:
-            # Do some bounds checking on the entered voltage
-            while True:
-                acVoltage = self._uio.getFloatInput("Enter the AC RMS voltage as measured by an external meter")
-                if acVoltage > 100 and acVoltage < 270:
-                    break
-                else:
-                    self._uio.warn(f"{acVoltage} is out of range (100 - 270 volts).")
+            if self._options.shelly:
+                # Ensure the load is off when measuring the voltage
+                self._set_load_on(False)
+                # Read the AC voltage from the calibrated Shelly 1PM Plus device
+                acVoltage = self.cal_smart_sw.get_calibrated_voltage(read_now=True)
+            else:
+                # Do some bounds checking on the entered voltage
+                while True:
+                    acVoltage = self._uio.getFloatInput("Enter the AC RMS voltage as measured by an external meter")
+                    if acVoltage > 100 and acVoltage < 270:
+                        break
+                    else:
+                        self._uio.warn(f"{acVoltage} is out of range (100 - 270 volts).")
 
         self._uio.info(f"AC Freq = {self._lineFreqHz} Hz")
         url=f"http://{self._ipAddress}/set_config?{FactorySetup.LINE_FREQ_HZ_KEY}={self._lineFreqHz}"
@@ -272,6 +284,39 @@ class FactorySetup(CT6Base):
 
             sleep(0.4)
 
+    def _set_load_on(self, on):
+        """@brief Wait for the load current as measured by the Shelly 1PM Plus to"""
+        if on:
+            state = "on"
+        else:
+            state = "off"
+        self.cal_smart_sw.turn_on(on)
+        self._info(f"Turned load {state}")
+
+        current_reading_list = []
+        while True:
+            amps = self.cal_smart_sw.get_calibrated_current(read_now=True)
+            self._uio.info(f"Load current = {amps:.2f} amps.")
+            if on and amps < 7.0:
+                self._uio.info("Waiting for load current to reach 7 amps.")
+            elif not on and amps > 0.0:
+                self._uio.info("Waiting for load to drop to zero.")
+            else:
+                current_reading_list.insert(0, amps)
+                # Keep the last 5 readings in this list
+                if len(current_reading_list) > 5:
+                    current_reading_list.pop()
+                # Check if we have had a stable current for the last five readings.
+                if len(current_reading_list) == 5:
+                    minI = min(current_reading_list)
+                    maxI = max(current_reading_list)
+                    # If the readings diverge by less than 0.1A
+                    if maxI - minI < 0.1:
+                        self._uio.info(f"Load current is stable at {amps:.2f} amps.")
+                        break
+            # Delay between checks
+            sleep(1)
+
     def _calCurrentGain(self, ct, maxError=0.02, acAmps=None, noLoadTimeoutSeconds=120.0):
         """@brief Calibrate the current gain for the CT.
            @param ct The ct number1,2,3,4,5 or 6.
@@ -279,7 +324,10 @@ class FactorySetup(CT6Base):
            @param acAmps The measured current in amps. If left as None then the user is prompted to enter the value.
            @param noLoadTimeoutSeconds If no load is detected then wait this period of time before timing out."""
         self._uio.info("")
-        self._uio.getInput("Ensure an AC load drawing at least 1 amp is connected and press RETURN")
+        if self._options.shelly:
+            self._set_load_on(True)
+        else:
+            self._uio.getInput("Ensure an AC load drawing at least 1 amp is connected and press RETURN")
 
         if ct == 1:
             configKey = FactorySetup.CT1_IGAIN_KEY
@@ -304,34 +352,41 @@ class FactorySetup(CT6Base):
         self._checkResponse(response)
         self._initATM90E32Devs()
 
-        # First check that we have enough current flowing
-        self._uio.info(f"Checking that CT{ct} detects at least 5 amps.")
-        timeoutT = time()+noLoadTimeoutSeconds
-        while True:
-            statsDict = self._getStatsDict()
-            ctStatsDict = statsDict[f"CT{ct}"]
+        if self._options.shelly is None:
+            # First check that we have enough current flowing
+            self._uio.info(f"Checking that CT{ct} detects at least 5 amps.")
+            timeoutT = time()+noLoadTimeoutSeconds
+            while True:
+                statsDict = self._getStatsDict()
+                ctStatsDict = statsDict[f"CT{ct}"]
 
-            amps = ctStatsDict[FactorySetup.IRMS]
-            self._uio.info(f"Detected {amps} amps.")
-            if amps >= 1.0:
-                break
-            else:
-                self._uio.warn(f"Detected {amps} amps. A load current of at least 1 amp is required for calibration.")
-                sleep(1)
-            if time() > timeoutT:
-                raise Exception(f"{noLoadTimeoutSeconds} second timeout waiting for a load current.")
-            sleep(0.4)
+                amps = ctStatsDict[FactorySetup.IRMS]
+                self._uio.info(f"Detected {amps} amps.")
+                if amps >= 1.0:
+                    break
+                else:
+                    self._uio.warn(f"Detected {amps} amps. A load current of at least 1 amp is required for calibration.")
+                    sleep(1)
+                if time() > timeoutT:
+                    raise Exception(f"{noLoadTimeoutSeconds} second timeout waiting for a load current.")
+                sleep(0.4)
 
-        # Do some bounds checking on the entered current
-        while True:
-            if acAmps is None:
-                acAmps = self._uio.getFloatInput("Enter the AC RMS current in amps as measured with an external meter")
-            if acAmps >= 1 and acAmps < 100:
-                break
-            else:
-                self._uio.warn(f"{acAmps} is out of range (1 - 100 amps).")
+            # Do some bounds checking on the entered current
+            while True:
+                if acAmps is None:
+                    acAmps = self._uio.getFloatInput("Enter the AC RMS current in amps as measured with an external meter")
+                if acAmps >= 1 and acAmps < 100:
+                    break
+                else:
+                    self._uio.warn(f"{acAmps} is out of range (1 - 100 amps).")
 
         while True:
+            if self._options.shelly:
+                # Read the AC current from the calibrated Shelly 1PM Plus device
+                acAmps = self.cal_smart_sw.get_calibrated_current(read_now=True)
+                # The test station has 6 loops through the CT. Therefore the measured current should be 6 * that
+                # measured by the Shelly 1PM Plus device.
+                acAmps = acAmps * 6.0
             cfgDict = self._getConfigDict()
             statsDict = self._getStatsDict()
             ctStatsDict = statsDict[f"CT{ct}"]
@@ -367,12 +422,18 @@ class FactorySetup(CT6Base):
 
         self._uio.info("")
         self._uio.info(f"CT{ct} current calibration complete.")
-        self._uio.getInput("DISCONNECT the AC load and press RETURN")
+        if self._options.shelly:
+            self._set_load_on(False)
+        else:
+            self._uio.getInput("DISCONNECT the AC load and press RETURN")
 
     def _calCurrentOffset(self, ct, loadOffTimeoutSeconds=120.0):
         """@brief Calibrate current offsets.
            @param ct The ct port.
            @param loadOffTimeoutSeconds The max time to wait for the load to be off."""
+        if self._options.shelly:
+            # Ensure the load is off when calibrating the current offset.
+            self._set_load_on(False)
 
         ampsOffset=0
         offsetDelta=1000
@@ -522,15 +583,23 @@ class FactorySetup(CT6Base):
             self._uio.info("")
             self._uio.info("Ensure no AC load is connected.")
             self._uio.info("At this point you may enter 'B' to jump back to previous port calibration.")
-            response = self._uio.getInput(f"Connect an SCT013_100A current transformer (CT) to port {ct} and press RETURN")
+            response = self._uio.getInput(f"Connect an SCT013 100A/1V current transformer (CT) to port {ct} and press RETURN")
             if response.upper() == 'B' and portIndex > 0:
                     portIndex=portIndex-1
                     continue
 
-            self._uio.info(f"Calibrating CT{ct} CURRENT gain.")
-            self._calCurrentGain(ct)
-            self._uio.info(f"Calibrating CT{ct} CURRENT offset.")
-            self._calCurrentOffset(ct)
+            if self._options.shelly:
+                self._uio.info(f"Calibrating CT{ct} CURRENT offset.")
+                self._calCurrentOffset(ct)
+                self._uio.info(f"Calibrating CT{ct} CURRENT gain.")
+                self._calCurrentGain(ct)
+
+            # When running manually we do it the other way round as this leads to less errors.
+            else:
+                self._uio.info(f"Calibrating CT{ct} CURRENT gain.")
+                self._calCurrentGain(ct)
+                self._uio.info(f"Calibrating CT{ct} CURRENT offset.")
+                self._calCurrentOffset(ct)
 
             portIndex+=1
 
@@ -1229,6 +1298,7 @@ def getFactorySetupCmdOpts():
                                         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--no_cal",                 action='store_true', help="By default a full MFG test is performed. If this option is used code is loaded but CT6 ports are not calibrated/tested.")
     parser.add_argument("--no_default",             action='store_true', help="By default a full MFG test is performed. If this options is used the factory defaults will not be loaded leaving the WiFi config present when testing is complete..")
+    parser.add_argument("-s", "--shelly",           help="The IP address of the Shelly 1PM Plus unit in the MFG test station.", default=None)
     parser.add_argument("-t", "--test",             action='store_true', help="By default a full MFG test is performed. This option will not load code onto the CT6 device but will run some test cases. This options does not test the CT ports.")
     parser.add_argument("-o", "--cal_only",         action='store_true', help="Only perform the CT port calibration.")
     parser.add_argument("-u", "--upcal",            action='store_true', help="Upgrade the CT6 firmware and recal.")
@@ -1236,7 +1306,7 @@ def getFactorySetupCmdOpts():
     parser.add_argument("-r", "--restore",          help="The filename of the CT6 factory config file to load onto the CT6 unit.")
     parser.add_argument("-p", "--power_cycle",      action='store_true', help="Perform a number of power cycle tests to check the reliability of the power cycling feature.")
     parser.add_argument("-w", "--setup_wifi",       action='store_true', help="Alternative to using the Android App to setup the CT6 WiFi interface.")
-    parser.add_argument("-a", "--address",          help="The IP address of the unit. This is required for --restore and --power_cycle.", default=None)
+    parser.add_argument("-a", "--address",          help="The IP address of the CT6 unit. This is required for --restore and --power_cycle.", default=None)
     parser.add_argument("-c", "--cal_ports",        help="Ports to calibrate. Default = all. The port number or comma separated list of ports (E.G 1,2,3,4,5,6) may be entered.", default="all")
     parser.add_argument("-l", "--labels",           action='store_true', help="Set the assembly and serial number label data in the CT6 unit.")
     parser.add_argument("--ac60hz",                 action='store_true', help="Set the AC freq to 60 Hz. The default is 50 Hz.")
