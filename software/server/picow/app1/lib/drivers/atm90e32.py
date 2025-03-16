@@ -1,7 +1,7 @@
 """
     A micropython driver for the ATM90E32 device.
     Many thanks to git@github.com:warthog9/CircuitSetup_EnergyMeter_MicroPython.git
-    as this was used as a base for this implementation. 
+    as this was used as a base for this implementation.
 """
 from machine import Pin, SPI
 import utime
@@ -11,7 +11,7 @@ import math
 class ATM90E32:
     class Register(object):
         # -------------------------- start of ATM90E32 register definition --------------------------------------------------
-        
+
         # Convention would dictate that the register addresses are all upper case.
         # However here we keep the same case as the data sheet.
         #* STATUS REGISTERS *#
@@ -29,7 +29,7 @@ class ATM90E32:
         FreqHiTh = 0x0D         # High Threshold for Frequency Detection
         PMPwrCtrl = 0x0E        # Partial Measurement Mode Power Control
         IRQ0MergeCfg = 0x0F     # IRQ0 Merge Configuration
-    
+
         #* EMM STATUS REGISTERS *#
         SoftReset = 0x70        # Software Reset
         EMMState0 = 0x71        # EMM State 0
@@ -42,7 +42,7 @@ class ATM90E32:
         CRCErrStatus = 0x79     # CRC Error Status
         CRCDigest = 0x7A        # CRC Digest
         CfgRegAccEn = 0x7F      # Configure Register Access Enable
-    
+
         #* LOW POWER MODE REGISTERS - NOT USED *#
         DetectCtrl = 0x10
         DetectTh1 = 0x11
@@ -58,7 +58,7 @@ class ATM90E32:
         PMConfig = 0x10B
         PMAvgSamples = 0x1C
         PMIrmsLSB = 0x1D
-    
+
         #* CONFIGURATION REGISTERS *#
         PLconstH = 0x31         # High Word of PL_Constant
         PLconstL = 0x32         # Low Word of PL_Constant
@@ -70,7 +70,7 @@ class ATM90E32:
         PPhaseTh = 0x38         # Startup Power Accum Th (P)
         QPhaseTh = 0x39         # Startup Power Accum Th (Q)
         SPhaseTh = 0x3A         # Startup Power Accum Th (S)
-    
+
         #* CALIBRATION REGISTERS *#
         PoffsetA = 0x41         # A Line Power Offset (P)
         QoffsetA = 0x42         # A Line Power Offset (Q)
@@ -84,7 +84,7 @@ class ATM90E32:
         PhiB = 0x4A             # B Line Calibration Angle
         PQGainC = 0x4B          # C Line Calibration Gain
         PhiC = 0x4C             # C Line Calibration Angle
-    
+
         #* FUNDAMENTAL#HARMONIC ENERGY CALIBRATION REGISTERS *#
         POffsetAF = 0x51        # A Fund Power Offset (P)
         POffsetBF = 0x52        # B Fund Power Offset (P)
@@ -92,7 +92,7 @@ class ATM90E32:
         PGainAF = 0x54          # A Fund Power Gain (P)
         PGainBF = 0x55          # B Fund Power Gain (P)
         PGainCF = 0x56          # C Fund Power Gain (P)
-    
+
         #* MEASUREMENT CALIBRATION REGISTERS *#
         UgainA = 0x61           # A Voltage RMS Gain
         IgainA = 0x62           # A Current RMS Gain
@@ -107,7 +107,7 @@ class ATM90E32:
         UoffsetC = 0x6B         # C Voltage Offset
         IoffsetC = 0x6C         # C Current Offset
         IoffsetN = 0x6E         # N Current Offset
-    
+
         #* ENERGY REGISTERS *#
         APenergyT = 0x80        # Total Forward Active
         APenergyA = 0x81        # A Forward Active
@@ -125,13 +125,13 @@ class ATM90E32:
         RNenergyA = 0x8D        # A Reverse Reactive
         RNenergyB = 0x8E        # B Reverse Reactive
         RNenergyC = 0x8F        # C Reverse Reactive
-    
+
         SAenergyT = 0x90        # Total Apparent Energy
         SenergyA = 0x91         # A Apparent Energy
         SenergyB = 0x92         # B Apparent Energy
         SenergyC = 0x93         # C Apparent Energy
-    
-    
+
+
         #* FUNDAMENTAL # HARMONIC ENERGY REGISTERS *#
         APenergyTF = 0xA0       # Total Forward Fund. Energy
         APenergyAF = 0xA1       # A Forward Fund. Energy
@@ -149,7 +149,7 @@ class ATM90E32:
         ANenergyAH = 0xAD       # A Reverse Harm. Energy
         ANenergyBH = 0xAE       # B Reverse Harm. Energy
         ANenergyCH = 0xAF       # C Reverse Harm. Energy
-    
+
         #* POWER & P.F. REGISTERS *#
         PmeanT = 0xB0           # Total Mean Power (P)
         PmeanA = 0xB1           # A Mean Power (P)
@@ -167,7 +167,7 @@ class ATM90E32:
         PFmeanA = 0xBD          # A Power Factor
         PFmeanB = 0xBE          # B Power Factor
         PFmeanC = 0xBF          # C Power Factor
-    
+
         PmeanTLSB = 0xC0        # Lower Word (Tot. Act. Power)
         PmeanALSB = 0xC1        # Lower Word (A Act. Power)
         PmeanBLSB = 0xC2        # Lower Word (B Act. Power)
@@ -180,7 +180,7 @@ class ATM90E32:
         SmeanALSB = 0xC9        # Lower Word (A App. Power)
         SmeanBLSB = 0xCA        # Lower Word (B App. Power)
         SmeanCLSB = 0xCB        # Lower Word (C App. Power)
-    
+
         #* FUND#HARM POWER & V#I RMS REGISTERS *#
         PmeanTF = 0xD0          # Total Active Fund. Power
         PmeanAF = 0xD1          # A Active Fund. Power
@@ -197,7 +197,7 @@ class ATM90E32:
         IrmsB = 0xDE            # B RMS Current
         IrmsC = 0xDF            # C RMS Current
         IrmsN = 0xDC            # Calculated N RMS Current
-    
+
         PmeanTFLSB = 0xE0       # Lower Word (Tot. Act. Fund. Power)
         PmeanAFLSB = 0xE1       # Lower Word (A Act. Fund. Power)
         PmeanBFLSB = 0xE2       # Lower Word (B Act. Fund. Power)
@@ -214,7 +214,7 @@ class ATM90E32:
         IrmsALSB = 0xED         # Lower Word (A RMS Current)
         IrmsBLSB = 0xEE         # Lower Word (B RMS Current)
         IrmsCLSB = 0xEF         # Lower Word (C RMS Current)
-    
+
         #* PEAK, FREQUENCY, ANGLE & TEMPTEMP REGISTERS*#
         UPeakA = 0xF1           # A Voltage Peak
         UPeakB = 0xF2           # B Voltage Peak
@@ -231,19 +231,19 @@ class ATM90E32:
         UangleA = 0xFD          # A Voltage Phase Angle
         UangleB = 0xFE          # B Voltage Phase Angle
         UangleC = 0xFF          # C Voltage Phase Angle
-        
+
         # -------------------------- end of register definition --------------------------------------------------
-    
+
     SPI_WRITE = 0
     SPI_READ = 1
-    
+
     LINE_FREQ_50HZ = 50 # Europe and others line freq.
     LINE_FREQ_60HZ = 60 # North America and others line freq.
     VALID_LINE_FREQS = (LINE_FREQ_50HZ, LINE_FREQ_60HZ)
-    
+
     DEFAULT_VOLTAGE_GAIN = 10734
     DEFAULT_CURRENT_GAIN = 10734
-    
+
     @staticmethod
     def SPIFactory(sckPin, mosiPin, misoPin, spiBus=0):
         """@brief Return an SPI instance to be used to communicate with the ATM90E32 device.
@@ -329,12 +329,13 @@ class ATM90E32:
         self._lineFreqReg = None
         if pgaGain == 1:
             self._pgaGain = 0x0000
-        if pgaGain == 2:
+        elif pgaGain == 2:
             self._pgaGain = 0x0015
-        if pgaGain == 4:
+        elif pgaGain == 4:
             self._pgaGain = 0x002A
         else:
-            raise Exception(f"{pgaGain} is an invalid PGA gain (1,2 or 4 rare valid)")
+            raise Exception(f"{pgaGain} is an invalid PGA gain (1,2 or 4 are valid)")
+
         self._uGain1 = uGain1
         self._uGain2 = uGain2
         self._uGain3 = uGain3
@@ -348,13 +349,13 @@ class ATM90E32:
         self._iOffset2 = iOffset2
         self._iOffset3 = iOffset3
         self._allVoltageFromPort1 = allVoltageFromPort1
-        
-        
+
+
         self._wattsGateValue = 0.4  # When reading power and the measured power is below this
                                     # value (in watts) we return a power of 0.0
 
         self._init_config()
-        
+
         # Chip requires a bit less than 200mS after init for readings to stabilize
         utime.sleep_ms(200)
 
@@ -363,26 +364,26 @@ class ATM90E32:
         """@brief Get the power gate value.
            @return The active power gate value in watts."""
         return self._wattsGateValue
-    
+
     @wattsGateValue.setter
     def wattsGateValue(self, wattsGateValue):
         """@brief Set the csPin. This is useful when using one instance of ATM90E32 for different devices.
             @param wattsGateValue The power gate value in watts."""
         self._wattsGateValue = wattsGateValue
-        
+
     @property
     def csPin(self):
         """@brief Get the csPin.
            @return The csPin (integer value)."""
         return self._csGPIOPin
-    
+
     @csPin.setter
     def csPin(self, csGPIOPin):
         """@brief Set the csPin. This is useful when using one instance of ATM90E32 for different devices.
             @param csGPIOPin The GPIO pin used as a chip select fort he ATM90E32 device (integer value)."""
         self._csPin = Pin(csGPIOPin, Pin.OUT, value=True) # Set the CS pin to inactive state in GPIO pin initialisation.
         self._csGPIOPin = csGPIOPin
-           
+
     def _spi_raw(self, rw, address, value):
         """@brief Read/write 16 bits of data from/to an SPI register.
            @param rw ATM90E32.SPI_WRITE or ATM90E32.SPI_READ
@@ -421,7 +422,7 @@ class ATM90E32:
            @param address The register address.
            @return An unsigned 16 bit value."""
         return self._spi_raw(ATM90E32.SPI_READ, address, 0xFFFF)
-        
+
     def _readRegister2C(self, address):
         """@brief Read a signed 16bit register.
            @param address The register address.
@@ -448,7 +449,7 @@ class ATM90E32:
         value_l = self._spi_raw(ATM90E32.SPI_READ, address_low, 0xFFFF)
         value = (value_h << 16) | value_l
         return value - int((value << 1) & 2**32)
-    
+
     def _init_config(self):
         """@brief Initialise the ATM90e32 registers."""
         if self._lineFreq == ATM90E32.LINE_FREQ_50HZ:
@@ -456,13 +457,13 @@ class ATM90E32:
             FreqHiThresh = 51 * 100
             FreqLoThresh = 49 * 100
             sagV = 190
-                        
+
         else:
             self._lineFreqReg = 4231 # North America line frequency
             FreqHiThresh = 61 * 100
             FreqLoThresh = 59 * 100
             sagV = 90
-                        
+
         fvSagTh = (sagV * 100 * 1.41421356) / (2 * self._uGain1 / 32768) # Voltage Sag threshhold in RMS (1.41421356)
         vSagTh = ATM90E32.Floor(fvSagTh)                               # convert to int for sending to the atm90e32.
 
@@ -476,7 +477,7 @@ class ATM90E32:
         self._writeRegister(ATM90E32.Register.SagTh, vSagTh)           # Voltage sag threshold
         self._writeRegister(ATM90E32.Register.FreqHiTh, FreqHiThresh)  # High frequency threshold - 61.00Hz
         self._writeRegister(ATM90E32.Register.FreqLoTh, FreqLoThresh)  # Lo frequency threshold - 59.00Hz
-        
+
         self._writeRegister(ATM90E32.Register.EMMIntEn0, 0xB76F)       # Enable interrupts
         self._writeRegister(ATM90E32.Register.EMMIntEn1, 0xDDFD)       # Enable interrupts
         self._writeRegister(ATM90E32.Register.EMMIntState0, 0x0001)    # Clear interrupt flags
@@ -502,7 +503,7 @@ class ATM90E32:
         self._writeRegister(ATM90E32.Register.PhiB, 0x0000)            # Line calibration angle
         self._writeRegister(ATM90E32.Register.PQGainC, 0x0000)        # Line calibration gain
         self._writeRegister(ATM90E32.Register.PhiC, 0x0000)            # Line calibration angle
-        
+
         self._writeRegister(ATM90E32.Register.PoffsetA, 0x0000)        # A line active power offset
         self._writeRegister(ATM90E32.Register.QoffsetA, 0x0000)        # A line reactive power offset
         self._writeRegister(ATM90E32.Register.PoffsetB, 0x0000)        # B line active power offset
@@ -513,7 +514,7 @@ class ATM90E32:
         # Set metering calibration values (HARMONIC)
         self._writeRegister(ATM90E32.Register.POffsetAF, 0x0000)        # A Fund. active power offset
         self._writeRegister(ATM90E32.Register.POffsetBF, 0x0000)        # B Fund. active power offset
-        self._writeRegister(ATM90E32.Register.POffsetCF, 0x0000)        # C Fund. active power offset 
+        self._writeRegister(ATM90E32.Register.POffsetCF, 0x0000)        # C Fund. active power offset
         self._writeRegister(ATM90E32.Register.PGainAF, 0x0000)        # A Fund. active power gain
         self._writeRegister(ATM90E32.Register.PGainBF, 0x0000)        # B Fund. active power gain
         self._writeRegister(ATM90E32.Register.PGainCF, 0x0000)        # C Fund. active power gain
@@ -523,19 +524,19 @@ class ATM90E32:
         self._writeRegister(ATM90E32.Register.IgainA, int(self._iGain1))      # A line current gain
         self._writeRegister(ATM90E32.Register.UoffsetA, int(self._uOffset1))  # A Voltage offset
         self._writeRegister(ATM90E32.Register.IoffsetA, int(self._iOffset1))  # A line current offset
-        
+
         self._writeRegister(ATM90E32.Register.UgainB, int(self._uGain2))       # B Voltage rms gain
         self._writeRegister(ATM90E32.Register.IgainB, int(self._iGain2))      # B line current gain
         self._writeRegister(ATM90E32.Register.UoffsetB, int(self._uOffset2))  # B Voltage offset
         self._writeRegister(ATM90E32.Register.IoffsetB, int(self._iOffset2))  # B line current offset
-        
+
         self._writeRegister(ATM90E32.Register.UgainC, int(self._uGain3))       # C Voltage rms gain
         self._writeRegister(ATM90E32.Register.IgainC, int(self._iGain3))      # C line current gain
         self._writeRegister(ATM90E32.Register.UoffsetC, int(self._uOffset3))  # C Voltage offset
         self._writeRegister(ATM90E32.Register.IoffsetC, int(self._iOffset3))  # C line current offset
 
         self._writeRegister(ATM90E32.Register.CfgRegAccEn, 0x0000)    # end configuration
-        
+
     # The properties do not conform to camel case because we keep the same case as
     # the registers in the data sheet.
     @property
@@ -543,7 +544,7 @@ class ATM90E32:
         """@return Last Read/Write SPI Value"""
         reading =  self._readRegister(ATM90E32.Register.LastSPIData)
         return reading
-    
+
     @property
     def EMMIntState0(self):
         """@return EMM Interrupt Status 0"""
@@ -659,13 +660,13 @@ class ATM90E32:
         return reading * 0.00032
 
     def _getGatedPower(self, watts):
-        """@return The gated power value. If the measured power is below the 
+        """@return The gated power value. If the measured power is below the
                    gated power then 0.0 is returned."""
         if watts > self._wattsGateValue or watts < -self._wattsGateValue:
             return watts
         else:
             return 0.0
-        
+
     @property
     def PmeanA(self):
         """@return Channel A Active Power"""
@@ -686,7 +687,7 @@ class ATM90E32:
         reading = self._readLongRegister2C(ATM90E32.Register.PmeanC, ATM90E32.Register.PmeanCLSB)
         watts = reading * 0.00032
         return self._getGatedPower(watts)
-    
+
     @property
     def QmeanT(self):
         """@return Lower Word of Total (All-phase-sum) Reactive Power"""
@@ -700,7 +701,7 @@ class ATM90E32:
         reading = self._readLongRegister2C(ATM90E32.Register.QmeanA, ATM90E32.Register.QmeanALSB)
         watts = reading * 0.00032
         return self._getGatedPower(watts)
-    
+
     @property
     def QmeanB(self):
         """@return Channel B Lower Word of Total (All-phase-sum) Reactive Power"""
@@ -721,7 +722,7 @@ class ATM90E32:
         reading = self._readLongRegister2C(ATM90E32.Register.SAmeanT, ATM90E32.Register.SAmeanTLSB)
         watts = reading * 0.00032
         return self._getGatedPower(watts)
-    
+
     @property
     def SmeanA(self):
         """@return Lower Word of Phase A Apparent Power"""
@@ -809,7 +810,7 @@ while True:
                         iOffset1=0x0000,
                         iOffset2=0x0000,
                         iOffset3=0x0000)
-    
+
     volts = atm90e32.UrmsA
     print(f"volts={volts}")
     if volts > 0:
@@ -819,7 +820,7 @@ while True:
     elif volts == 0.0:
         break
     print(f"voltageOffset={voltageOffset}")
-    
+
 print("!!! VOLTAGE OFFSET CALIBRATION !!!")
 print(f"volts = {volts}")
 VOffsetReg = ATM90E32.FromSigned(voltageOffset,16)
@@ -852,7 +853,7 @@ while True:
     elif amps == 0.0:
         break
     print(f"ampsOffset={ampsOffset}")
-    
+
 print("!!! AMPS (A) OFFSET CALIBRATION !!!")
 print(f"amps = {amps}")
 iAOffsetReg = ATM90E32.FromSigned(ampsOffset,16)
@@ -876,29 +877,29 @@ atm90e32 = ATM90E32(spi,
                     iOffset3=0x0000)
 
 while True:
-    
+
     aa = atm90e32.IrmsA
     va = atm90e32.UrmsA
     apa = atm90e32.PmeanA
     pfa = atm90e32.PFmeanA
-    
+
     ab = atm90e32.IrmsB
     vb = atm90e32.UrmsB
     apb = atm90e32.PmeanB
     pfb = atm90e32.PFmeanB
-    
+
     ac = atm90e32.IrmsC
     vc = atm90e32.UrmsC
     apc = atm90e32.PmeanC
     pfc = atm90e32.PFmeanC
-    
+
     ct = atm90e32.Temp
-    
+
     print(f"A: a={aa}, v={va}, ap={apa}, pf={pfa}")
     print(f"B: a={ab}, v={vb}, ap={apb}, pf={pfb}")
-    print(f"C: a={ac}, v={vc}, ap={apc}, pf={pfc}") 
+    print(f"C: a={ac}, v={vc}, ap={apc}, pf={pfc}")
     print(f"core Temp = {ct}")
-   
+
     utime.sleep_ms(250)
 
 """

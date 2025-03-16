@@ -4,7 +4,7 @@ class Constants(BaseConstants):
     """@brief Define the constants used by this project.
               This extends BaseContants to make a more specialised configuration for this machine."""
 
-    FIRMWARE_VERSION            = "2.70"
+    FIRMWARE_VERSION            = "2.8"
 
     # Override the BaseConstants GPIO pins to those connected on this hardware
     WIFI_SETUP_BUTTON_PIN       = 14
@@ -27,7 +27,7 @@ class Constants(BaseConstants):
     ATM90E32_CS4_PIN            = 22        # The SPI chip select connected to the second ATM90E32 device.
     ATM90E32_RESET_PIN          = 19        # The active low reset pin for both ATM90E32 devices.
 
-    ATM90E32_PGA_GAIN           = 4
+    ATM90E32_PGA_GAIN           = 1
 
     NAME                        = "NAME"
     IRMS                        = "IRMS"
