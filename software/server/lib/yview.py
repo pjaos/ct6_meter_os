@@ -3,6 +3,8 @@
 import json
 import urllib
 import socket
+import psutil
+import struct
 import paho.mqtt.client as mqtt
 
 from time import time, sleep
@@ -545,17 +547,34 @@ class AreYouThereThread(Thread):
         return subNetMultiCastAddressList
 
     @staticmethod
-    def GetSubnetMultiCastAddress(ifName, ifDownDelay=10):
+    def NetmaskToCIDR(netmask):
+        return sum(bin(struct.unpack("!I", socket.inet_aton(netmask))[0]).count("1") for _ in range(1))
+
+    @staticmethod
+    def GetInterfaceDict():
+        interfaces = psutil.net_if_addrs()
+        if_dict = {}
+        for iface, addrs in interfaces.items():
+            ip_list = []
+            for addr in addrs:
+                if addr.family == socket.AF_INET:  # IPv4 addresses
+                    ip = addr.address
+                    netmask = addr.netmask
+                    cidr = AreYouThereThread.NetmaskToCIDR(netmask)
+                    ip_list.append(f"{ip}/{cidr}")
+            if len(ip_list) > 0:
+                if_dict[iface]=ip_list
+        return if_dict
+
+    @staticmethod
+    def GetSubnetMultiCastAddress(ifName):
         """@brief Get the subnet multicast IP address for the given interface.
            @param ifName The name of a local network interface.
-           @param ifDownDelay The delay in seconds to wait for the interface to come up if it's not found.
-                              This may occur if the WiFi interface is down.
            @return A tuple of all the subnet multicast IP addresses."""
         subNetMultiCastAddressList = []
-        netIF = NetIF()
         # Don't exit until we have the multicast address
         while len(subNetMultiCastAddressList) == 0:
-            ifDict = netIF.getIFDict()
+            ifDict = AreYouThereThread.GetInterfaceDict()
             if ifName is None or len(ifName) == 0:
                 for _ifName in ifDict:
                     ipList = ifDict[_ifName]
@@ -565,8 +584,6 @@ class AreYouThereThread(Thread):
                 ipList = ifDict[ifName]
                 AreYouThereThread.UpdateMultiCastAddressList(subNetMultiCastAddressList, ipList)
 
-            else:
-                sleep(ifDownDelay)
         return tuple(subNetMultiCastAddressList)
 
     def run(self):

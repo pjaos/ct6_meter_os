@@ -11,6 +11,9 @@ import json
 class CT6Stats(object):
     """@brief Responsible for discovering all CT6 units on the local network and displaying the stats as
               JSON text on the command line."""
+
+    IP_ADDRESS_KEY = "IP_ADDRESS"
+
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance handling user input and output (E.G stdin/stdout or a GUI)
@@ -32,7 +35,13 @@ class CT6Stats(object):
     def hear(self, devDict):
         """@brief Called when data is received from the device.
            @param devDict The device dict."""
-        rich.print_json(json.dumps(devDict))
+        # If the user wants to view data from a single unit.
+        if self._options.address:
+            if CT6Stats.IP_ADDRESS_KEY in devDict and devDict[CT6Stats.IP_ADDRESS_KEY] == self._options.address:
+                rich.print_json(json.dumps(devDict))
+        # If the user wants to view data from all units.
+        else:
+            rich.print_json(json.dumps(devDict))
 
 def main():
     """@brief Program entry point"""
@@ -41,7 +50,9 @@ def main():
     try:
         parser = argparse.ArgumentParser(description="A tool to discover all CT6 units on the local network and displaying the stats as JSON text on the command line.",
                                          formatter_class=argparse.RawDescriptionHelpFormatter)
-        parser.add_argument("-d", "--debug",  action='store_true', help="Enable debugging.")
+        parser.add_argument("-d", "--debug",   action='store_true', help="Enable debugging.")
+        parser.add_argument("-a", "--address", help="The IP address of a single CT6 unit if you wish to get the stats from a single device.", default=None)
+
 
         options = parser.parse_args()
 
