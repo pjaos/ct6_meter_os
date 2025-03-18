@@ -92,6 +92,7 @@ class CT6GUIServer(TabbedNiceGui):
         self._dialogPrompt              = None
         self._dialogYesMethod           = None
         self._loadOffDialog             = None
+        self._dialog2                   = None
 
         self._skipFactoryConfigRestore  = False
         if '--skip_factory_config_restore' in sys.argv:
@@ -265,7 +266,7 @@ class CT6GUIServer(TabbedNiceGui):
             # Add to button list so that button is disabled while activity is in progress.
             self._appendButtonList(self._setWiFiButton)
 
-    def _setExpectedPgrogressMsgCount(self, nonDebugModeCount, debugModeCount):
+    def _setExpectedProgressMsgCount(self, nonDebugModeCount, debugModeCount):
         """@brief Set the number of log messages expected to complete a tasks progress.
            @param nonDebugModeCount The number of expected messages in non debug mode.
            @param nonDebugModeCount The number of expected messages in debug mode."""
@@ -279,7 +280,7 @@ class CT6GUIServer(TabbedNiceGui):
            @param event The button event."""
         self._initTask()
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(22,86)
+        self._setExpectedProgressMsgCount(22,86)
         threading.Thread( target=self._setWiFiNetwork, args=(self._wifiSSIDInput.value, self._wifiPasswordInput.value)).start()
 
     def _setWiFiNetwork(self, wifiSSID, wifiPassword):
@@ -333,10 +334,44 @@ class CT6GUIServer(TabbedNiceGui):
     def _upgradeButtonButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
+        self._upgradeChecks()
+
+    def _upgradeChecks(self):
+        """@brief perform some check on the upgrade process."""
+        options = getCT6ToolCmdOpts()
+        devManager = YDevManager(self, options)
+        devManager.setIPAddress(self._ct6IPAddressInput1.value)
+        userPrompt = devManager.upgradeChecks()
+        if userPrompt is None:
+            self._startUpgradeThread()
+        else:
+            self._showContinueUpgradeDialog(userPrompt)
+
+    def _showContinueUpgradeDialog(self, userPrompt):
+        """@brief Present a dialog to the user asking them if they with to proceed with the upgrade."""
+        with ui.dialog() as self._dialog2, ui.card().style('width: 400px;'):
+            ui.label(userPrompt)
+            with ui.row():
+                ui.button("Yes", on_click=self._startUpgradeThread)
+                ui.button("No", on_click=self._dialog2_no_button_press)
+        self._dialog2.open()
+
+    def _dialog2_no_button_press(self):
+        """@brief Called when dialog 2 no button is selected to close the dialog."""
+        self._closeDialog2()
+
+    def _closeDialog2(self):
+        """@brief Close dialog 2 if it exists."""
+        if self._dialog2:
+            self._dialog2.close()
+
+    def _startUpgradeThread(self):
+        """@brief Start the thread that performs the upgrade."""
+        self._closeDialog2()
         self._initTask()
         self._copyCT6Address(self._ct6IPAddressInput1.value)
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(107,120)
+        self._setExpectedProgressMsgCount(107,120)
         threading.Thread( target=self._doUpgrade, args=(self._ct6IPAddressInput1.value,)).start()
 
     def _doUpgrade(self, ct6IPAddress):
@@ -393,7 +428,7 @@ class CT6GUIServer(TabbedNiceGui):
         self._initTask()
         self._copyCT6Address(self._ct6IPAddressInput2.value)
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(2,3)
+        self._setExpectedProgressMsgCount(2,3)
         threading.Thread( target=self._setDevName, args=(self._ct6IPAddressInput2.value,self._ct6DeviceNameInput.value)).start()
 
     def _saveConfigDict(self, ct6IPAddress, cfgDict):
@@ -484,7 +519,7 @@ class CT6GUIServer(TabbedNiceGui):
         self._initTask()
         self._copyCT6Address(self._ct6IPAddressInput2.value)
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(3,4)
+        self._setExpectedProgressMsgCount(3,4)
         threading.Thread( target=self._getDevName, args=(self._ct6IPAddressInput2.value,)).start()
 
     def _getDevName(self, ct6IPAddress):
@@ -536,7 +571,7 @@ class CT6GUIServer(TabbedNiceGui):
         self._initTask()
         self._copyCT6Address(self._ct6IPAddressInput3.value)
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(2,3)
+        self._setExpectedProgressMsgCount(2,3)
         threading.Thread( target=self._setPortNames, args=(self._ct6IPAddressInput3.value, (self._ct1PortNameInput.value,
                                                                                         self._ct2PortNameInput.value,
                                                                                         self._ct3PortNameInput.value,
@@ -575,7 +610,7 @@ class CT6GUIServer(TabbedNiceGui):
         self._initTask()
         self._copyCT6Address(self._ct6IPAddressInput3.value)
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(2,3)
+        self._setExpectedProgressMsgCount(2,3)
         threading.Thread( target=self._getPortNames, args=(self._ct6IPAddressInput3.value,)).start()
 
     def _getPortNames(self, ct6IPAddress):
@@ -649,7 +684,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         self._initTask()
         self._copyCT6Address(self._ct6IPAddressInput4.value)
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(1,2)
+        self._setExpectedProgressMsgCount(1,2)
         threading.Thread( target=self._setMQTTServer, args=(self._ct6IPAddressInput4.value,
                                                         self._mqttServerAddressInput.value ,
                                                         self._mqttServerPortInput.value,
@@ -718,7 +753,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         self._initTask()
         self._copyCT6Address(self._ct6IPAddressInput4.value)
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(3,4)
+        self._setExpectedProgressMsgCount(3,4)
         threading.Thread( target=self._getMQTTServer, args=(self._ct6IPAddressInput4.value,)).start()
 
     def _getMQTTServer(self, ct6IPAddress):
@@ -852,7 +887,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
            @param event The button event."""
         self._initTask()
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(91,219)
+        self._setExpectedProgressMsgCount(91,219)
         threading.Thread( target=self._installSW, args=(self._wifiSSIDInput.value, self._wifiPasswordInput.value)).start()
 
     def _correctRshellWindowsPath(self, aPath):
@@ -1006,7 +1041,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
         # No progress on this as it's difficult to predict when the CT6 device will reconnect to the wiFi after a reboot.
         self._initTask()
         self._saveConfig()
-        self._setExpectedPgrogressMsgCount(9,12)
+        self._setExpectedProgressMsgCount(9,12)
         inputOptions = self._ct6Select.options
         inputStr = self._ct6Select.value
         # If not selected, select the first in the list as this appears to the user

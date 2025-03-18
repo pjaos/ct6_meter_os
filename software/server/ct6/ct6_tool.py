@@ -1137,6 +1137,52 @@ class YDevManager(CT6Base):
         else:
             self._info(f"Upgrade successful. Switched from {self._orgActiveAppFolder} to {activeApp}")
 
+    def upgradeChecks(self):
+        """@brief Perform checks prior to upgrading a CT6 unit.
+           @return None if no user confirmation is required or
+                   The text of the user prompt if user confirmation is required."""
+        returnStr = None
+        self._ensureValidAddress()
+        currentFWVersion = self.getFWVersion()
+        self._info(f"Current CT6 firmware version: {currentFWVersion}")
+        newFWVersion = self._getNewVersion()
+        self._info(f"New CT6 firmware version:     {newFWVersion}")
+
+        if currentFWVersion < 2.8 and newFWVersion >= 2.8:
+            returnStr = f"If you upgrade to V{newFWVersion} CT6 firmware you will need to recalibrate the current on each CT6 port. Do you wish to proceed with the upgrade ?"
+
+        elif currentFWVersion >= 2.8 and newFWVersion < 2.8:
+            returnStr = f"If you downgrade to V{newFWVersion} CT6 firmware you will need to recalibrate the current on each CT6 port. Do you wish to proceed with the downgrade ?"
+
+        elif currentFWVersion == newFWVersion:
+            returnStr = f"The CT6 already has V{newFWVersion}. Do you wish to proceed ?"
+
+        return returnStr
+
+    def _getNewVersion(self):
+        """@return the version CT6 firmware that the unit will be upgraded to."""
+        version = None
+        constantsFile = os.path.join(self._upgradeAppRoot, "constants.py")
+        if os.path.isfile(constantsFile):
+            with open(constantsFile, 'r') as fd:
+                lines = fd.readlines()
+            for line in lines:
+                if line.find("FIRMWARE_VERSION") != -1:
+                    elems = line.split("=")
+                    if len(elems) > 1:
+                        version_str = elems[1]
+                        version_str = version_str.replace('"', '')
+                        version_str = version_str.rstrip("\n\r")
+                        try:
+                            version = float(version_str)
+                        except ValueError:
+                            pass
+
+        else:
+            raise Exception(f"Failed to find the {constantsFile} file.")
+
+        return version
+
     def upgrade(self, promptReboot=True):
         """@brief Perform an upgrade on the units SW.
            @param promptReboot If True prompt the user to enter 'y' to reboot the unit."""
