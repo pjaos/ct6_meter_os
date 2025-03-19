@@ -1186,28 +1186,38 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
            @param acFreq60Hz True if AC main freq is 60 Hz, False if 50 Hz."""
         try:
             try:
-                self.info(f"Start current calibration on port {port}.")
-                self.info(f"Current = {amps:.2f} Amps.")
-                if amps >= 1.0:
+                if self._options.shelly is None and amps < 1:
+                    self.error("The measured current must be at least 1 amps to calibrate the CT port.")
+                    self.info("You must measure this load current and enter the AC current value.")
+
+                else:
+                    self.info(f"Start current calibration on port {port}.")
+                    #If this we don't have acces to the shelly unit we use the current entered by the user.
+                    if self._options.shelly is None:
+                        self.info(f"Current = {amps:.2f} Amps.")
                     factorySetupOptions = getFactorySetupCmdOpts()
                     factorySetupOptions.address = address
                     factorySetupOptions.ac60hz = acFreq60Hz
                     factorySetup = FactorySetup(self, factorySetupOptions)
-                    # Perform the port calibration and store the result in the CT6 device flash.
-                    factorySetup._calCurrentGain(port, acAmps=amps, noLoadTimeoutSeconds=5)
-                    cmdDict = {CT6GUIServer.AC_LOAD_OFF_TO_GUI_CMD: None}
-                    responseDict = self._updateGUIAndWaitForResponse(cmdDict)
-                    if CT6GUIServer.AC_LOAD_OFF_FROM_GUI_CMD in responseDict:
+                    if self._options.shelly is None:
+                        # Perform the port calibration and store the result in the CT6 device flash.
+                        factorySetup._calCurrentGain(port, acAmps=amps, noLoadTimeoutSeconds=5)
+                        cmdDict = {CT6GUIServer.AC_LOAD_OFF_TO_GUI_CMD: None}
+                        responseDict = self._updateGUIAndWaitForResponse(cmdDict)
+                        if CT6GUIServer.AC_LOAD_OFF_FROM_GUI_CMD in responseDict:
+                            factorySetup._calCurrentOffset(port, loadOffTimeoutSeconds=5)
+                            cmdDict = {CT6GUIServer.CURRENT_CAL_COMPLETE_TO_GUI_CMD: None}
+                            responseDict = self._updateGUI(cmdDict)
+                            self.info(f"Port {port} current calibration complete.")
+                    else:
                         factorySetup._calCurrentOffset(port, loadOffTimeoutSeconds=5)
+                        factorySetup._calCurrentGain(port, acAmps=amps, noLoadTimeoutSeconds=5)
                         cmdDict = {CT6GUIServer.CURRENT_CAL_COMPLETE_TO_GUI_CMD: None}
                         responseDict = self._updateGUI(cmdDict)
                         self.info(f"Port {port} current calibration complete.")
+
                     # Save the calibration values persistently on the CT6 unit
                     factorySetup.saveFactoryCfg()
-
-                else:
-                    self.error("The measured current must be at least 1 amp to calibrate the CT port.")
-                    self.info("You must measure this load current and enter the AC current value.")
 
             except Exception as ex:
                 self.reportException(ex)
@@ -1315,7 +1325,8 @@ def main():
         parser.add_argument("-d", "--debug",  action='store_true', help="Enable debugging.")
         parser.add_argument("-a", "--address",help=f"Address that the GUI server is bound to (default={CT6GUIServer.DEFAULT_SERVER_ADDRESS}).", default=CT6GUIServer.DEFAULT_SERVER_ADDRESS)
         parser.add_argument("-p", "--port",   type=int, help=f"The TCP server port to which the GUI server is bound to (default={CT6GUIServer.DEFAULT_SERVER_PORT}).", default=CT6GUIServer.DEFAULT_SERVER_PORT)
-        parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
+        parser.add_argument("-s", "--shelly", help="The IP address of the Shelly 1PM Plus unit in the MFG test station. Use this if you are using the increased accuracy test system. If you leave this blank when calibrating the voltage or current you will be prompted to enter the values you measure from external voltage and current meters.", default=None)
+        parser.add_argument("--enable_syslog",action='store_true', help="Enable syslog debug data.")
         parser.add_argument("--skip_factory_config_restore",action='store_true', help="Skip factory config restore. Use with care.")
 
         options = parser.parse_args()
