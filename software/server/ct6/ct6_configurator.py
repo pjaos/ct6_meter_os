@@ -1254,18 +1254,29 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
            @param acFreq60Hz True if AC main freq is 60 Hz, False if 50 Hz"""
         try:
             try:
-                if acVoltage >= 80:
+                if self._options.shelly is None:
+                    if acVoltage >= 80:
+                        factorySetupOptions = getFactorySetupCmdOpts()
+                        factorySetupOptions.address = address
+                        factorySetupOptions.ac60hz = acFreq60Hz
+                        factorySetup = FactorySetup(self, factorySetupOptions)
+                        factorySetup._calVoltageGain(1, maxError=0.3, acVoltage=acVoltage)
+                        factorySetup._calVoltageGain(4, maxError=0.3, acVoltage=acVoltage)
+                        # Save the calibration values persistently on the CT6 unit
+                        factorySetup.saveFactoryCfg()
+                        self.info("Voltage calibration completed successfully.")
+                    else:
+                        self.error("The measured voltage must be at least 80 volts.")
+                else:
                     factorySetupOptions = getFactorySetupCmdOpts()
                     factorySetupOptions.address = address
                     factorySetupOptions.ac60hz = acFreq60Hz
                     factorySetup = FactorySetup(self, factorySetupOptions)
-                    factorySetup._calVoltageGain(1, maxError=0.3, acVoltage=acVoltage)
-                    factorySetup._calVoltageGain(4, maxError=0.3, acVoltage=acVoltage)
+                    factorySetup._calVoltageGain(1, maxError=0.3)
+                    factorySetup._calVoltageGain(4, maxError=0.3)
                     # Save the calibration values persistently on the CT6 unit
                     factorySetup.saveFactoryCfg()
                     self.info("Voltage calibration completed successfully.")
-                else:
-                    self.error("The measured voltage must be at least 80 volts.")
 
             except Exception as ex:
                 self.reportException(ex)
