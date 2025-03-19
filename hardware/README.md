@@ -25,7 +25,7 @@ This project is tested with the YHDC SCT013 100A 0-1V split core current transfo
 
 ![alt text](images/ct.jpg "Current Transformer")
 
-These can be plugged into ports 1 - 6 to provide up to six separate bi directional measurements of AC power. When clipping the current transformer around the live AC wire it is recommended that the face shown above should be on the AC supply (grid) side. This results in -ve power values for imported energy and +ve power values for generated energy. If you wish to have +ve values for imported energy then reverse the current transformer. It should be possible to use other current transformers but they will need calibration as detailed above.
+These can be plugged into ports 1 - 6 to provide up to six separate bi directional measurements of AC power. When clipping the current transformer around the live AC wire it is recommended that the face shown above should be on the AC supply (grid) side. This results in -ve power values for imported energy and +ve power values for generated energy. If you wish to have +ve values for imported energy then reverse the current transformer. It should be possible to use other current transformers but they will need calibration as detailed above. The schematic now includes notes (channel a and channel b) that provides more details on this.
 
 ## Case
 The Case was designed using [FreeCad](https://www.freecad.org/). The various
