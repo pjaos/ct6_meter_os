@@ -51,7 +51,7 @@ The [case](case) folder contains the FreeCad (0.20.2) design files for this proj
 Some info on how to take a CT6 unit apart if you want access to the PCB can be found here [here](README_DISSEMBLY.md)
 
 ## Power Supply
-This project requires the use of an AC - AC supply. The CT6 PCB assembly is calibrated using the power supply detailed below.
+This project requires the use of an AC - AC supply. If you purchase a CT6 unit the CT6 PCB assembly will have been calibrated using the power supply detailed below.
 
 ![alt text](images/test_psu.jpg "CT6 PSU")
 
