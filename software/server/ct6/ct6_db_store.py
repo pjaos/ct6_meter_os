@@ -1036,7 +1036,7 @@ class CTAppServer(object):
 
             # Start running the local collector in a separate thread
             self._localYViewCollector = LocalYViewCollector(self._uio, self._options)
-            self._localYViewCollector.setValidProuctIDList(YViewCollector.VALID_PRODUCT_ID_LIST)
+            self._localYViewCollector.setValidProductIDList(YViewCollector.VALID_PRODUCT_ID_LIST)
 
             # Register the dBHandler as a listener for device data so that it can be
             # stored in the database.

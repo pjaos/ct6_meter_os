@@ -25,7 +25,7 @@ class CT6Stats(object):
         """@brief Search for all CT6 units on the LAN and display stats received from all units."""
         # Start running the local collector in a separate thread
         self._localYViewCollector = LocalYViewCollector(self._uio, self._options)
-        self._localYViewCollector.setValidProuctIDList(YViewCollector.VALID_PRODUCT_ID_LIST)
+        self._localYViewCollector.setValidProductIDList(YViewCollector.VALID_PRODUCT_ID_LIST)
         self._localYViewCollector.addDevListener(self)
         self._localYViewCollector.start()
         # Wait here while until CTRL C
