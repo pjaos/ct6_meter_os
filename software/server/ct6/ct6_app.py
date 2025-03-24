@@ -834,7 +834,7 @@ class MYSQLImporter(object):
             mysql_cursor.execute("SHOW TABLES")
             tables = mysql_cursor.fetchall()
 
-            mysql_cursor.execute(f"SELECT count(*) FROM CT6_SENSOR")
+            mysql_cursor.execute("SELECT count(*) FROM CT6_SENSOR")
             columns = mysql_cursor.fetchall()
 
             for table_name in tables:
@@ -935,7 +935,7 @@ class MYSQLImporter(object):
 
             sqlite_conn.commit()
 
-        except Exception as e:
+        except Exception:
             raise
 
         finally:
