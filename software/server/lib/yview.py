@@ -320,7 +320,7 @@ class YViewMQTTReader(BaseConstants):
                     break
         return tcpPort
 
-    def setValidProuctIDList(self, validProductIDList):
+    def setValidProductIDList(self, validProductIDList):
         """@brief Set a list of product ID's that we're interested in.
            @param validProductIDList The list we're interested in."""
         self._validProuctIDList = validProductIDList
@@ -363,7 +363,7 @@ class YViewCollector(BaseConstants):
             try:
                 mqttPort = self._yview.connect()
                 self._yViewMQTTReader = YViewMQTTReader(self._uio, self._options, mqttPort, self._updateListeners)
-                self._yViewMQTTReader.setValidProuctIDList(self._validProuctIDList)
+                self._yViewMQTTReader.setValidProductIDList(self._validProuctIDList)
                 self._yViewMQTTReader.setSSHTunnelManager(self._yview.getSSHTunnelManager())
                 mqttClient = self._yViewMQTTReader.startReading(self._mqttTopic)
 
@@ -410,7 +410,7 @@ class YViewCollector(BaseConstants):
                    the device detailing a port that the device is presenting a service on."""
         return self._yViewMQTTReader.getForwardedPort(deviceName)
 
-    def setValidProuctIDList(self, validProductIDList):
+    def setValidProductIDList(self, validProductIDList):
         """@brief Set a list of product ID's that we're interested in.
            @param validProductIDList The list we're interested in."""
         self._validProuctIDList = validProductIDList
@@ -505,7 +505,7 @@ class LocalYViewCollector(BaseConstants):
             exeSecs = time() - startTime
             self._uio.debug(f"EXET: devListener.hear(devData) Took {exeSecs:.6f} seconds to execute.")
 
-    def setValidProuctIDList(self, validProductIDList):
+    def setValidProductIDList(self, validProductIDList):
         """@brief Set a list of product ID's that we're interested in.
            @param validProductIDList The list we're interested in."""
         self._validProuctIDList = validProductIDList
