@@ -1632,7 +1632,7 @@ class GUI(MultiAppServer):
         self._stopDateTimePicker.value = dateTimeObj - timedelta(days=1)
 
     def _getSelectedDevice(self):
-        """@brief Get teh name of the selected CT6 device.
+        """@brief Get the name of the selected CT6 device.
            @return The name of the selected CT6 device or None if not selected."""
         if len(self._tabList) > 0 and \
            self._allTabsPanel.active >= 0 and \
@@ -1833,7 +1833,6 @@ class GUI(MultiAppServer):
                     self._plotPanel.legend.click_policy="hide"
             self._plotPanel.legend.location = 'bottom_left'
 
-            # The dBname = the device name = the tab name
             self._tabList.append( TabPanel(child=self._plotPanel,  title=db_dict[GUI.META_DATA_ROW][GUI.META_TABLE_DEVNAME_INDEX]) )
             controlPanel = self._getControlPanel(plotNames)
 
