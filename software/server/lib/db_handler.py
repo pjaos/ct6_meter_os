@@ -6,7 +6,7 @@ from .config import ConfigBase
 from .base_constants import BaseConstants
 
 class DBHandler(BaseConstants):
-    """@brief Responsible for interacting with the database."""
+    """@brief Responsible for interacting with a mysql database."""
     def __init__(self, uio, config):
         """@brief Constructor
            @param uio A UIO instance.
@@ -14,7 +14,7 @@ class DBHandler(BaseConstants):
         self._uio = uio
         self._config = config
         self._dataBaseIF = None
-                
+
     def connect(self):
         """@brief connect to the database server."""
         self.disconnect()
@@ -42,7 +42,7 @@ class DBHandler(BaseConstants):
         if self._uio.isDebugEnabled():
             self._dbConfig.uio              = self._uio
         self._dataBaseIF                    = DatabaseIF(self._dbConfig)
-        
+
     def getDatabaseIF(self):
         return self._dataBaseIF
         
