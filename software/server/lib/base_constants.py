@@ -46,12 +46,10 @@ class BaseConstants(object):
                 else:
                     raise Exception("{} is an invalid table schema column.".format(elem))
             return tableSchemaDict
+
         else:
             raise Exception("Invalid Table schema. No elements found.")
 
-        if not timestampFound:
-            raise Exception("No {} table column defined.".format(BaseConstants.TIMESTAMP))
-                
     CT6_META_TABLE_NAME     = "CT6_META"
     CT6_TABLE_NAME          = "CT6_SENSOR"
 
@@ -93,7 +91,7 @@ class BaseConstants(object):
     CT4_ACT_WATTS = "CT4_ACT_WATTS"
     CT5_ACT_WATTS = "CT5_ACT_WATTS"
     CT6_ACT_WATTS = "CT6_ACT_WATTS"
-    
+
     CT1_REACT_WATTS = "CT1_REACT_WATTS"
     CT2_REACT_WATTS = "CT2_REACT_WATTS"
     CT3_REACT_WATTS = "CT3_REACT_WATTS"
@@ -107,7 +105,7 @@ class BaseConstants(object):
     CT4_APP_WATTS = "CT4_APP_WATTS"
     CT5_APP_WATTS = "CT5_APP_WATTS"
     CT6_APP_WATTS = "CT6_APP_WATTS"
-    
+
     CT1_PF = "CT1_PF"
     CT2_PF = "CT2_PF"
     CT3_PF = "CT3_PF"
@@ -117,11 +115,11 @@ class BaseConstants(object):
     VOLTAGE   = "VOLTAGE"
     FREQUENCY = "FREQUENCY"
     ACTIVE = 'ACTIVE'
-    FIELD_LIST_A = [CT1_ACT_WATTS, 
-                    CT2_ACT_WATTS, 
-                    CT3_ACT_WATTS, 
-                    CT4_ACT_WATTS, 
-                    CT5_ACT_WATTS, 
+    FIELD_LIST_A = [CT1_ACT_WATTS,
+                    CT2_ACT_WATTS,
+                    CT3_ACT_WATTS,
+                    CT4_ACT_WATTS,
+                    CT5_ACT_WATTS,
                     CT6_ACT_WATTS,
                     CT1_REACT_WATTS,
                     CT2_REACT_WATTS,
@@ -134,31 +132,34 @@ class BaseConstants(object):
                     CT3_APP_WATTS,
                     CT4_APP_WATTS,
                     CT5_APP_WATTS,
-                    CT6_APP_WATTS,                    
-                    CT1_PF, 
-                    CT2_PF, 
-                    CT3_PF, 
-                    CT4_PF, 
-                    CT5_PF, 
-                    CT6_PF, 
-                    VOLTAGE, 
-                    FREQUENCY, 
-                    TEMPERATURE, 
+                    CT6_APP_WATTS,
+                    CT1_PF,
+                    CT2_PF,
+                    CT3_PF,
+                    CT4_PF,
+                    CT5_PF,
+                    CT6_PF,
+                    VOLTAGE,
+                    FREQUENCY,
+                    TEMPERATURE,
                     RSSI_DBM]
-    # 
-    CT6_DB_META_TABLE_SCHEMA     = "{}:VARCHAR(64) " \
-                                   "{}:VARCHAR(64) " \
-                                   "{}:VARCHAR(64) " \
-                                   "{}:VARCHAR(64) " \
-                                   "{}:VARCHAR(64) " \
-                                   "{}:VARCHAR(64) " \
-                                   "{}:VARCHAR(64)".format(HW_ASSY, 
-                                                           CT1_NAME, 
-                                                           CT2_NAME, 
-                                                           CT3_NAME, 
-                                                           CT4_NAME, 
-                                                           CT5_NAME, 
-                                                           CT6_NAME)
+
+    # Used by ct6_db_store to save to mysql databases.
+    CT6_DB_META_TABLE_SCHEMA     =  "{}:VARCHAR(64) " \
+                                    "{}:VARCHAR(64) " \
+                                    "{}:VARCHAR(64) " \
+                                    "{}:VARCHAR(64) " \
+                                    "{}:VARCHAR(64) " \
+                                    "{}:VARCHAR(64) " \
+                                    "{}:VARCHAR(64)".format(HW_ASSY,
+                                                            CT1_NAME,
+                                                            CT2_NAME,
+                                                            CT3_NAME,
+                                                            CT4_NAME,
+                                                            CT5_NAME,
+                                                            CT6_NAME)
+
+    # Used by ct6_db_store to save to mysql databases.
     CT6_DB_TABLE_SCHEMA          = "TIMESTAMP:TIMESTAMP " \
                                    "{}:FLOAT(6,1) " \
                                    "{}:FLOAT(6,1) " \
@@ -187,12 +188,12 @@ class BaseConstants(object):
                                    "{}:FLOAT(4,1) " \
                                    "{}:FLOAT(3,1) " \
                                    "{}:FLOAT(4,1) " \
-                                   "{}:FLOAT(3,1)".format(CT1_ACT_WATTS, 
-                                                          CT2_ACT_WATTS, 
-                                                          CT3_ACT_WATTS, 
-                                                          CT4_ACT_WATTS, 
-                                                          CT5_ACT_WATTS, 
-                                                          CT6_ACT_WATTS, 
+                                   "{}:FLOAT(3,1)".format(CT1_ACT_WATTS,
+                                                          CT2_ACT_WATTS,
+                                                          CT3_ACT_WATTS,
+                                                          CT4_ACT_WATTS,
+                                                          CT5_ACT_WATTS,
+                                                          CT6_ACT_WATTS,
                                                           CT1_REACT_WATTS,
                                                           CT2_REACT_WATTS,
                                                           CT3_REACT_WATTS,
@@ -205,17 +206,17 @@ class BaseConstants(object):
                                                           CT4_APP_WATTS,
                                                           CT5_APP_WATTS,
                                                           CT6_APP_WATTS,
-                                                          CT1_PF, 
-                                                          CT2_PF, 
-                                                          CT3_PF, 
-                                                          CT4_PF, 
-                                                          CT5_PF, 
+                                                          CT1_PF,
+                                                          CT2_PF,
+                                                          CT3_PF,
+                                                          CT4_PF,
+                                                          CT5_PF,
                                                           CT6_PF,
-                                                          VOLTAGE, 
-                                                          FREQUENCY, 
-                                                          TEMPERATURE, 
+                                                          VOLTAGE,
+                                                          FREQUENCY,
+                                                          TEMPERATURE,
                                                           RSSI_DBM)
-                                
+
     MAX_RES_DB_DATA_TABLE_NAME          = CT6_TABLE_NAME
     MINUTE_RES_DB_DATA_TABLE_NAME       = 'CT6_SENSOR_MINUTE'
     HOUR_RES_DB_DATA_TABLE_NAME         = 'CT6_SENSOR_HOUR'
@@ -223,5 +224,111 @@ class BaseConstants(object):
     LOW_RES_DATA_TABLE_LIST = [MINUTE_RES_DB_DATA_TABLE_NAME,
                                HOUR_RES_DB_DATA_TABLE_NAME,
                                DAY_RES_DB_DATA_TABLE_NAME]
+
+    # Used by ct6_app to save to sqlite databases.
+    CT6_DB_META_TABLE_SCHEMA_SQLITE  = "ID INTEGER PRIMARY KEY, " \
+                                      f"{HW_ASSY} VARCHAR(64), " \
+                                      f"{UNIT_NAME} VARCHAR(64), " \
+                                      f"{CT1_NAME} VARCHAR(64), " \
+                                      f"{CT2_NAME} VARCHAR(64), " \
+                                      f"{CT3_NAME} VARCHAR(64), " \
+                                      f"{CT4_NAME} VARCHAR(64), " \
+                                      f"{CT5_NAME} VARCHAR(64), " \
+                                      f"{CT6_NAME} VARCHAR(64)"
+
+    # Used by ct6_app to save to sqlite databases.
+    CT6_DB_TABLE_SCHEMA_SQLITE   = "TIMESTAMP:TEXT " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL".format(CT1_ACT_WATTS,
+                                                          CT2_ACT_WATTS,
+                                                          CT3_ACT_WATTS,
+                                                          CT4_ACT_WATTS,
+                                                          CT5_ACT_WATTS,
+                                                          CT6_ACT_WATTS,
+                                                          CT1_REACT_WATTS,
+                                                          CT2_REACT_WATTS,
+                                                          CT3_REACT_WATTS,
+                                                          CT4_REACT_WATTS,
+                                                          CT5_REACT_WATTS,
+                                                          CT6_REACT_WATTS,
+                                                          CT1_APP_WATTS,
+                                                          CT2_APP_WATTS,
+                                                          CT3_APP_WATTS,
+                                                          CT4_APP_WATTS,
+                                                          CT5_APP_WATTS,
+                                                          CT6_APP_WATTS,
+                                                          CT1_PF,
+                                                          CT2_PF,
+                                                          CT3_PF,
+                                                          CT4_PF,
+                                                          CT5_PF,
+                                                          CT6_PF,
+                                                          VOLTAGE,
+                                                          FREQUENCY,
+                                                          TEMPERATURE,
+                                                          RSSI_DBM)
+
+    # Used by ct6_app to read from sqlite databases.
+    TIMESTAMP_INDEX = 0
+
+    CT1_ACT_WATTS_INDEX = 1
+    CT2_ACT_WATTS_INDEX = 2
+    CT3_ACT_WATTS_INDEX = 3
+    CT4_ACT_WATTS_INDEX = 4
+    CT5_ACT_WATTS_INDEX = 5
+    CT6_ACT_WATTS_INDEX = 6
+
+    CT1_REACT_WATTS_INDEX = 7
+    CT2_REACT_WATTS_INDEX = 8
+    CT3_REACT_WATTS_INDEX = 9
+    CT4_REACT_WATTS_INDEX = 10
+    CT5_REACT_WATTS_INDEX = 11
+    CT6_REACT_WATTS_INDEX = 12
+
+    CT1_APP_WATTS_INDEX = 13
+    CT2_APP_WATTS_INDEX = 14
+    CT3_APP_WATTS_INDEX = 15
+    CT4_APP_WATTS_INDEX = 16
+    CT5_APP_WATTS_INDEX = 17
+    CT6_APP_WATTS_INDEX = 18
+
+    CT1_PF_INDEX = 19
+    CT2_PF_INDEX = 20
+    CT3_PF_INDEX = 21
+    CT4_PF_INDEX = 22
+    CT5_PF_INDEX = 23
+    CT6_PF_INDEX = 24
+
+    VOLTAGE_INDEX = 25
+    FREQUENCY_INDEX = 26
+    TEMPERATURE_INDEX = 27
+    RSSI_DBM_INDEX = 28
+
 
 
