@@ -254,6 +254,10 @@ class SQLite3DBClient(BaseConstants):
 
             except Empty:
                 pass
+
+            except Exception:
+                self._uio.errorException()
+
             sleep(0.25)
 
     def _handle_dev_dict(self, dev_dict):
@@ -1964,27 +1968,31 @@ class GUI(MultiAppServer):
 
     def _update(self, maxDwellMS=1000):
         """@brief Called periodically to update the Web GUI."""
-        startTime = time()
+        try:
+            startTime = time()
 
-        # Show todays data by default
-        if self._startupShow:
-            # We need a slight delay on startup of the web GUI is not
-            # ready to receive the data from the database.
-            sleep(.8)
-            self._powerButtonHandler(None)
-            self._startupShow = False
+            # Show todays data by default
+            if self._startupShow:
+                # We need a slight delay on startup of the web GUI is not
+                # ready to receive the data from the database.
+                sleep(.8)
+                self._powerButtonHandler(None)
+                self._startupShow = False
 
-        else:
+            else:
 
-            while not self._commsQueue.empty():
-                rxMessage = self._commsQueue.get()
-                if isinstance(rxMessage, dict):
-                    self._processRXDict(rxMessage)
+                while not self._commsQueue.empty():
+                    rxMessage = self._commsQueue.get()
+                    if isinstance(rxMessage, dict):
+                        self._processRXDict(rxMessage)
 
-                # If we've spent long enough processing messages then exit.
-                # Unprocessed messages can be handled the next time _update() is called.
-                if time() > startTime+maxDwellMS:
-                    break
+                    # If we've spent long enough processing messages then exit.
+                    # Unprocessed messages can be handled the next time _update() is called.
+                    if time() > startTime+maxDwellMS:
+                        break
+
+        except Exception:
+            self._uio.errorException()
 
     def _processRXDict(self, rxDict):
         """@brief Process the dicts received from the GUI message queue.
