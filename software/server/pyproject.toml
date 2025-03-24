@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ct6"
-version = "10.3"
+version = "10.4"
 description = ""
 authors = ["Paul Austen <pjaos@gmail.com>"]
 readme = "README.md"
@@ -25,10 +25,11 @@ numpy = "*"
 # requires (on debian based Linux platforms)
 # sudo apt-get install python3-dev default-libmysqlclient-dev build-essential
 # to install mysqlclient
+mysql-connector-python = "*"
 mysqlclient = "*"
 paho-mqtt = "*"
-p3lib = "^1.1.93"
-bokeh = "3.6.0"
+p3lib = "^1.1.109"
+bokeh = "^3.7.0"
 requests = "*"
 ifaddr = "*"
 pandas = "*"
@@ -57,6 +58,7 @@ ct6_dash_mgr = "ct6.ct6_dash_mgr:main"
 ct6_tool = "ct6.ct6_tool:main"
 ct6_configurator = "ct6.ct6_configurator:main"
 ct6_stats = "ct6.ct6_stats:main"
+ct6_app = "ct6.ct6_app:main"
 
 [build-system]
 requires = ["poetry-core"]
