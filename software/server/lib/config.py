@@ -121,7 +121,7 @@ class ConfigBase(ConfigManager):
             ipsStr = ",".join(ifDict[ifName])
             if ifName == "lo":
                 continue
-            self._uio.info("{: <2d}    {: <10s}      {}".format(ifNameID, ifName, ipsStr))
+            self._uio.info("{: <2d}    {: <20s}      {}".format(ifNameID, ifName, ipsStr))
             nameList.append(ifName)
             ifNameID = ifNameID + 1
         return nameList
