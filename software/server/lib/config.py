@@ -202,7 +202,7 @@ class ConfigBase(ConfigManager):
             handled = True
 
         elif key == ConfigBase.LOCAL_GUI_SERVER_PORT:
-            self.inputBool(ConfigBase.LOCAL_GUI_SERVER_PORT, "Enter the TCP port to serve the GUI/Bokeh web interface from", minValue=1024, maxValue=65535)
+            self.inputDecInt(ConfigBase.LOCAL_GUI_SERVER_PORT, "Enter the TCP port to serve the GUI/Bokeh web interface from", minValue=1024, maxValue=65535)
             handled = True
 
         elif key == ConfigBase.SERVER_LOGIN:

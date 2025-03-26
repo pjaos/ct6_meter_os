@@ -117,7 +117,7 @@ class AppConfig(ConfigBase):
                     self._uio.error("{} is not a IP address of an interface on this machine.".format(ipAddr))
 
         elif key == ConfigBase.LOCAL_GUI_SERVER_PORT:
-            self.inputBool(ConfigBase.LOCAL_GUI_SERVER_PORT, "Enter the TCP port to serve the GUI/Bokeh web interface from", minValue=1024, maxValue=65535)
+            self.inputDecInt(ConfigBase.LOCAL_GUI_SERVER_PORT, "Enter the TCP port to serve the GUI/Bokeh web interface from", minValue=1024, maxValue=65535)
 
         elif key == ConfigBase.SERVER_LOGIN:
             self.inputBool(ConfigBase.SERVER_LOGIN, "Enable server login")
@@ -559,7 +559,7 @@ class SQLite3DBClient(BaseConstants):
            @param cursor The cursor to execute the sql command.
            @param dev_dict The CT6 device dict."""
         start_time = dev_dict[YView.RX_TIME_SECS] # This field is not added to the database. It holds the time
-                                             # the dict was received on this machine.
+                                                  # the dict was received on this machine.
 
         self._record_device_timestamp(dev_dict, 1)
         sensor_data_dict = {}
@@ -719,10 +719,19 @@ class SQLite3DBClient(BaseConstants):
            @param tableName The name of the table to add to. If the table does not exist it will be created.
            @param dictData The dict holding the data to be added to the table.
            @param databaseIF The database interface instance."""
-        keyList = list(dictData.keys())
+        # Saw an issue on some platforms where the pandas dataframe returned the timestamp with 9 digits below the
+        # decimal point,(ns resolution). This caused problems later when datetime.fromisoformat() is called to
+        # read the data as it throws an exception. Therefore we convert the datetime instance to a string and
+        # chop it down if required.
+        dictDataCopy = copy.deepcopy(dictData)
+        tsStr = str(dictDataCopy[SQLite3DBClient.TIMESTAMP])
+        if len(tsStr) > 26:
+            dictDataCopy[SQLite3DBClient.TIMESTAMP] = tsStr[:26]
+
+        keyList = list(dictDataCopy.keys())
         valueList = []
         for key in keyList:
-            valueList.append(str(dictData[key]))
+            valueList.append(str(dictDataCopy[key]))
         sql = 'INSERT INTO `' + tableName
         sql += '` ('
         sql += ', '.join(keyList)
