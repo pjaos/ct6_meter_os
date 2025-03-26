@@ -75,7 +75,7 @@ class AppConfig(ConfigBase):
         DB_STORAGE_PATH: GetAppConfigPath(), # By default the db's are stored in the same folder as the config files, but the user can re configure this.
         ConfigBase.CT6_DEVICE_DISCOVERY_INTERFACE: "",
         ConfigBase.LOCAL_GUI_SERVER_ADDRESS: "0.0.0.0",
-        ConfigBase.LOCAL_GUI_SERVER_PORT: 8000,
+        ConfigBase.LOCAL_GUI_SERVER_PORT: 10000,
         ConfigBase.SERVER_LOGIN: False,
         ConfigBase.SERVER_ACCESS_LOG_FILE: ""
     }
