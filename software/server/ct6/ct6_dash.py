@@ -312,7 +312,7 @@ class GUI(MultiAppServer):
         firstDayOfLastMonth = lastDayOfLastMonth - timedelta(days = daysInLastMonth-1)
         self._startDateTimePicker.value = firstDayOfLastMonth.date()
         # Set resolution to hours to set a good trade off between plot time and resolution
-        self._resRadioButtonGroup.active = 2   
+        self._resRadioButtonGroup.active = 2
         endDateTime = lastDayOfLastMonth.replace(hour=23, minute=59, second=59, microsecond=999999)
         self._stopDateTimePicker.value = endDateTime
         # Kick of a plot attempt to save pressing the power button afterwards
@@ -385,17 +385,17 @@ class GUI(MultiAppServer):
            @param enabled True if buttons are to be enabled."""
         for button in self._cmdButtonList:
             button.disabled = not enabled
-            
+
     def _setButtonsActive(self):
         self._enableButtons(True)
 
     def _setButtonsDisabled(self):
         self._enableButtons(False)
-    
+
     def _getActionButtonPanel(self):
         self._powerButton = Button(label="Power", button_type=GUI.BUTTON_TYPE)
         self._powerButton.on_click(self._powerButtonHandler)
-        
+
         self._powerFactorButton = Button(label="Power Factor", button_type=GUI.BUTTON_TYPE)
         self._powerFactorButton.on_click(self._powerFactorButtonHandler)
 
@@ -484,19 +484,19 @@ class GUI(MultiAppServer):
 
         self._lastYearButton = Button(label="Last Year", button_type=GUI.BUTTON_TYPE)
         self._lastYearButton.on_click(self._lastYearButtonHandler)
-        
+
         addStartDaybutton = Button(label = ">")
         addStartDaybutton.on_click(self._addStartDayCallBack)
-        
+
         subtractStartDaybutton = Button(label = "<")
         subtractStartDaybutton.on_click(self._subtractStartDayCallBack)
-                 
-        addStopDaybutton = Button(label = ">") 
+
+        addStopDaybutton = Button(label = ">")
         addStopDaybutton.on_click(self._addStopDayCallBack)
-        
+
         subtractStopDaybutton = Button(label = "<")
         subtractStopDaybutton.on_click(self._subtractStopDayCallBack)
-        
+
         self._startDateTimePicker = DatetimePicker(title='Start (year-month-day hour:min)')
         self._stopDateTimePicker = DatetimePicker(title='Stop (year-month-day hour:min)')
 
@@ -561,7 +561,7 @@ class GUI(MultiAppServer):
                                        self._line3StatusDiv,
                                        self._line4StatusDiv,
                                        self._line5StatusDiv])
-        
+
         self._cmdButtonList = ( self._powerButton,
                                 self._powerFactorButton,
                                 self._voltageButton,
@@ -584,13 +584,13 @@ class GUI(MultiAppServer):
            @param event The event that triggered the method call."""
         dateTimeObj=datetime.fromtimestamp(self._startDateTimePicker.value/1000)
         self._startDateTimePicker.value = dateTimeObj + timedelta(days=1)
-        
+
     def _subtractStartDayCallBack(self, event):
         """@brief Called when the associated button is clicked to subtract a day to the start time.
            @param event The event that triggered the method call."""
         dateTimeObj=datetime.fromtimestamp(self._startDateTimePicker.value/1000)
         self._startDateTimePicker.value = dateTimeObj - timedelta(days=1)
-        
+
     def _addStopDayCallBack(self, event):
         """@brief Called when the associated button is clicked to add a day to the stop time.
            @param event The event that triggered the method call."""
@@ -692,7 +692,7 @@ class GUI(MultiAppServer):
         if GUI.SUMMARY_ROW in rxDict:
             row = rxDict[GUI.SUMMARY_ROW]
             if len(row) == 5:
-                rowIndex = row[0]-1 # Row index is one less than the CT number               
+                rowIndex = row[0]-1 # Row index is one less than the CT number
                 if invertKw:
                     data = dict(sensor=[(rowIndex,f"{row[1]}")],
                                 total=[(rowIndex,f"{row[2]:.2f}")],
@@ -764,7 +764,7 @@ class GUI(MultiAppServer):
             devInfoDict = self._metaDataDict[dbName]
 
             colors = itertools.cycle(Category20_20)
-            
+
             # One panel multiple plot traces
             # By default select the zoom tool
             self._plotPanel = figure(title="",
@@ -778,7 +778,7 @@ class GUI(MultiAppServer):
             # PJA: This simply reverses the values on the plot. Not used as when inverting the data we also
             #      want the kWh table to be updated.
 #            self._plotPanel.y_range.flipped = True
-            
+
             hover = HoverTool()
             dateS =  '@{}'.format(GUI.X_AXIS_NAME)
             dateS += '{%F}'
@@ -815,7 +815,7 @@ class GUI(MultiAppServer):
         mainPanel = row(children=[leftPanel, controlPanel], sizing_mode="stretch_both")
 
         self._updateYAxis()
-        
+
         self._doc.add_root( mainPanel )
 
         self._doc.theme = theme
@@ -861,7 +861,7 @@ class GUI(MultiAppServer):
                 axis.axis_label = "dBm"
             """)
             self._rssiButton.js_on_click(rssiCallback)
-            
+
     def _plotSingleField(self, plotName, units, appPlotField, rxDict):
         """@brief Show a single value list on the plot area
            @param plotName The name of the plot.
@@ -1014,7 +1014,7 @@ class GUI(MultiAppServer):
            @param plotType The type of data to plot."""
         try:
             self._showStatus(0, "Plotting Data...")
-            
+
             fieldNameList = None
             if plotType == GUI.PLOT_TYPE_POWER_ACTIVE:
                 fieldNameList = (BaseConstants.CT1_ACT_WATTS,
@@ -1512,7 +1512,7 @@ def main():
         parser.add_argument("-n", "--no_gui",       action='store_true', help="Do not display the GUI. By default a local web browser is opend displaying the GUI.")
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
         # Default plot points allows 1 week of minute resolution (60*24*7 = 10080)
-        parser.add_argument("-m", "--maxpp",        help="The maximum number of plot points (default=11000).", type=int, default=11000)
+        parser.add_argument("-m", "--maxpp",        help="The maximum number of plot points (default=86400).", type=int, default=86400)
         BootManager.AddCmdArgs(parser)
 
         options = parser.parse_args()
@@ -1529,7 +1529,7 @@ def main():
         if not handled:
             if options.configure:
                 dashConfig.configure(editConfigMethod=dashConfig.edit)
-            
+
             else:
                 ctAppServer.start()
 
