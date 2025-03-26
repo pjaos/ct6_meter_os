@@ -47,28 +47,6 @@ from ct6.ct6_dash_mgr import CRED_JSON_FILE
 from ct6.ct6_tool import CT6Base
 
 class AppConfig(ConfigBase):
-    DEFAULT_CONFIG = {
-        ConfigBase.MQTT_TOPIC:                 "#",
-        ConfigBase.CT6_DEVICE_DISCOVERY_INTERFACE: "",
-        ConfigBase.LOCAL_GUI_SERVER_ADDRESS:    "",
-        ConfigBase.LOCAL_GUI_SERVER_PORT:       8000,
-        ConfigBase.SERVER_LOGIN:                False,
-        ConfigBase.SERVER_ACCESS_LOG_FILE:      ""
-    }
-
-
-class SQLite3DBClient(BaseConstants):
-    """@brief Responsible for interfacing with the sqlite3 database."""
-
-    DB_CONNECTION = "DB_CONNECTION"
-    META_TABLE_UPDATE_TIME = "META_TABLE_UPDATE_TIME"
-    HISTORY_RECORD_SET = "HISTORY_RECORD_SETS"
-    RUNNING_ATTR_DICT = {DB_CONNECTION: None,
-                         META_TABLE_UPDATE_TIME: None,
-                         HISTORY_RECORD_SET: []}
-    @staticmethod
-    def GetQuotedValue(value):
-        return '\"{}"'.format(str(value))
 
     @staticmethod
     def GetAppConfigPath():
@@ -91,12 +69,93 @@ class SQLite3DBClient(BaseConstants):
         config_folder = os.path.join(top_level_config_folder, progName)
         return config_folder
 
+    DB_STORAGE_PATH = "DB_STORAGE_PATH"
+
+    DEFAULT_CONFIG = {
+        DB_STORAGE_PATH: GetAppConfigPath(), # By default the db's are stored in the same folder as the config files, but the user can re configure this.
+        ConfigBase.CT6_DEVICE_DISCOVERY_INTERFACE: "",
+        ConfigBase.LOCAL_GUI_SERVER_ADDRESS: "0.0.0.0",
+        ConfigBase.LOCAL_GUI_SERVER_PORT: 8000,
+        ConfigBase.SERVER_LOGIN: False,
+        ConfigBase.SERVER_ACCESS_LOG_FILE: ""
+    }
+
+    def _enter_storage_path(self):
+        """@brief Allow the user to enter the storage path."""
+        # Ensure the user enters an IP address of an interface on this machine.
+        while True:
+            self.inputStr(AppConfig.DB_STORAGE_PATH, "Enter path to store database and config files (enter d for the default value).", False)
+            config_path = self.getAttr(AppConfig.DB_STORAGE_PATH)
+            if config_path.lower() == 'd':
+                config_path = AppConfig.GetAppConfigPath()
+                if not os.path.isdir(config_path):
+                    os.makedirs(config_path)
+                self.addAttr(AppConfig.DB_STORAGE_PATH, config_path)
+            if os.path.isdir(config_path):
+                break
+
+            else:
+                self._uio.error(f"{config_path} path not found.")
+
+    def edit(self, key):
+        """@brief Provide the functionality to allow the user to enter any ct4 config parameter
+                  regardless of the config type.
+           @param key The dict key to be edited.
+           @return True if the config parameter was handled/updated"""
+        if key == ConfigBase.CT6_DEVICE_DISCOVERY_INTERFACE:
+            self._enterDiscoveryInterface()
+
+        elif key == ConfigBase.LOCAL_GUI_SERVER_ADDRESS:
+            localIPList = self._showLocalIPAddressList()
+            # Ensure the user enters an IP address of an interface on this machine.
+            while True:
+                self.inputStr(ConfigBase.LOCAL_GUI_SERVER_ADDRESS, "Enter the local IP address to serve the GUI/Bokeh web interface from", False)
+                ipAddr = self.getAttr(ConfigBase.LOCAL_GUI_SERVER_ADDRESS)
+                if ipAddr in localIPList:
+                    break
+                else:
+                    self._uio.error("{} is not a IP address of an interface on this machine.".format(ipAddr))
+
+        elif key == ConfigBase.LOCAL_GUI_SERVER_PORT:
+            self.inputBool(ConfigBase.LOCAL_GUI_SERVER_PORT, "Enter the TCP port to serve the GUI/Bokeh web interface from", minValue=1024, maxValue=65535)
+
+        elif key == ConfigBase.SERVER_LOGIN:
+            self.inputBool(ConfigBase.SERVER_LOGIN, "Enable server login")
+
+        elif key == ConfigBase.SERVER_ACCESS_LOG_FILE:
+            self._enterServerAccessLogFile()
+
+        elif key == AppConfig.DB_STORAGE_PATH:
+            self._enter_storage_path()
+
+        elif key == ConfigBase.DB_HOST:
+            self.inputStr(ConfigBase.DB_HOST, "Enter the address of the MYSQL database server", False)
+
+        elif key == ConfigBase.DB_PORT:
+            self.inputDecInt(ConfigBase.DB_PORT, "Enter TCP port to connect to the MYSQL database server", minValue=1024, maxValue=65535)
+
+        elif key == ConfigBase.DB_USERNAME:
+            self.inputStr(ConfigBase.DB_USERNAME, "Enter the database username", False)
+
+class SQLite3DBClient(BaseConstants):
+    """@brief Responsible for interfacing with the sqlite3 database."""
+
+    DB_CONNECTION = "DB_CONNECTION"
+    META_TABLE_UPDATE_TIME = "META_TABLE_UPDATE_TIME"
+    HISTORY_RECORD_SET = "HISTORY_RECORD_SETS"
+    RUNNING_ATTR_DICT = {DB_CONNECTION: None,
+                         META_TABLE_UPDATE_TIME: None,
+                         HISTORY_RECORD_SET: []}
+    @staticmethod
+    def GetQuotedValue(value):
+        return '\"{}"'.format(str(value))
+
     @staticmethod
     def GetConfigPathFile(filename):
         """@brief Get the abs path to a file in the config path.
            @param filename The filename to reside in the config path.
            @return The abs file."""
-        config_folder = SQLite3DBClient.GetAppConfigPath()
+        config_folder = AppConfig.GetAppConfigPath()
         # Create the ~/.config/<app name> folder if it does not exist
         if not os.path.isdir(config_folder):
             # Create the app config folder
@@ -125,21 +184,24 @@ class SQLite3DBClient(BaseConstants):
         return colName
 
     @staticmethod
-    def GetDBFileList():
+    def GetDBFileList(db_storage_path):
         """@return A list of all the available db files."""
         db_file_list = []
-        config_path = SQLite3DBClient.GetAppConfigPath()
-        entry_list = os.listdir(config_path)
+        entry_list = os.listdir(db_storage_path)
         for entry in entry_list:
-            abs_path = os.path.join(config_path, entry)
+            abs_path = os.path.join(db_storage_path, entry)
             if abs_path.endswith(".db"):
                 db_file_list.append(abs_path)
         return db_file_list
 
-    def __init__(self, uio, options):
-        """@brief Constructor"""
+    def __init__(self, uio, options, app_config):
+        """@brief Constructor
+           @param uio A UIO instance.
+           @param options The command line options instance.
+           @param config A ConfigBase instance."""
         self._uio = uio
         self._options = options
+        self._config = app_config
         self._running_attr_dicts = {} # This dict contains RUNNING_ATTR_DICT's
         self._conn = None
         self._last__record_device_time = None
@@ -172,7 +234,8 @@ class SQLite3DBClient(BaseConstants):
     def show_tables(self):
         """@brief List the tables."""
         try:
-            db_file_list = SQLite3DBClient.GetDBFileList()
+            db_storage_folder = self._config.getAttr(AppConfig.DB_STORAGE_PATH)
+            db_file_list = SQLite3DBClient.GetDBFileList(db_storage_folder)
             for db_file in db_file_list:
                 self._connect(db_file)
                 conn = self._running_attr_dicts[db_file][SQLite3DBClient.DB_CONNECTION]
@@ -479,7 +542,8 @@ class SQLite3DBClient(BaseConstants):
            @param dev_dict The CT6 device dict."""
         assy_label = dev_dict[SQLite3DBClient.ASSY]
         assy_label = assy_label.strip()
-        db_file = SQLite3DBClient.GetConfigPathFile(assy_label + '.db')
+        db_storage_folder = self._config.getAttr(AppConfig.DB_STORAGE_PATH)
+        db_file = os.path.join(db_storage_folder, assy_label + '.db')
         conn = self._get_db_conn(db_file, dev_dict)
         cursor = conn.cursor()
 # PJA Handle exceptions adding to db ?
@@ -649,19 +713,6 @@ class SQLite3DBClient(BaseConstants):
             # Add to the set of record to be averaged later
             recordSet.append(thisRecord)
 
-# PJA NOT USED, del if we don't use it
-    def _get_table_row_count(self, cursor, tableName):
-        """@brief Get the number of rows in a table.
-           @param cursor The cursor to execute the sql command.
-           @param tableName The name of the table.
-           @return the number of rows in the table or -1 if not found."""
-        count = -1
-        cmd = "SELECT COUNT(*) as count from {};".format(tableName)
-        retList = self._execute_sql_cmd(cursor, cmd)
-        if len(retList) > 0:
-            count = retList[0]['count']
-        return count
-
     def _add_to_table(self, cursor, tableName, dictData):
         """@brief Add data to table. We assume this is in the currently selected database.
            @param cursor The cursor to execute the sql command.
@@ -698,13 +749,14 @@ class MYSQLImporter(object):
                                 'CT6_SENSOR_HOUR',
                                 'CT6_SENSOR_DAY')
 
-    def __init__(self, uio, options):
+    def __init__(self, uio, options, config):
         """@brief Constructor
            @param uio A UIO instance
            @param options The command line options instance
-           @param config A ConfigBase instance."""
+           @param config An AppConfig instance."""
         self._uio = uio
         self._options = options
+        self._config = config
 
     def _get_ct6_db_list(self, mysql_cursor):
         """@return A list of CT6 databases on the mysql server."""
@@ -754,6 +806,7 @@ class MYSQLImporter(object):
            @param mysql_database_files A list of the mysql database files.
            @param mysql_cursor A cursor connected to the mysql database.
            @return The sqlite database file or None if not found."""
+        db_storage_folder = self._config.getAttr(AppConfig.DB_STORAGE_PATH)
         sqlite_db_file = None
         cmd = f'USE {mysql_db_name};'
         mysql_cursor.execute(cmd)
@@ -763,7 +816,8 @@ class MYSQLImporter(object):
         if len(response) > 0:
             hw_assy = response[0][0]
             sqlite_db_name = hw_assy + ".db"
-            sqlite_db_file = SQLite3DBClient.GetConfigPathFile(sqlite_db_name)
+            sqlite_db_file = os.path.join(db_storage_folder,
+                                          sqlite_db_name)
         return sqlite_db_file
 
     def convert_mysql_to_sqlite(self):
@@ -821,7 +875,7 @@ class MYSQLImporter(object):
             self.create_timestamp_index(sqlite_db_file, MYSQLImporter.VALID_CT6_DB_TABLE_NAMES[1])
             self.add_unit_name_column(sqlite_db_file, db_name)
 
-    def _copy_mysql_to_sqlite_db(self, mysql_cursor, sqlite_db_file, batch_size=10000):
+    def _copy_mysql_to_sqlite_db(self, mysql_cursor, sqlite_db_file, batch_size=100000):
         """@brief Copy the contents of all the tables from the mysql db to the sqlite db.
            @param mysql_cursor The cursor for the mysql database.
            @param sqlite_db_file The sqlite DB to create.
@@ -993,17 +1047,21 @@ class AppServer(object):
 
     def _waitfor_sqlite_db(self):
         """@brief Block waiting for at least one sqlite database to be available."""
+        db_storage_folder = self._config.getAttr(AppConfig.DB_STORAGE_PATH)
         while True:
-            dbFileList = SQLite3DBClient.GetDBFileList()
+            dbFileList = SQLite3DBClient.GetDBFileList(db_storage_folder)
             if len(dbFileList) > 0:
                 break
-            self._uio.info("Waiting for CT6 databases to be created when we receive data from CT6 devices before starting GUI.")
+            self._uio.info(f"Waiting for CT6 databases to appear in {db_storage_folder} before starting GUI.")
             sleep(10)
 
     def _startGUI(self, db_client):
         """@Start the App server running.
            @param db_client An instance of SQLite3DBClient."""
         try:
+            # We block here waiting for CT6 db's to be created by the SQLite3DBClient thread.
+            self._waitfor_sqlite_db()
+
             # If server login is enabled we pass the credentials file to the gui
             # This contains hashed credential details.
             loginEnabled = self._config.getAttr(ConfigBase.SERVER_LOGIN)
@@ -1013,7 +1071,6 @@ class AppServer(object):
                 credFile = None
             gui = GUI(self._uio, self._options, self._config, credFile, db_client)
             openBrowser = not self._options.no_gui
-            self._waitfor_sqlite_db()
             # Block waiting for at least one sqlite database to be available before starting the GUI.
             gui.runBlockingBokehServer(gui.get_app_method_dict(), openBrowser=openBrowser)
 
@@ -1186,7 +1243,8 @@ class GUI(MultiAppServer):
 
     def _update_db_dicts(self):
         """@brief Connect to all available databases."""
-        db_file_list = SQLite3DBClient.GetDBFileList()
+        db_storage_folder = self._config.getAttr(AppConfig.DB_STORAGE_PATH)
+        db_file_list = SQLite3DBClient.GetDBFileList(db_storage_folder)
         for db_file in db_file_list:
             conn = None
             try:
@@ -2062,13 +2120,6 @@ class GUI(MultiAppServer):
                                  BaseConstants.CT5_ACT_WATTS_INDEX,
                                  BaseConstants.CT6_ACT_WATTS_INDEX)
 
-                 # Not sure how useful this message is, it may confuse rather than inform.
-#                 invertKw = self._invertKW()
-#                if invertKw:
-#                    self._line1StatusDiv.text = "Values above 0 = Electricity imported from the grid."
-#                else:
-#                    self._line1StatusDiv.text = "Values below 0 = Electricity imported from the grid."
-
             elif plotType == GUI.PLOT_TYPE_POWER_REACTIVE:
                 fieldIndexList = (BaseConstants.CT1_REACT_WATTS_INDEX,
                                  BaseConstants.CT2_REACT_WATTS_INDEX,
@@ -2370,6 +2421,7 @@ class GUI(MultiAppServer):
             recordCount = responseTuple[0][0]
             self._uio.debug(f"recordCount = {recordCount}")
 
+# PJA
             if recordCount > maxRecordCount:
                 # PJA: Wired this out as it's probably better to abort very large plots due to the time and memory it takes.
                 # The user can always use the '-m/--maxpp' command line argument to increase the default number of maximum
@@ -2532,28 +2584,27 @@ def main():
         if options.syslog:
             uio.info("Syslog enabled")
 
-
-
         handled = BootManager.HandleOptions(uio, options, options.syslog)
         if not handled:
+            app_config = AppConfig(uio,
+                                   SQLite3DBClient.GetConfigPathFile(AppServer.DEFAULT_CONFIG_FILENAME),
+                                   AppConfig.DEFAULT_CONFIG)
 
-            if options.configure:
-                app_config = AppConfig(uio, SQLite3DBClient.GetConfigPathFile(AppServer.DEFAULT_CONFIG_FILENAME) , AppConfig.DEFAULT_CONFIG)
-                app_config.configure(editConfigMethod=app_config.edit)
-
-            elif options.show_tables:
-                db_client = SQLite3DBClient(uio, options)
-                db_client.show_tables()
-
-            elif options.conv_dbs:
-                mysql_importer = MYSQLImporter(uio, options)
+            if options.conv_dbs:
+                mysql_importer = MYSQLImporter(uio, options, app_config)
                 mysql_importer.convert_mysql_to_sqlite()
 
+            elif options.configure:
+                app_config.configure(editConfigMethod=app_config.edit)
+
             else:
-                app_config = AppConfig(uio, SQLite3DBClient.GetConfigPathFile(AppServer.DEFAULT_CONFIG_FILENAME) , AppConfig.DEFAULT_CONFIG)
-                db_client = SQLite3DBClient(uio, options)
-                app_server = AppServer(uio, options, app_config)
-                app_server.start(db_client)
+                db_client = SQLite3DBClient(uio, options, app_config)
+                if options.show_tables:
+                    db_client.show_tables()
+
+                else:
+                    app_server = AppServer(uio, options, app_config)
+                    app_server.start(db_client)
 
     #If the program throws a system exit exception
     except SystemExit:
@@ -2564,8 +2615,6 @@ def main():
     except Exception as ex:
         logTraceBack(uio)
 
-        # PJA REMOVE
-        raise
         if options.debug:
             raise
         else:
