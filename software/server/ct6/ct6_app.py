@@ -15,6 +15,7 @@ import copy
 import itertools
 import re
 import calendar
+import shutil
 
 from datetime import datetime, timedelta, date
 from queue import Queue, Empty
@@ -194,7 +195,7 @@ class SQLite3DBClient(BaseConstants):
                 db_file_list.append(abs_path)
         return db_file_list
 
-    def __init__(self, uio, options, app_config):
+    def __init__(self, uio, options, app_config, start_db_update=True):
         """@brief Constructor
            @param uio A UIO instance.
            @param options The command line options instance.
@@ -208,10 +209,12 @@ class SQLite3DBClient(BaseConstants):
         self._dbLock = threading.Lock()
         self._tableSchema = SQLite3DBClient.GetTableSchema(SQLite3DBClient.CT6_DB_TABLE_SCHEMA_SQLITE)
         self._dev_dict_queue = Queue()
-        # Thread to read data from the above queue
-        pthread = threading.Thread(target=self._process_dev_dict_queue)
-        pthread.daemon = True
-        pthread.start()
+        # Start the thread that reads from the queue containing the dev_dicts received from  CT6 units.
+        if start_db_update:
+            # Thread to read data from the above queue
+            pthread = threading.Thread(target=self._process_dev_dict_queue)
+            pthread.daemon = True
+            pthread.start()
 
     def warn(self, msg):
         """@brief Show the user a warning level message.
@@ -299,27 +302,38 @@ class SQLite3DBClient(BaseConstants):
     def hear(self, dev_dict):
         """@brief Called when data is received from the device.
            @param dev_dict The CT6 device dict."""
+
         # We add to a queue and process the response in another thread
         # so as not to block the receipt of JSON messages from CT6 devices
         self._dev_dict_queue.put(dev_dict)
+
+    def update_db_from_dev_dict_queue(self):
+        """@brief Read all dev dicts from the queue and update db.
+           @return The number of dev_dicts received."""
+        msg_count = 0
+        try:
+            # Process all available dev_dict's in the queue
+            while True:
+                dev_dict = self._dev_dict_queue.get_nowait()
+                if dev_dict:
+                    self._handle_dev_dict(dev_dict)
+                    msg_count += 1
+
+        except Empty:
+            pass
+
+        except Exception:
+            self._uio.errorException()
+
+        return msg_count
 
     def _process_dev_dict_queue(self):
         """@brief Called periodically to read dev_dict's received from CT6 devices from
                   the _dev_dict_queue."""
         self._read_thread_running = True
         while self._read_thread_running:
-            try:
-                # Process all available dev_dict's in the queue
-                while True:
-                    dev_dict = self._dev_dict_queue.get_nowait()
-                    if dev_dict:
-                        self._handle_dev_dict(dev_dict)
 
-            except Empty:
-                pass
-
-            except Exception:
-                self._uio.errorException()
+            self.update_db_from_dev_dict_queue()
 
             sleep(0.25)
 
@@ -762,7 +776,8 @@ class MYSQLImporter(object):
         """@brief Constructor
            @param uio A UIO instance
            @param options The command line options instance
-           @param config An AppConfig instance."""
+           @param config An AppConfig instance.
+           @param db_client An SQLite3DBClient instance."""
         self._uio = uio
         self._options = options
         self._config = config
@@ -810,10 +825,11 @@ class MYSQLImporter(object):
         password = self._uio.getInput("Enter the password for the MYSQL server")
         return (host, port, username, password)
 
-    def _get_sqlite_database_file(self, mysql_db_name, mysql_cursor):
+    def _get_sqlite_database_file(self, mysql_db_name, mysql_cursor, imported=False):
         """@brief Get a list of the sqlite database files.
            @param mysql_database_files A list of the mysql database files.
            @param mysql_cursor A cursor connected to the mysql database.
+           @param imported If True add '.imported' to the filename.
            @return The sqlite database file or None if not found."""
         db_storage_folder = self._config.getAttr(AppConfig.DB_STORAGE_PATH)
         sqlite_db_file = None
@@ -825,6 +841,8 @@ class MYSQLImporter(object):
         if len(response) > 0:
             hw_assy = response[0][0]
             sqlite_db_name = hw_assy + ".db"
+            if imported:
+                sqlite_db_name = sqlite_db_name + ".imported"
             sqlite_db_file = os.path.join(db_storage_folder,
                                           sqlite_db_name)
         return sqlite_db_file
@@ -844,17 +862,23 @@ class MYSQLImporter(object):
             self._uio.info("Connected to MySQL DB.")
 
             mysql_server_ct6_db_list = self._get_ct6_db_list(mysql_cursor)
+
             # Check that none of the sqlite database files exist before we start
             # The user must delete these manually if they wish to create them.
             # We check this first as it may take some time to convert files and we
             # want to let the user know now if a files already exists which will
             # stop the conversion process.
             for mysql_server_ct6_db in mysql_server_ct6_db_list:
-                sqlite_db_file = self._get_sqlite_database_file(mysql_server_ct6_db, mysql_cursor)
-                if sqlite_db_file and os.path.isfile(sqlite_db_file):
-                    raise Exception(f"The {sqlite_db_file} sqlite database file already exists.")
+                db_file = self._get_sqlite_database_file(mysql_server_ct6_db, mysql_cursor, imported=False)
+                if db_file and os.path.isfile(db_file):
+                    raise Exception(f"The {db_file} sqlite database file already exists.")
+
+                db_file = self._get_sqlite_database_file(mysql_server_ct6_db, mysql_cursor, imported=True)
+                if db_file and os.path.isfile(db_file):
+                    raise Exception(f"The {db_file} sqlite database file already exists.")
 
             for mysql_server_ct6_db in mysql_server_ct6_db_list:
+                # This takes the mysql database and creates the *.db.imported file
                 self._convert_database(mysql_server_ct6_db, mysql_cursor)
 
         finally:
@@ -864,7 +888,7 @@ class MYSQLImporter(object):
                 mysql_conn.close()
         elapsed_seconds = int(time() - start_time)
         hms_str = self.seconds_to_hms(elapsed_seconds)
-        self._uio.info(f"Conversion took {hms_str} (HH:MM:SS)")
+        self._uio.info(f"Took {hms_str} (HH:MM:SS) to import the CT6 MYSQL databases.")
 
     def seconds_to_hms(self, seconds):
         hours = seconds // 3600
@@ -876,13 +900,13 @@ class MYSQLImporter(object):
         """@brief Convert the CT6 mysql database to an sqlite database.
            @param db_name The name of the mysql database.
            @param mysql_cursor The cursor connected to the mysql database."""
-        sqlite_db_file = self._get_sqlite_database_file(db_name, mysql_cursor)
-        if sqlite_db_file:
-            if os.path.isfile(sqlite_db_file):
-                raise Exception(f"{sqlite_db_file} file already exits.")
-            self._copy_mysql_to_sqlite_db(mysql_cursor, sqlite_db_file)
-            self.create_timestamp_index(sqlite_db_file, MYSQLImporter.VALID_CT6_DB_TABLE_NAMES[1])
-            self.add_unit_name_column(sqlite_db_file, db_name)
+        imported_sqlite_db_file = self._get_sqlite_database_file(db_name, mysql_cursor, imported=True)
+        self._copy_mysql_to_sqlite_db(mysql_cursor, imported_sqlite_db_file)
+        self.create_timestamp_index(imported_sqlite_db_file, MYSQLImporter.VALID_CT6_DB_TABLE_NAMES[1])
+        self.add_unit_name_column(imported_sqlite_db_file, db_name)
+        sqlite_db_file = self._get_sqlite_database_file(db_name, mysql_cursor, imported=False)
+        shutil.move(imported_sqlite_db_file, sqlite_db_file)
+        self._uio.info(f"Renamed {imported_sqlite_db_file} to {sqlite_db_file}")
 
     def _copy_mysql_to_sqlite_db(self, mysql_cursor, sqlite_db_file, batch_size=100000):
         """@brief Copy the contents of all the tables from the mysql db to the sqlite db.
@@ -969,7 +993,7 @@ class MYSQLImporter(object):
         try:
             sqlite_conn = sqlite3.connect(sqlite_db)
             sqlite_cursor = sqlite_conn.cursor()
-            print(f"Connected to SQLite: {sqlite_db}")
+            self._uio.info(f"Connected to SQLite: {sqlite_db}")
 
             # Step 1: Create a new table with the column at index 1
             sqlite_cursor.execute('''
@@ -1086,20 +1110,26 @@ class AppServer(object):
         finally:
             self.close()
 
+    def startPopulatingDatabase(self, db_client):
+        """@brief Starts the threads that collect data from CT6 units and populate the sqlite database.
+           @param db_client An instance of SQLite3DBClient."""
+        # Start running the local collector in a separate thread
+        self._localYViewCollector = LocalYViewCollector(self._uio, self._options)
+        self._localYViewCollector.setValidProductIDList(YViewCollector.VALID_PRODUCT_ID_LIST)
+
+        # Register the dBHandler as a listener for device data so that it can be
+        # stored in the database.
+        self._localYViewCollector.addDevListener(db_client)
+        net_if = self._config.getAttr(AppConfig.CT6_DEVICE_DISCOVERY_INTERFACE)
+        collector_thread = threading.Thread(target=self._localYViewCollector.start, args=(net_if,))
+        collector_thread.daemon = True
+        collector_thread.start()
+
     def start(self, db_client):
         """@Start the App server running.
             @param db_client An instance of SQLite3DBClient."""
         try:
-
-            # Start running the local collector in a separate thread
-            self._localYViewCollector = LocalYViewCollector(self._uio, self._options)
-            self._localYViewCollector.setValidProductIDList(YViewCollector.VALID_PRODUCT_ID_LIST)
-
-            # Register the dBHandler as a listener for device data so that it can be
-            # stored in the database.
-            self._localYViewCollector.addDevListener(db_client)
-            net_if = self._config.getAttr(AppConfig.CT6_DEVICE_DISCOVERY_INTERFACE)
-            threading.Thread(target=self._localYViewCollector.start, args=(net_if,)).start()
+            self.startPopulatingDatabase(db_client)
 
             # Start a web UI to allow the user to view the data
             self._startGUI(db_client)
@@ -2599,20 +2629,40 @@ def main():
                                    SQLite3DBClient.GetConfigPathFile(AppServer.DEFAULT_CONFIG_FILENAME),
                                    AppConfig.DEFAULT_CONFIG)
 
-            if options.conv_dbs:
-                mysql_importer = MYSQLImporter(uio, options, app_config)
-                mysql_importer.convert_mysql_to_sqlite()
-
-            elif options.configure:
+            if options.configure:
                 app_config.configure(editConfigMethod=app_config.edit)
 
             else:
-                db_client = SQLite3DBClient(uio, options, app_config)
-                if options.show_tables:
+                start_db_update = True
+                if options.conv_dbs or options.show_tables:
+                    start_db_update = False
+
+                db_client = SQLite3DBClient(uio,
+                                            options,
+                                            app_config,
+                                            start_db_update=start_db_update)
+
+                app_server = AppServer(uio, options, app_config)
+
+                if options.conv_dbs:
+                    app_server.startPopulatingDatabase(db_client)
+                    # Wait for detected CT6 dev messages to appear on std out before
+                    # prompting the user to enter the import config.
+                    sleep(5)
+                    mysql_importer = MYSQLImporter(uio, options, app_config)
+                    # This may take a while with large databases.
+                    mysql_importer.convert_mysql_to_sqlite()
+                    # Update the database/s with all the CT6 dev_dict's received
+                    # while the database was being imported from the mysql database.
+                    count = db_client.update_db_from_dev_dict_queue()
+                    uio.info(f"Updated databases with {count} CT6 messages received while importing mysql data.")
+                    # Start the app server so we don't miss data
+                    app_server.start(db_client)
+
+                elif options.show_tables:
                     db_client.show_tables()
 
                 else:
-                    app_server = AppServer(uio, options, app_config)
                     app_server.start(db_client)
 
     #If the program throws a system exit exception

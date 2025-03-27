@@ -238,34 +238,34 @@ class BaseConstants(object):
 
     # Used by ct6_app to save to sqlite databases.
     CT6_DB_TABLE_SCHEMA_SQLITE   = "TIMESTAMP:TEXT " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(9,2) " \
-                                   "{}:NUMERIC(6,4) " \
-                                   "{}:NUMERIC(6,4) " \
-                                   "{}:NUMERIC(6,4) " \
-                                   "{}:NUMERIC(6,4) " \
-                                   "{}:NUMERIC(6,4) " \
-                                   "{}:NUMERIC(6,4) " \
-                                   "{}:NUMERIC(6,2) " \
-                                   "{}:NUMERIC(4,1) " \
-                                   "{}:NUMERIC(6,2) " \
-                                   "{}:NUMERIC(6,3)".format(CT1_ACT_WATTS,
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL " \
+                                   "{}:REAL".format(CT1_ACT_WATTS,
                                                           CT2_ACT_WATTS,
                                                           CT3_ACT_WATTS,
                                                           CT4_ACT_WATTS,
