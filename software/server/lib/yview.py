@@ -500,8 +500,12 @@ class LocalYViewCollector(BaseConstants):
         """@brief Update all listeners with the device data."""
         for devListener in self._devListenerList:
             startTime = time()
-            dataLen = len(devData)
-            devListener.hear(devData)
+            try:
+                devListener.hear(devData)
+
+            except Exception:
+                self._uio.errorException()
+
             exeSecs = time() - startTime
             self._uio.debug(f"EXET: devListener.hear(devData) Took {exeSecs:.6f} seconds to execute.")
 
