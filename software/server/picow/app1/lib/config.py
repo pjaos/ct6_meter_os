@@ -1,7 +1,7 @@
 import json
-      
+
 from constants import Constants
-        
+
 class MachineConfig(object):
     """@brief Responsible for management of config attributes for the machine.
               The machine configuration is saved to flash for persistent storage."""
@@ -27,13 +27,13 @@ class MachineConfig(object):
 
             else:
                 resultDict[dict1Key]=dict1[dict1Key]
-                
+
     def __init__(self, defaultConfigDict):
         """@brief Constructor."""
         self._defaultConfigDict = defaultConfigDict
         self._configDict = self._defaultConfigDict
         self.load()
-                
+
     def merge(self, cfgDict):
         """@brief Merge the cfgDict into the config dict. All the key value pairs in
                   cfgDict are copied into the internal config dict."""
@@ -44,14 +44,14 @@ class MachineConfig(object):
         """@brief Load the config. If the config file exists in flash then this will
                   be loaded. If not then the default config is loaded and saved to flash.
            @param purgeKeys If True remove unused (not in default dict) keys.
-           @param filename The filename to load the config from. If this is unset then the 
+           @param filename The filename to load the config from. If this is unset then the
                   MachineConfig.CONFIG_FILENAME file is used."""
-        # The default config filename. 
+        # The default config filename.
         cfgFilename = MachineConfig.CONFIG_FILENAME
         # If the caller has defined a non default file
         if filename is not None:
             cfgFilename = filename
-            
+
         configDict = {}
         try:
             with open(cfgFilename, "r") as read_file:
@@ -67,10 +67,10 @@ class MachineConfig(object):
 
             for key in factoryDict:
                 configDict[key] =  factoryDict[key]
-                
+
         except:
              pass
-             
+
         # Merge the self._defaultConfigDict and configDict dicts so that we ensure we have all the keys from
         # self._defaultConfigDict. This ensures if keys are added to self._defaultConfigDict then they are
         # automatically added to any saved config.
@@ -80,21 +80,21 @@ class MachineConfig(object):
 
     def store(self, filename=None, cfgDict=None):
         """@brief Save the config dict to flash.
-           @param filename The filename in which to store the config. If this is unset then the 
+           @param filename The filename in which to store the config. If this is unset then the
                   MachineConfig.CONFIG_FILENAME file is used.
-           @param cfgDict The dictionary to store. If left as None then the machine config 
+           @param cfgDict The dictionary to store. If left as None then the machine config
                   dictionary is stored."""
         if cfgDict is None:
             cfgDict = self._configDict
 
-        # The default config filename. 
+        # The default config filename.
         cfgFilename = MachineConfig.CONFIG_FILENAME
         if filename is not None:
             cfgFilename = filename
         fd = open(cfgFilename, 'w')
         fd.write( json.dumps(cfgDict)  )
         fd.close()
-        
+
     def isParameter(self, key):
         """@brief Determine if the key is present in the config Dictionary.
            @return True if the key is present in the config dictionary."""
@@ -145,8 +145,16 @@ class MachineConfig(object):
         self.store()
 
     def setDefaults(self):
-        """@brief Reset the dict to the defaults.."""
+        """@brief Reset the dict to the defaults."""
+        # We set all config values to defaults except for the running app because we
+        # don't want to change to a different software release when the WiFi button
+        # is held down to force config defaults.
+        currentApp = None
+        if Constants.RUNNING_APP_KEY and Constants.RUNNING_APP_KEY in self._configDict:
+            currentApp = self._configDict[Constants.RUNNING_APP_KEY]
         self._configDict = self._defaultConfigDict
+        if currentApp:
+            self._configDict[Constants.RUNNING_APP_KEY] = currentApp
         self.store()
 
     def __repr__(self):
