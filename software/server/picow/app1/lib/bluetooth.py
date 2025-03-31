@@ -11,7 +11,6 @@ class BlueTooth():
 
     MAX_RX_MESSAGE_SIZE = 256
 
-    
     def __init__(self, name, ledGPIO=-1, debug=False):
         """@brief Constructor
            @param name The name of this bluetooth device.
@@ -78,7 +77,7 @@ class BlueTooth():
         """@brief Determine if bluetooth is enabled.
            @return False if bluetooth is not enabled."""
         return self._ble.active()
-    
+
     def isConnected(self):
         """@brief Get the connected state. True = connected."""
         return self._ble_connected
@@ -92,13 +91,19 @@ class BlueTooth():
 
         elif event == 2: #_IRQ_CENTRAL_DISCONNECT:
                          # A central has _disconnected from this peripheral.
-            self._advertiser()
             self._disconnected()
+            self._advertiser()
 
         elif event == 3: #_IRQ_GATTS_WRITE:
                          # A client has written to this characteristic or descriptor.
             buffer = self._ble.gatts_read(self.rx)
-            self._rx_message = buffer.decode('UTF-8').strip()
+             self._rx_message = buffer.decode('UTF-8').strip()
+            if self._debug:
+                print(f"self._rx_message = {self._rx_message}")
+
+        else:
+            if self._debug:
+                print("Unknown event")
 
     def getRxMessage(self):
         """@return The message received or None if no message received."""
@@ -128,18 +133,23 @@ class BlueTooth():
 
     def _advertiser(self):
         name = bytes(self._name, 'UTF-8')
-        adv_data = bytearray('\x02\x01\x02', 'UTF-8') + bytearray((len(name) + 1, 0x09)) + name
-        self._ble.gap_advertise(100, adv_data)
-        if self._debug:
-            print(adv_data)
-            print("\r\n")
-                    # adv_data
-                    # raw: 0x02010209094553503332424C45
-                    # b'\x02\x01\x02\t\tESP32BLE'
-                    #
-                    # 0x02 - General discoverable mode
-                    # 0x01 - AD Type = 0x01
-                    # 0x02 - value = 0x02
+        adv_data = bytearray('\x02\x01\x06', 'UTF-8') + bytearray((len(name) + 1, 0x09)) + name
+        try:
+            self._ble.gap_advertise(100000, adv_data)
+            if self._debug:
+                print(adv_data)
+                print("\r\n")
+                        # adv_data
+                        # raw: 0x02010209094553503332424C45
+                        # b'\x02\x01\x02\t\tESP32BLE'
+                        #
+                        # 0x02 - General discoverable mode
+                        # 0x01 - AD Type = 0x01
+                        # 0x02 - value = 0x02
 
-                    # https://jimmywongiot.com/2019/08/13/advertising-payload-format-on-ble/
-                    # https://docs.silabs.com/bluetooth/latest/general/adv-and-scanning/bluetooth-adv-data-basics
+                        # https://jimmywongiot.com/2019/08/13/advertising-payload-format-on-ble/
+                        # https://docs.silabs.com/bluetooth/latest/general/adv-and-scanning/bluetooth-adv-data-basics
+
+        # When the bluetooth interface is disabled an 'OSError: [Errno 19] ENODEV' error will occur.
+        except OSError:
+            pass
