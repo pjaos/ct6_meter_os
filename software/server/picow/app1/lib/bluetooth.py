@@ -97,7 +97,7 @@ class BlueTooth():
         elif event == 3: #_IRQ_GATTS_WRITE:
                          # A client has written to this characteristic or descriptor.
             buffer = self._ble.gatts_read(self.rx)
-             self._rx_message = buffer.decode('UTF-8').strip()
+            self._rx_message = buffer.decode('UTF-8').strip()
             if self._debug:
                 print(f"self._rx_message = {self._rx_message}")
 
