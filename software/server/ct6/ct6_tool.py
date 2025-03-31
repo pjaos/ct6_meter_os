@@ -1145,7 +1145,7 @@ class YDevManager(CT6Base):
         self._ensureValidAddress()
         currentFWVersion = self.getFWVersion()
         self._info(f"Current CT6 firmware version: {currentFWVersion}")
-        newFWVersion = self._getNewVersion()
+        newFWVersion = self.getNewVersion()
         self._info(f"New CT6 firmware version:     {newFWVersion}")
 
         if currentFWVersion < 2.8 and newFWVersion >= 2.8:
@@ -1159,7 +1159,7 @@ class YDevManager(CT6Base):
 
         return returnStr
 
-    def _getNewVersion(self):
+    def getNewVersion(self):
         """@return the version CT6 firmware that the unit will be upgraded to."""
         version = None
         constantsFile = os.path.join(self._upgradeAppRoot, "constants.py")
