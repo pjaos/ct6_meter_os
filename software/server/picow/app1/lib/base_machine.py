@@ -79,7 +79,7 @@ class BaseMachine(Constants):
         Constants.RUNNING_APP_KEY = self._activeAppKey
         # The default is to use app 1
         defaultConfigDict[self._activeAppKey]=1
-        # We need to ensure that the active app passd to us is what is set in the config file.
+        # We need to ensure that the active app passed to us is what is set in the config file.
         self._machineConfig = MachineConfig(defaultConfigDict)
         self._machineConfig.set(self._activeAppKey, self._activeApp)
         self._machineConfig.store()
