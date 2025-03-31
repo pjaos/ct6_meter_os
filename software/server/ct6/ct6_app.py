@@ -16,6 +16,7 @@ import itertools
 import re
 import calendar
 import shutil
+import platform
 
 from datetime import datetime, timedelta, date
 from queue import Queue, Empty
@@ -53,7 +54,11 @@ class AppConfig(ConfigBase):
     def GetAppConfigPath():
         """@brief Get the config path.
            @return The config path."""
-        homePath = os.path.expanduser("~")
+        if platform.system() == 'Linux' and os.geteuid() == 0:
+            homePath = "/root"
+        else:
+            homePath = os.path.expanduser("~")
+
         if not os.path.isdir(homePath):
             raise Exception(f"{homePath} HOME path does not exist.")
 
