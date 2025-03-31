@@ -320,7 +320,7 @@ class ThisMachine(BaseMachine):
         super().__init__(uo, configFile, activeAppKey, activeApp, wdt)
 
         self._ntp = None
-
+        self._uo.info(f"Firmware Version = {Constants.FIRMWARE_VERSION}")
         # Init the display to display the booting message as early as possible.
         self._display = Display(uo)
 
@@ -468,7 +468,7 @@ class ThisMachine(BaseMachine):
             self._display.update( statsDict, self._wifi.isWiFiButtonPressed() )
 
         # If we have not yet created an NTP instance. We create this here
-        # becuse know the WiFi is connected if serviceRunningMode() is called.
+        # because know the WiFi is connected if serviceRunningMode() is called.
         if self._ntp is None:
             # Update the MCU time via NTP every 2 hours.
             self._ntp = NTP(self._uo, 3600*2)
