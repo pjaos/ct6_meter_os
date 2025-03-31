@@ -18,7 +18,7 @@ from p3lib.pconfig import ConfigManager
 from ct6.ct6_tool import YDevManager, getCT6ToolCmdOpts, CT6Config, MCULoader, CT6Base, CT6Scanner
 from ct6.ct6_mfg_tool import FactorySetup, getFactorySetupCmdOpts
 
-from nicegui import ui
+from nicegui import ui, app
 
 class CT6GUIServer(TabbedNiceGui):
     """@brief Responsible for starting the CT6 configurator GUI."""
@@ -125,6 +125,11 @@ class CT6GUIServer(TabbedNiceGui):
         self._cfgMgr.addAttr(CT6GUIServer.WIFI_PASSWORD, self._wifiPasswordInput.value)
         self._cfgMgr.addAttr(CT6GUIServer.DEVICE_ADDRESS, self._ct6IPAddressInput1.value)
         self._cfgMgr.store()
+
+    def close(self):
+        """@brief Close down the app server."""
+        ui.notify("Server shutting down. Close browser window (click x on browser tab).")
+        app.shutdown()
 
     def _loadConfig(self):
         """@brief Load the config from a config file."""
@@ -371,7 +376,7 @@ class CT6GUIServer(TabbedNiceGui):
         self._initTask()
         self._copyCT6Address(self._ct6IPAddressInput1.value)
         self._saveConfig()
-        self._setExpectedProgressMsgCount(107,120)
+        self._setExpectedProgressMsgCount(112,140)
         threading.Thread( target=self._doUpgrade, args=(self._ct6IPAddressInput1.value,)).start()
 
     def _doUpgrade(self, ct6IPAddress):
@@ -391,12 +396,16 @@ class CT6GUIServer(TabbedNiceGui):
                     if pingT is not None:
                         self.info(f"Attempting to upgrade CT6 device at {ct6IPAddress}")
                         devManager.setIPAddress(ct6IPAddress)
+                        newFWVersion = devManager.getNewVersion()
                         devManager.upgrade(promptReboot=False)
                         devManager._powerCycle()
                         devManager._checkRunningNewApp()
 
                         fwVersion = devManager.getFWVersion()
-                        msgDict = {CT6GUIServer.UI_NOTIFY_MSG: f"The CT6 unit firmware has been updated to version {fwVersion}"}
+                        if fwVersion == newFWVersion:
+                            msgDict = {CT6GUIServer.UI_NOTIFY_MSG: f"The CT6 unit firmware has been updated to version {fwVersion}"}
+                        else:
+                            msgDict = {CT6GUIServer.ERROR_MESSAGE: f"After the upgrade the CT6 device should be running V{newFWVersion} but was running V{fwVersion} firmware."}
                         self.updateGUI(msgDict)
 
                         self.info(f"CT6 firmware upgrade completed successfully to version {fwVersion}")
@@ -887,7 +896,7 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
            @param event The button event."""
         self._initTask()
         self._saveConfig()
-        self._setExpectedProgressMsgCount(91,219)
+        self._setExpectedProgressMsgCount(100,219)
         threading.Thread( target=self._installSW, args=(self._wifiSSIDInput.value, self._wifiPasswordInput.value)).start()
 
     def _correctRshellWindowsPath(self, aPath):
