@@ -72,6 +72,9 @@ class CT6GUIServer(TabbedNiceGui):
 
     AC_CURRENT_FIELD            = "AC Current (Amps)"
 
+    USB                         = "USB"
+    BLUETOOTH                   = "Bluetooth"
+
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance
@@ -129,7 +132,11 @@ class CT6GUIServer(TabbedNiceGui):
     def close(self):
         """@brief Close down the app server."""
         ui.notify("Server shutting down. Close browser window (click x on browser tab).")
-        app.shutdown()
+        try:
+            app.shutdown()
+        except AttributeError:
+            pass
+
 
     def _loadConfig(self):
         """@brief Load the config from a config file."""
@@ -250,46 +257,65 @@ class CT6GUIServer(TabbedNiceGui):
 
     def _initWiFiTab(self):
         """@brief Create the Wifi tab contents."""
+        # Init all the dialogs used in the WiFi setup process.
+        self._initUsbWiFiDialog1()
+        self._initUsbWiFiDialog2()
+        self._initBluetoothWiFiDialog1()
+
         markDownText = """
-        <span style="font-size:1.5em;">Set the WiFi SSID and password of your CT6 device. A USB cable must be connected to the CT6 device to setup the WiFi.
+        <span style="font-size:1.5em;">Set the WiFi SSID and password of your CT6 device using either a USB or Bluetooth connection to a CT6 unit.
         """
         ui.markdown(markDownText)
         with ui.column():
+            self._wifi_setup_radio = ui.radio([CT6GUIServer.USB, CT6GUIServer.BLUETOOTH], value=CT6GUIServer.USB).props('inline')
+            self._setWiFiButton = ui.button('Setup WiFi', on_click=self._startWifiSetup)
 
-            self._wifiSSIDInput = ui.input(label='WiFi SSID')
-            ssid = self._cfgMgr.getAttr(CT6GUIServer.WIFI_SSID)
-            if ssid:
-                self._wifiSSIDInput.value = ssid
+    def _startWifiSetup(self):
+        """@brief Called to start the process of setting up the WiFi network."""
+        if self._wifi_setup_radio.value == CT6GUIServer.USB:
+            self._usbWiFiDialog1.open()
 
-            self._wifiPasswordInput = ui.input(label='WiFi Password', password=True)
-            passwd = self._cfgMgr.getAttr(CT6GUIServer.WIFI_PASSWORD)
-            if passwd:
-                self._wifiPasswordInput.value = passwd
+        elif self._wifi_setup_radio.value == CT6GUIServer.BLUETOOTH:
+            self._bluetoothWiFiDialog1.open()
 
-            self._setWiFiButton = ui.button('Setup WiFi', on_click=self._setWiFiNetworkButtonHandler)
+    def _initUsbWiFiDialog1(self):
+        """@brief A dialog displayed as step 1 in the WiFi setup process when using a USB interface to talk to the CT6 device."""
+        # Create the dialog
+        with ui.dialog() as self._usbWiFiDialog1, ui.card():
+            ui.label("A USB cable must be connected between this PC and the CT6 device to setup it's WiFi.\n\nContinue ?").style('white-space: pre-wrap;')
+            with ui.row():
+                ui.button("Ok", on_click=lambda: (self._usbWiFiDialog1.close(), self._usbWiFiDialog2.open(),))
+                ui.button("Cancel", on_click=lambda: (self._usbWiFiDialog1.close(),))
 
-            # Add to button list so that button is disabled while activity is in progress.
-            self._appendButtonList(self._setWiFiButton)
+    def _initUsbWiFiDialog2(self):
+        """@brief A dialog displayed as step 2 in the WiFi setup process when using a USB interface to talk to the CT6 device."""
+        with ui.dialog() as self._usbWiFiDialog2, ui.card():
+            with ui.column():
 
-    def _setExpectedProgressMsgCount(self, nonDebugModeCount, debugModeCount):
-        """@brief Set the number of log messages expected to complete a tasks progress.
-           @param nonDebugModeCount The number of expected messages in non debug mode.
-           @param nonDebugModeCount The number of expected messages in debug mode."""
-        if self._uio.isDebugEnabled():
-            self._startProgress(expectedMsgCount=debugModeCount)
-        else:
-            self._startProgress(expectedMsgCount=nonDebugModeCount)
+                self._wifiSSIDInput = ui.input(label='WiFi SSID')
+                ssid = self._cfgMgr.getAttr(CT6GUIServer.WIFI_SSID)
+                if ssid:
+                    self._wifiSSIDInput.value = ssid
 
-    def _setWiFiNetworkButtonHandler(self, event):
-        """@brief Process button click.
+                self._wifiPasswordInput = ui.input(label='WiFi Password', password=True)
+                passwd = self._cfgMgr.getAttr(CT6GUIServer.WIFI_PASSWORD)
+                if passwd:
+                    self._wifiPasswordInput.value = passwd
+
+            with ui.row():
+                ui.button("Ok", on_click=lambda: (self._usbWiFiDialog2.close(), self._startUsbWifiSetupThread(),))
+                ui.button("Cancel", on_click=lambda: (self._usbWiFiDialog2.close(),))
+
+    def _startUsbWifiSetupThread(self):
+        """@brief Called to start the worker thread to setup the CT6 WiFi over a USB connection.
            @param event The button event."""
         self._initTask()
         self._saveConfig()
         self._setExpectedProgressMsgCount(22,86)
-        threading.Thread( target=self._setWiFiNetwork, args=(self._wifiSSIDInput.value, self._wifiPasswordInput.value)).start()
+        threading.Thread( target=self._usbSetWiFiNetwork, args=(self._wifiSSIDInput.value, self._wifiPasswordInput.value)).start()
 
-    def _setWiFiNetwork(self, wifiSSID, wifiPassword):
-        """@brief Set the Wifi network on a CT6 device..
+    def _usbSetWiFiNetwork(self, wifiSSID, wifiPassword):
+        """@brief Set the Wifi network on a CT6 device over a USB connection to the CT6 unit.
            @param wifiSSID The WiFi SSID to set.
            @param wifiPassword The WiFi password to set."""
         try:
@@ -309,7 +335,6 @@ class CT6GUIServer(TabbedNiceGui):
         finally:
             self._sendEnableAllButtons(True)
 
-
     def _setupWiFi(self, wifiSSID, wifiPassword):
         """@brief Setup the CT6 WiFi interface. This must be called outside the GUI thread.
            @param wifiSSID The WiFi SSID to set.
@@ -326,6 +351,27 @@ class CT6GUIServer(TabbedNiceGui):
             self._setCT6IPAddress(ipAddress)
         else:
             self.error(f"{timeout} second timeout waiting for the CT6 device to get an IP address")
+
+    def _initBluetoothWiFiDialog1(self):
+        """@brief A dialog displayed as step 1 in the WiFi setup process when using a bluetooth interface to talk to the CT6 device."""
+        # Create the dialog
+        with ui.dialog() as self._bluetoothWiFiDialog1, ui.card():
+            ui.label("Hold the WiFi button down on the CT6 device until it restarts and the blue and green LED's flash.\n\nContinue ?").style('white-space: pre-wrap;')
+            with ui.row():
+                ui.button("Ok", on_click=lambda: (self._bluetoothWiFiDialog1.close(), self._amethod(),))
+                ui.button("Cancel", on_click=lambda: (self._bluetoothWiFiDialog1.close(),))
+
+    def _amethod(self):
+        print("PJA TODO")
+
+    def _setExpectedProgressMsgCount(self, nonDebugModeCount, debugModeCount):
+        """@brief Set the number of log messages expected to complete a tasks progress.
+           @param nonDebugModeCount The number of expected messages in non debug mode.
+           @param nonDebugModeCount The number of expected messages in debug mode."""
+        if self._uio.isDebugEnabled():
+            self._startProgress(expectedMsgCount=debugModeCount)
+        else:
+            self._startProgress(expectedMsgCount=nonDebugModeCount)
 
     def _initUpgradeTab(self):
         """@brief Create the Wifi tab contents."""
