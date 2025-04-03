@@ -17,8 +17,10 @@ import re
 import calendar
 import shutil
 import platform
+import pytz
 
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from queue import Queue, Empty
 from time import time, sleep
 
@@ -1351,107 +1353,133 @@ class GUI(MultiAppServer):
     def _todayButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        today = datetime.today()
-        self._startDateTimePicker.value = today.date()
         # Set resolution to mins to set a good trade off between plot time and resolution
         self._resRadioButtonGroup.active = 1
+        today = datetime.today()
+        startOfDay = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        self._startDateTimePicker.value = startOfDay.astimezone(pytz.utc)
         endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
-        self._stopDateTimePicker.value = endDateTime
+        self._stopDateTimePicker.value = endDateTime.astimezone(pytz.utc)
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
     def _yesterdayButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        today = datetime.today()
-        yesterday = today - timedelta(days = 1)
-        self._startDateTimePicker.value = yesterday.date()
         # Set resolution to mins to set a good trade off between plot time and resolution
         self._resRadioButtonGroup.active = 1
-        endDateTime = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
-        self._stopDateTimePicker.value = endDateTime
+        today = datetime.today()
+        yesterday = today - timedelta(days = 1)
+        startOfYesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+        self._startDateTimePicker.value = startOfYesterday.astimezone(pytz.utc)
+        endDateTime = startOfYesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
+        self._stopDateTimePicker.value = endDateTime.astimezone(pytz.utc)
        # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
     def _thisWeekButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
+        # Set resolution to mins to set a good trade off between plot time and resolution
+        self._resRadioButtonGroup.active = 1
         today = datetime.today()
         dayOfWeek = today.weekday()
         startOfWeek = today - timedelta(days = dayOfWeek)
-        today = datetime.today()
-        self._startDateTimePicker.value = startOfWeek.date()
-        # Set resolution to mins to set a good trade off between plot time and resolution
-        self._resRadioButtonGroup.active = 1
-        endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
-        self._stopDateTimePicker.value = endDateTime
+        startOfWeek = startOfWeek.replace(hour=0, minute=0, second=0, microsecond=0)
+        endOfWeek = startOfWeek + timedelta(days=7)
+        endOfWeek = endOfWeek - timedelta(seconds=1)
+        self._startDateTimePicker.value = startOfWeek.astimezone(pytz.utc)
+        self._stopDateTimePicker.value = endOfWeek.astimezone(pytz.utc)
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
     def _lastWeekButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        today = datetime.today()
-        dayOfWeek = today.weekday()
-        endOfLastWeek = today - timedelta(days = dayOfWeek+1)
-        startOfLastWeek = endOfLastWeek - timedelta(days = 6)
-        self._startDateTimePicker.value = startOfLastWeek.date()
         # Set resolution to mins to set a good trade off between plot time and resolution
         self._resRadioButtonGroup.active = 1
-        endDateTime = endOfLastWeek.replace(hour=23, minute=59, second=59, microsecond=999999)
-        self._stopDateTimePicker.value = endDateTime
+        today = datetime.today()
+        dayOfWeek = today.weekday()
+        startOfWeek = today - timedelta(days = dayOfWeek+7)
+        startOfWeek = startOfWeek.replace(hour=0, minute=0, second=0, microsecond=0)
+        endOfWeek = startOfWeek + timedelta(days=7)
+        endOfWeek = endOfWeek - timedelta(seconds=1)
+        self._startDateTimePicker.value = startOfWeek.astimezone(pytz.utc)
+        self._stopDateTimePicker.value = endOfWeek.astimezone(pytz.utc)
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
+
+    def _get_last_of_month(self, dt: datetime) -> datetime:
+        """Returns the last day of the month at 23:59:59."""
+        last_day = calendar.monthrange(dt.year, dt.month)[1]  # Get last day of the month
+        return dt.replace(day=last_day, hour=23, minute=59, second=59, microsecond=999999)
 
     def _thisMonthButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        today = datetime.today()
-        dayOfMonth = today.day
-        firstDayOfMonth = today - timedelta(days = dayOfMonth-1)
-        self._startDateTimePicker.value = firstDayOfMonth.date()
         # Set resolution to hours to set a good trade off between plot time and resolution
         self._resRadioButtonGroup.active = 2
-        endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
-        self._stopDateTimePicker.value = endDateTime
+        now = datetime.now()
+        startD = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        stopD = self._get_last_of_month(now)
+        self._startDateTimePicker.value = startD.astimezone(pytz.utc)
+        self._stopDateTimePicker.value = stopD.astimezone(pytz.utc)
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
+
+    def _get_first_of_previous_month(self, dt: datetime) -> datetime:
+        """Returns the first day of the previous month at 00:00:00."""
+        first_day = dt.replace(day=1) - relativedelta(months=1)  # Move to the first of last month
+        return first_day.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def _get_last_of_previous_month(self, dt: datetime) -> datetime:
+        """Returns the last day of the previous month at 23:59:59."""
+        first_this_month = dt.replace(day=1)  # First day of current month
+        last_day = first_this_month - relativedelta(days=1)  # Go back one day
+        return last_day.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     def _lastMonthButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        today = datetime.today()
-        dayOfMonth = today.day
-        lastDayOfLastMonth = today - timedelta(days = dayOfMonth)
-        daysInLastMonth = calendar.monthrange(lastDayOfLastMonth.year, lastDayOfLastMonth.month)[1]
-        firstDayOfLastMonth = lastDayOfLastMonth - timedelta(days = daysInLastMonth-1)
-        self._startDateTimePicker.value = firstDayOfLastMonth.date()
         # Set resolution to hours to set a good trade off between plot time and resolution
         self._resRadioButtonGroup.active = 2
-        endDateTime = lastDayOfLastMonth.replace(hour=23, minute=59, second=59, microsecond=999999)
-        self._stopDateTimePicker.value = endDateTime
+        now = datetime.now()
+        startD = self._get_first_of_previous_month(now)
+        stopD = self._get_last_of_previous_month(now)
+        self._startDateTimePicker.value = startD.astimezone(pytz.utc)
+        self._stopDateTimePicker.value = stopD.astimezone(pytz.utc)
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
+
+    def _get_first_and_last_of_year(self, dt: datetime):
+        """Returns the first and last day of the current year."""
+        first_day = dt.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_day = dt.replace(month=12, day=31, hour=23, minute=59, second=59, microsecond=999999)
+        return first_day, last_day
 
     def _thisYearButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        today = datetime.today()
-        self._startDateTimePicker.value = datetime(today.year, 1, 1, 0, 0 , 0, 0)
-        self._stopDateTimePicker.value  = datetime(today.year, 12, 31, 23,59, 39, 999999)
         # Set resolution to hours to set a good trade off between plot time and resolution
         self._resRadioButtonGroup.active = 2
+        now = datetime.now()
+        startD, stopD = self._get_first_and_last_of_year(now)
+        self._startDateTimePicker.value = startD.astimezone(pytz.utc)
+        self._stopDateTimePicker.value  = stopD.astimezone(pytz.utc)
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
     def _lastYearButtonHandler(self, event):
         """@brief Process button click.
            @param event The button event."""
-        today = date.today()
-        self._startDateTimePicker.value = datetime(today.year-1, 1, 1, 0, 0 , 0, 0)
-        self._stopDateTimePicker.value  = datetime(today.year-1, 12, 31, 23,59, 39, 999999)
         # Set resolution to hours to set a good trade off between plot time and resolution
         self._resRadioButtonGroup.active = 2
+        now = datetime.now()
+        startD, stopD = self._get_first_and_last_of_year(now)
+        startD = startD.replace(year=startD.year-1)
+        stopD = stopD.replace(year=stopD.year-1)
+        self._startDateTimePicker.value = startD.astimezone(pytz.utc)
+        self._stopDateTimePicker.value  = stopD.astimezone(pytz.utc)
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -1713,25 +1741,25 @@ class GUI(MultiAppServer):
         """@brief Called when the associated button is clicked to add a day to the start time.
            @param event The event that triggered the method call."""
         dateTimeObj=datetime.fromtimestamp(self._startDateTimePicker.value/1000)
-        self._startDateTimePicker.value = dateTimeObj + timedelta(days=1)
+        self._startDateTimePicker.value = (dateTimeObj + timedelta(days=1)).astimezone(pytz.utc)
 
     def _subtractStartDayCallBack(self, event):
         """@brief Called when the associated button is clicked to subtract a day to the start time.
            @param event The event that triggered the method call."""
         dateTimeObj=datetime.fromtimestamp(self._startDateTimePicker.value/1000)
-        self._startDateTimePicker.value = dateTimeObj - timedelta(days=1)
+        self._startDateTimePicker.value = (dateTimeObj - timedelta(days=1)).astimezone(pytz.utc)
 
     def _addStopDayCallBack(self, event):
         """@brief Called when the associated button is clicked to add a day to the stop time.
            @param event The event that triggered the method call."""
         dateTimeObj=datetime.fromtimestamp(self._stopDateTimePicker.value/1000)
-        self._stopDateTimePicker.value = dateTimeObj + timedelta(days=1)
+        self._stopDateTimePicker.value = (dateTimeObj + timedelta(days=1)).astimezone(pytz.utc)
 
     def _subtractStopDayCallBack(self, event):
         """@brief Called when the associated button is clicked to subtract a day to the stop time.
            @param event The event that triggered the method call."""
         dateTimeObj=datetime.fromtimestamp(self._stopDateTimePicker.value/1000)
-        self._stopDateTimePicker.value = dateTimeObj - timedelta(days=1)
+        self._stopDateTimePicker.value = (dateTimeObj - timedelta(days=1)).astimezone(pytz.utc)
 
     def _getSelectedDevice(self):
         """@brief Get the name of the selected CT6 device.
