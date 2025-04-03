@@ -78,6 +78,9 @@ class CT6GUIServer(TabbedNiceGui):
 
     AC_CURRENT_FIELD            = "AC Current (Amps)"
 
+    SSID                        = "SSID"
+    RSSI                        = "RSSI"
+
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance
@@ -460,11 +463,18 @@ class CT6GUIServer(TabbedNiceGui):
         self._btMacAddress = btMacAddress
         # Build a list of the ssid's found.
         ssidList = []
+        self.info("WiFi Network                             RSSI (dBm)")
         for wifiNetworkDict in wifiNetworkDicts:
-            if 'SSID' in wifiNetworkDict:
-                ssid = wifiNetworkDict['SSID']
+            if CT6GUIServer.SSID in wifiNetworkDict:
+                ssid = wifiNetworkDict[CT6GUIServer.SSID]
                 if ssid and ssid not in ssidList:
                     ssidList.append(ssid)
+
+                if CT6GUIServer.RSSI in wifiNetworkDict:
+                    rssi = wifiNetworkDict[CT6GUIServer.RSSI]
+                    if rssi < -10:
+                        self.info(f"{ssid:<40s} {rssi:.0f}")
+
         # Set list in GUI field and update
         self._ssidDropDown.options = ssidList
         if self._wifiSSIDBTInput.value in ssidList:
