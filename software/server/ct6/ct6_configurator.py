@@ -470,7 +470,7 @@ class CT6GUIServer(TabbedNiceGui):
                 if ssid and ssid not in ssidList:
                     ssidList.append(ssid)
 
-                if CT6GUIServer.RSSI in wifiNetworkDict:
+                if ssid and CT6GUIServer.RSSI in wifiNetworkDict:
                     rssi = wifiNetworkDict[CT6GUIServer.RSSI]
                     if rssi < -10:
                         self.info(f"{ssid:<40s} {rssi:.0f}")
