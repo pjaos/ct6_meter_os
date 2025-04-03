@@ -491,14 +491,14 @@ class CT6GUIServer(TabbedNiceGui):
             ct6BlueTooth = CT6BlueTooth(uio=self)
             self.info("Setting up CT6 WiFi...")
             ct6BlueTooth.setup_wifi(ct6Address, ssid, password)
-            self.info(f"Waiting for CT6 device to restart...")
+            self.info("Waiting for CT6 device to restart...")
             ct6BlueTooth.waitfor_device(ct6Address)
-            self.info(f"Waiting for CT6 device WiFi to be served an IP address by the DHCP server...")
+            self.info("Waiting for CT6 device WiFi to be served an IP address by the DHCP server...")
             ipAddress = ct6BlueTooth.get_ip(ct6Address)
             self.info(f"CT6 device IP address = {ipAddress}")
-            self.info(f"Turning off bluetooth interface on CT6 device.")
+            self.info("Turning off bluetooth interface on CT6 device.")
             ct6BlueTooth.disable_bluetooth(ct6Address)
-            self.info(f"CT6 WiFi setup complete.")
+            self.info("CT6 WiFi setup complete.")
 
         finally:
             self._sendEnableAllButtons(True)
