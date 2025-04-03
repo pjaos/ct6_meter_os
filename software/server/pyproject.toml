@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ct6"
-version = "10.6"
+version = "10.7"
 description = ""
 authors = ["Paul Austen <pjaos@gmail.com>"]
 readme = "README.md"
@@ -28,7 +28,7 @@ numpy = "*"
 mysql-connector-python = "*"
 mysqlclient = "*"
 paho-mqtt = "*"
-p3lib = "^1.1.109"
+p3lib = "^1.1.112"
 bokeh = "^3.7.0"
 requests = "*"
 ifaddr = "*"

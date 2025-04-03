@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "CT6"
-#define MyAppVersion "10.6"
+#define MyAppVersion "10.7"
 #define MyAppPublisher "Paul Austen"
 #define MyAppURL "https://github.com/pjaos/ct6_meter_os"
 
