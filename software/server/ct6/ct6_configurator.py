@@ -428,6 +428,9 @@ class CT6GUIServer(TabbedNiceGui):
             else:
                 self.errorDialog("Bluetooth is not available on this computer. Please enable bluetooth and try again.")
 
+        except Exception as ex:
+            self.error(str(ex))
+
         finally:
             self._sendEnableAllButtons(True)
 
@@ -496,19 +499,29 @@ class CT6GUIServer(TabbedNiceGui):
         """@brief A worker thread responsible for configuring the CT6 Wifi SSID and password over bluetooth.
            @param ssid The WiFi SSID.
            @param password The WiFi password."""
+        waitingForIP = False
         try:
             ct6Address = self._btMacAddress
             ct6BlueTooth = CT6BlueTooth(uio=self)
             self.info("Setting up CT6 WiFi...")
             ct6BlueTooth.setup_wifi(ct6Address, ssid, password)
             self.info("Waiting for CT6 device to restart...")
+            waitingForIP = True
             ct6BlueTooth.waitfor_device(ct6Address)
             self.info("Waiting for CT6 device WiFi to be served an IP address by the DHCP server...")
             ipAddress = ct6BlueTooth.get_ip(ct6Address)
+            waitingForIP = False
             self.info(f"CT6 device IP address = {ipAddress}")
             self.info("Turning off bluetooth interface on CT6 device.")
             ct6BlueTooth.disable_bluetooth(ct6Address)
             self.info("CT6 WiFi setup complete.")
+
+        except Exception as ex:
+            # Report a more useful user msg
+            if waitingForIP:
+                self.error(f"CT6 device failed to connect to WiFi network ({ssid}). Check the ssid and password.")
+            else:
+                self.error(str(ex))
 
         finally:
             self._sendEnableAllButtons(True)
