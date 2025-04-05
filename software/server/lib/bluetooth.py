@@ -19,6 +19,12 @@ class BlueTooth(object):
         except BleakError as ex:
             if 'No Bluetooth adapters found.' in str(ex):
                 return False
+
+        except OSError as ex:
+            if 'The device is not ready for use' in str(ex):
+                return False
+
+        except Exception as ex:
             raise ex  # Re-raise if it's a different error
 
     @staticmethod
@@ -45,11 +51,18 @@ class BlueTooth(object):
         dev_list = asyncio.run(BlueTooth._Scan(seconds))
         if dev_filter_string:
             for device in dev_list:
-                if device.name.startswith(dev_filter_string):
+                if device.name and device.name.startswith(dev_filter_string):
                     device_list.append(device)
         else:
             device_list = dev_list
         return device_list
+
+    STORED_EXCEPTION = None
+    @staticmethod
+    def SetException(exception):
+        """@brief Set an error instance.
+           @param exception The error instance."""
+        BlueTooth.STORED_EXCEPTION = exception
 
     def __init__(self, uio=None, rx_timeout_seconds=10, rx_finished_timeout_seconds=0.2):
         self._uio = uio
@@ -73,14 +86,13 @@ class BlueTooth(object):
 
     def _raise_exception_on_error(self):
         """@brief If an error/exception has occurred in the async env raise it in the sync env."""
-        ex = self.get_exception()
-        if ex:
-            raise ex
+        if BlueTooth.STORED_EXCEPTION:
+            raise BlueTooth.STORED_EXCEPTION
 
     def _set_exception(self, exception):
         """@brief Set an error instance.
            @param exception The error instance."""
-        self._exception = exception
+        BlueTooth.SetException(exception)
 
     def get_exception(self):
         """@return An exception instance if an error has occurred. If no error has occurred then None is returned."""
@@ -216,7 +228,9 @@ class CT6BlueTooth(BlueTooth):
                   SECURITY
         """
         line_list = asyncio.run(self._wifi_scan(address))
-        self._raise_exception_on_error()
+        # This sometimes generates an error even though the scan worked.
+        # Therefore we ignore the error, rather than calling self._raise_exception_on_error().
+        self._set_exception(None)
         dict_list = []
         for line in line_list:
             try:
@@ -338,45 +352,52 @@ class CT6BlueTooth(BlueTooth):
         asyncio.run(self._disable_bluetooth(address))
         self._raise_exception_on_error()
 
-"""
+
+# """
 
 # Example to setup CT6 WiFi
 
-class UIO():
-    # @brief Example UIO class.
-    def info(self, msg):
-        print(f"INFO:  {msg}")
+def main():
+    # Program entry point
 
-    def debug(self, msg):
-        print(f"DEBUG: {msg}")
+    # Example to setup CT6 WiFi
 
-uio = UIO()
+    class UIO():
+        # @brief Example UIO class.
+        def info(self, msg):
+            print(f"INFO:  {msg}")
 
-ct6BlueTooth = CT6BlueTooth(uio=None)
+        def debug(self, msg):
+            print(f"DEBUG: {msg}")
 
-if CT6BlueTooth.IsBluetoothEnabled():
+    uio = UIO()
 
-    dev_list = CT6BlueTooth.ScanCT6()
-    if dev_list:
-        dev = dev_list[0]
-        print(f"Found: {dev}. WiFi scan in progress...")
-        network_dicts = ct6BlueTooth.wifi_scan(dev.address)
-        print("Setting up WiFi")
-        lines = ct6BlueTooth.setup_wifi(dev.address, 'YOURSSID', 'YOURPASSWORD')
-        for l in lines:
-            print(l)
-        print(f"Waiting for CT6 device ({dev.address}) to restart.")
-        ct6BlueTooth.waitfor_device(dev.address)
+    ct6BlueTooth = CT6BlueTooth(uio=None)
 
-        ip_address = ct6BlueTooth.get_ip(dev.address)
-        print(f"ip_address={ip_address}")
+    if CT6BlueTooth.IsBluetoothEnabled():
 
-        ct6BlueTooth.disable_bluetooth(dev.address)
+        dev_list = CT6BlueTooth.ScanCT6()
+        if dev_list:
+            dev = dev_list[0]
+            print(f"Found: {dev}. WiFi scan in progress...")
+            network_dicts = ct6BlueTooth.wifi_scan(dev.address)
+            print("Setting up WiFi")
+            ct6BlueTooth.setup_wifi(dev.address, 'YOURSSID', 'YOURPASSWORD')
+            print(f"Waiting for CT6 device ({dev.address}) to restart.")
+            ct6BlueTooth.waitfor_device(dev.address)
+
+            ip_address = ct6BlueTooth.get_ip(dev.address)
+            print(f"ip_address={ip_address}")
+
+            ct6BlueTooth.disable_bluetooth(dev.address)
+
+        else:
+            print("No CT6 devices detected over bluetooth.")
 
     else:
-        print("No CT6 devices detected over bluetooth.")
+        print("Bluetooth is not available. Please enable bluetooth.")
 
-else:
-    print("Bluetooth is not available. Please enable bluetooth.")
+if __name__== '__main__':
+    main()
 
-"""
+# """
