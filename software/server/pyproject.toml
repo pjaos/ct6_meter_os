@@ -17,7 +17,7 @@ include = [
 
 [tool.poetry.dependencies]
 pyreadline3 = "*"
-python = "^3.10.12"
+python = ">=3.10.12,<3.14"
 # Fix security vulnerability reported by github dependabot.
 cryptography = "^44.0.1"
 paramiko = "^3.4.0"
@@ -45,6 +45,7 @@ objgraph = "*"
 nicegui = "*"
 rich = "*"
 test_equipment = "*"
+bleak = "^0.22.3"
 #ip2geotools = "*" # Remove the # comment at the start of this line if you wish the server
                    # access log file to contain country, region and city information.
                    # The down side to this is that about 70 extra python modules are pulled

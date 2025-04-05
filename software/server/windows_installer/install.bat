@@ -21,6 +21,12 @@ if  errorlevel 1 goto CMD_ERROR
 REM Install poetry
 python -m pip install poetry
 if  errorlevel 1 goto CMD_ERROR
+python -m poetry self update
+if  errorlevel 1 goto CMD_ERROR
+REM Set the folder to use for the python virtual env
+python -m poetry config virtualenvs.path C:\Python_Program_Files\CT6\venvs
+REM This installs the shell cmd with poetry >= 2.0
+python -m poetry self add poetry-plugin-shell
 
 REM Create the python poetry env
 python -m poetry lock
