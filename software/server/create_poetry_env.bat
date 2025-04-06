@@ -7,7 +7,7 @@ REM set POETRY_VIRTUALENVS_PATH=C:\venvs
 REM Create the python poetry env
 python -m python -m pip install --upgrade pip
 python -m pip install poetry
-poetry self update
+python -m poetry self update
 REM python3.12 -m poetry env remove python
 REM python3.12 -m poetry env remove python3.12
 python -m poetry config virtualenvs.path C:\Python_Program_Files\CT6\venvs
