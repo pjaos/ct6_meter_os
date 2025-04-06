@@ -69,6 +69,49 @@ Filename: "{app}\uninstall.bat"; RunOnceId: "pipxuninstall"
 ; Flags: runhidden;
 
 [Code]
+// Check for Python.org Python (checks 64-bit and 32-bit registry keys)
+function IsPythonOrgInstalled(): Boolean;
+var
+  KeyNames: TArrayOfString;
+  I: Integer;
+  InstallPath: string;
+begin
+  Result := False;
+
+  // Check current user install
+  if RegGetSubkeyNames(HKEY_CURRENT_USER, 'Software\Python\PythonCore', KeyNames) then
+  begin
+    for I := 0 to GetArrayLength(KeyNames) - 1 do
+    begin
+      if RegQueryStringValue(HKEY_CURRENT_USER, 
+          'Software\Python\PythonCore\' + KeyNames[I] + '\InstallPath', '', InstallPath) then
+      begin
+        if FileExists(InstallPath + 'python.exe') then
+        begin
+          Result := True;
+          Exit;
+        end;
+      end;
+    end;
+  end;
+end;
+function InitializeSetup(): Boolean;
+begin
+  if not IsPythonOrgInstalled() then begin
+    MsgBox(
+      'Python is not installed.' + #13#13 +
+      'You May have Microsoft Python installed but this program needs the python.org version. Please install it from:' + #13#13 +
+      'https://www.python.org/downloads/windows/' + #13#13 +
+      'Selecting "Use admin privalages when installing py.exe" and "Add python.exe to PATH" checkboxes.' + #13#13 +
+      'Setup will now exit.',
+      mbError, MB_OK
+    );
+    Result := False;
+  end else begin
+    Result := True;
+  end;
+end;
+
 var
   BatchFileResultCode: Integer;
   msg: String;
