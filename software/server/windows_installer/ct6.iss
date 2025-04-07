@@ -52,6 +52,7 @@ Source: "../picow/*"; DestDir: "{app}/picow/"; Flags: ignoreversion recursesubdi
 Source: "ct6_configurator.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_dash_mgr.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_dash.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "ct6_app.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_db_store.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_mfg_tool.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_tool.bat"; DestDir: "{app}"; Flags: ignoreversion
