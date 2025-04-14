@@ -251,13 +251,6 @@ class BaseMachine(Constants):
             self._machineConfig.store()
             self._info("Bluetooth shutdown now the unit has an IP address via DHCP.")
 
-        # If we didn't receive a command over the bluetooth interface to shutdown bluetooth
-        else:
-            btOn = self._machineConfig.get(Constants.BLUETOOTH_ON_KEY)
-            # If the config indicates BT should be off and it's currently enabled.
-            if not btOn and self._blueTooth is not None and self._blueTooth.isEnabled():
-                self._blueTooth.shutdown()
-
     def _updateWiFi(self):
         """@brief Check if the user wishes to reset the WiFi config
            @return True if the Wifi is connected."""
