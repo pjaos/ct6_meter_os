@@ -3,7 +3,7 @@ For this project I developed the hardware to allow the measurement of household 
 
 Each CT6 unit has 6 ports, each of which can be connected to a current transformer, clipped around a cable carrying AC mains power. Each port can measure the AC power flow bi directionally (I.E to and from the grid). The unit measures the active power (the power normally charged by a domestic electricity supplier), reactive and apparent power. The AC power factor, frequency and AC voltage is also measured along with the WiFi RSSI and CT6 device temperature.
 
-The CT6 hardware.
+## The CT6 hardware.
 
 ![alt text](images/ct6.jpg "CT6 Unit")
 
@@ -15,16 +15,51 @@ The CT6 hardware.
 
 ![alt text](images/pcb.jpg "CT6 PCB")
 
-I developed various software applications to allow the setup, recording and viewing of the data from CT6 devices. The ct6 configurator app allows the user to setup/configure a CT6 unit via a GUI interface. This includes connecting it to your WiFi, upgrading it to the latest firmware. Once CT6 device/s are connected to your WiFi network the ct6_app (running on a separate Windows or Linux computer) will read data from all CT6 units on your LAN, store the data in a database and present a Web UI to allow you to view your energy generation/usage without the need of a cloud based system. This web UI can be made available to all devices (PC’s, tablets and phones) on your LAN if required.
+### CT6 Hardware details
+Details of the CT6 hardware can be found [here](hardware/README.md).
 
-An example of the Web UI.
-![alt text](software/server/images/ct6_dash.png "ct6_dash")
-
-## Installing the software applications
+## Installing CT6 Software Applications
 Details of how to install the required CT6 software onto a Windows or Linux machine can be found [here](software/server/installers/README.md).
 
-## Using the installed software applications
-Details of how to setup your CT6 unit can be found [here](software/server/setting_up_ct6_units.md).
+## The CT6 Software Applications
+An overview of the CT6 software applications are shown below.
+
+- ct6_app
+
+When at least one CT6 device is connected to your WiFi network you can start this app. This app will
+find all CT6 units. These CT6 units will send data which is stored in an sqlite database. A server is then started and a browser window will open, connected to the server, to display the data from the database as shown.
+
+![alt text](software/server/images/ct6_dash.png "ct6_dash")
+
+- ct6_configurator
+
+The ct6 configurator app allows the user to setup/configure a CT6 unit via a GUI interface. This includes connecting it to your WiFi, upgrading it to the latest firmware. Click [here](software/server/setting_up_ct6_units.md).
+
+- ct6_db_store
+
+Similar to part of the ct6_app in that it detects all CT6 units on the LAN/WiFi and stores the data in a database. However the database is a mysql database. This allows for a more scalable system than the ct6_app.
+
+- ct6_dash
+
+This presents the data stored in the above mysql database and presents a GUI in a web browser as displayed above.
+
+- ct6_dash_mgr
+
+Both the ct6_app and the ct6_dash app present a GUI in a browser interface via a local web server. This app allows you to configure credentials (username/password) to allow access to the web server. The ct6_app and ct6_dash apps must be configured to require a login in order to use these credentials.
+
+- ct6_mfg_tool
+
+This tool is used to load SW and perform manufacturing tests on CT6 hardware in order to commission them.
+
+- ct6_stats
+
+This finds CT6 devices on the LAN/WiFi and displays the JSON data received from CT6 devices.
+
+- ct6_tool
+
+This provides functionality that is useful when checking the operation of CT6 units in a development environment.
+
+More details of how to use the installed software applications can be found [here](software/server/README.md).
 
 # Purchasing CT6 units
 Complete CT6 units or assembled PCB's and associated parts can be purchased on Tindie at https://www.tindie.com/products/pausten/ct6-energy-monitor/
