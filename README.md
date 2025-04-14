@@ -1,41 +1,9 @@
-# CT6 Meter Project.
-This project initially had the simple requirement.
+# CT6 Meter Project
+For this project I developed the hardware to allow the measurement of household AC electrical energy usage on up to 6 circuits using current transformers (CT’s). It can be used to monitor solar system generation, storage battery charge/discharge, EV charging and household energy usage. Multiple CT6 devices can be used to monitor more circuits if required.
 
-- Monitor AC power usage on several ports.
+Each CT6 unit has 6 ports, each of which can be connected to a current transformer, clipped around a cable carrying AC mains power. Each port can measure the AC power flow bi directionally (I.E to and from the grid). The unit measures the active power (the power normally charged by a domestic electricity supplier), reactive and apparent power. The AC power factor, frequency and AC voltage is also measured along with the WiFi RSSI and CT6 device temperature.
 
-Given this broad requirement I initially developed a hardware device that had
-four ports connected to current transformers. This used an ESP32 microcontroller
-and 16 bit ADC's to measure the current flow using the current transformers.
-It became apparent that this approach had it's limitations which limited the
-accuracy of the measurements. The main two limitations that concerned me were
-
-- Not measuring the AC line voltage meant AC line voltage variation was not
-  reflected in the power measurements.
-- The direction of the AC power flow was not recorded.
-
-After investigation I decided to use the [ATM90E32](https://www.microchip.com/en-us/product/ATM90E32AS) device as it has features that can fulfil both of the above requirements.
-
-I also added an several requirements at this point.
-
-- The ability to measure the following parameters
-    - The RMS power (watts) from each port.
-    - The Apparent power (watts) from each port.
-    - The reactive power (watts) from each port.
-    - The RMS current (amps) from each port.
-    - The Peak current (amps) from each port.
-    - The power factor for the power on each port.
-    - The direction of the power from each port.
-    - The RMS AC voltage.
-    - The AC Frequency (Hz).
-    - The WiFi RSSI (dBm).
-    - The Temperature (°C).
-- A display to show the power on each port.
-- Single unit will have 6 ports rather than 4.
-- If possible it would be useful to have the ability to stack units so that up to 24 ports could be monitored.
-
-The development of this hardware involved schematic design, PCB layout, PCB manufacture and case design of this unit. The PCB was fabricated, assembled, tested and a 3D printed case was produced. The [hardware](hardware) folder contains details of the schematic/ PCB and  also the design for the 3D printed case. The [software](software) folder contains the source code for the CT6 unit firmware along with the server side tools and the manufacturing test software.
-
-The images below show the CT6 unit.
+The CT6 hardware.
 
 ![alt text](images/ct6.jpg "CT6 Unit")
 
@@ -47,26 +15,19 @@ The images below show the CT6 unit.
 
 ![alt text](images/pcb.jpg "CT6 PCB")
 
-This project also includes a web server that provides a useful user interface to access to the data provided by the above hardware. An example of this interface is shown below.
+I developed various software applications to allow the setup, recording and viewing of the data from CT6 devices. The ct6 configurator app allows the user to setup/configure a CT6 unit via a GUI interface. This includes connecting it to your WiFi, upgrading it to the latest firmware. Once CT6 device/s are connected to your WiFi network the ct6_app (running on a separate Windows or Linux computer) will read data from all CT6 units on your LAN, store the data in a database and present a Web UI to allow you to view your energy generation/usage without the need of a cloud based system. This web UI can be made available to all devices (PC’s, tablets and phones) on your LAN if required.
 
+An example of the Web UI.
 ![alt text](software/server/images/ct6_dash.png "ct6_dash")
 
-More information on this is detailed in the [CT6 App Server](software/server) folder in the software folder.
+## Installing the software applications
+Details of how to install the required CT6 software onto a Windows or Linux machine can be found [here](software/server/installers/README.md).
 
-I also wrote an Android App that is used to connect the CT6 device to a WiFi network. An example of this interface is shown below. This can be used for other projects in the future as it interfaces to the generic micropython libraries (via bluetooth) I wrote for the CT6 project.
-
-![alt text](software/Android_App/images/1.jpg "ct6_dash")
-
-More information on this is detailed in the [Android App](software/Android_App/README.md) folder in the software folder.
+## Using the installed software applications
+Details of how to setup your CT6 unit can be found [here](software/server/setting_up_ct6_units.md).
 
 # Purchasing CT6 units
 Complete CT6 units or assembled PCB's and associated parts can be purchased on Tindie at https://www.tindie.com/products/pausten/ct6-energy-monitor/
 
-## Installing the software applications
-Details of how to install the required CT6 software onto a Windows or Linux machine can be found [here](software/server/installers/README.md)
-
-## Using the installed software applications
-Details of how to setup your CT6 unit can be found [here](software/server/setting_up_ct6_units.md)
-
-# Discalimer
-This project is designed to use the YHDC SCT013 100A 0-1V split core current transformer. No other current transformer is currently supported. As mains voltage is dangerous it is the users responsibility to connect these current clamps using this hardware.
+# Warning
+This project is designed to use the YHDC SCT013 100A 0-1V split core current transformer. As mains voltage is dangerous it is the users responsibility to connect these current clamps safely using this hardware.
