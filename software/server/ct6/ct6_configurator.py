@@ -521,7 +521,9 @@ class CT6GUIServer(TabbedNiceGui):
             if waitingForIP:
                 self.error(f"CT6 device failed to connect to WiFi network ({ssid}). Check the ssid and password.")
             else:
-                self.error(str(ex))
+                error = str(ex)
+                if error:
+                    self.error(error)
 
         finally:
             self._sendEnableAllButtons(True)
