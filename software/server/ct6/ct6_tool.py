@@ -1633,6 +1633,13 @@ class CT6Scanner(CT6Base):
             stopTime = time() + runSeconds
         running = True
         while running:
+            #If we need to stop after a given time period.
+            if stopTime and time() >= stopTime:
+                areYouThereThread.shutDown()
+                areYouThereThread.join()
+                sock.close()
+                break
+
             data = sock.recv(65536)
             #Ignore the messaage we sent
             if data != CT6Scanner.AreYouThereThread.AreYouThereMessage:
@@ -1659,12 +1666,6 @@ class CT6Scanner(CT6Base):
                 except:
                     pass
 
-            #If we need to stop after a given time period.
-            if stopTime and time() >= stopTime:
-                areYouThereThread.shutDown()
-                areYouThereThread.join()
-                sock.close()
-                break
 
 class CT6Config(CT6Base):
     """@brief Allow the user to configure a CT6 device."""
