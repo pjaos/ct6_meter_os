@@ -341,7 +341,11 @@ class CT6BlueTooth(BlueTooth):
                 self.debug(f"{inspect.currentframe().f_code.co_name}: Data written: {data}")
 
         except Exception as e:
-            self._set_exception(e)
+            e_str = str(e)
+            # Ignore this error as it appears the command completes successfully when it occurs
+            if e_str.find("Unlikely Error") == -1:
+                # Raise all other errors
+                self._set_exception(e)
 
         return self._rx_list
 
@@ -353,7 +357,7 @@ class CT6BlueTooth(BlueTooth):
         self._raise_exception_on_error()
 
 
-# """
+"""
 
 # Example to setup CT6 WiFi
 
@@ -400,4 +404,4 @@ def main():
 if __name__== '__main__':
     main()
 
-# """
+"""
