@@ -1,5 +1,7 @@
 # CT6 Meter Project
-For this project I developed the hardware to allow the measurement of household AC electrical energy usage on up to 6 circuits using current transformers (CT’s). It can be used to monitor solar system generation, storage battery charge/discharge, EV charging and household energy usage. Multiple CT6 devices can be used to monitor more circuits if required.
+For this project I developed the hardware to allow the measurement of household AC electrical energy usage on up to 6 circuits using current transformers (CT’s). It can be used to monitor solar system generation, storage battery charge/discharge, EV charging, household energy usage, etc...
+
+Multiple CT6 devices can be used to monitor more circuits if required.
 
 Each CT6 unit has 6 ports, each of which can be connected to a current transformer, clipped around a cable carrying AC mains power. Each port can measure the AC power flow bi directionally (I.E to and from the grid). The unit measures the active power (the power normally charged by a domestic electricity supplier), reactive and apparent power. The AC power factor, frequency and AC voltage is also measured along with the WiFi RSSI and CT6 device temperature.
 
@@ -16,36 +18,66 @@ Each CT6 unit has 6 ports, each of which can be connected to a current transform
 ![alt text](images/pcb.jpg "CT6 PCB")
 
 ### CT6 Hardware details
-Details of the CT6 hardware can be found [here](hardware/README.md).
+More details of the CT6 hardware can be found [here](hardware/README.md).
 
 ## Installing CT6 Software Applications
-Details of how to install the required CT6 software onto a Windows or Linux machine can be found [here](software/server/installers/README.md).
+Details of how to install the CT6 software package onto a Windows or Linux machine can be found [here](software/server/installers/README.md).
 
 ## The CT6 Software Applications
-An overview of the CT6 software applications are shown below.
-
-- ct6_app
-
-When at least one CT6 device is connected to your WiFi network you can start this app. This app will
-find all CT6 units. These CT6 units will send data which is stored in an sqlite database. A server is then started and a browser window will open, connected to the server, to display the data from the database as shown.
-
-![alt text](software/server/images/ct6_dash.png "ct6_dash")
+An overview of the CT6 software applications are shown below. These can all be started from a terminal window on the command line by entering the name of each command.
 
 - ct6_configurator
 
 The ct6 configurator app allows the user to setup/configure a CT6 unit via a GUI interface. This includes connecting it to your WiFi, upgrading it to the latest firmware. Click [here](software/server/setting_up_ct6_units.md).
 
+- ct6_app
+
+When at least one CT6 device is connected to your WiFi network you can start this app (enter ct6_app in a terminal window). This app will find all CT6 units. These CT6 units will send data to the ct6_app which ut then stores in an sqlite database. A server is then started and a browser window will open, connected to the server, to display the data from the database as shown.
+
+![alt text](software/server/images/ct6_dash.png "ct6_dash")
+
 - ct6_db_store
 
-Similar to part of the ct6_app in that it detects all CT6 units on the LAN/WiFi and stores the data in a database. However the database is a mysql database. This allows for a more scalable system than the ct6_app.
+Similar to part of the ct6_app in that it detects all CT6 units on the LAN/WiFi and stores the data in a database. However the database is a mysql database. This allows for a more scalable system than the ct6_app. Details of how to use this app can be found [here](software/server/mode_1_mysql_db_and_dashboard.md).
 
 - ct6_dash
 
-This presents the data stored in the above mysql database and presents a GUI in a web browser as displayed above.
+This presents the data stored in the above mysql database and presents a GUI in a web browser as displayed above.  Details of how to use this app can be found [here](software/server/mode_1_mysql_db_and_dashboard.md).
 
 - ct6_dash_mgr
 
-Both the ct6_app and the ct6_dash app present a GUI in a browser interface via a local web server. This app allows you to configure credentials (username/password) to allow access to the web server. The ct6_app and ct6_dash apps must be configured to require a login in order to use these credentials.
+Both the ct6_app and the ct6_dash app present a GUI in a browser interface via a local web server. This app allows you to configure credentials (username/password) to allow access to the web server. The ct6_app and ct6_dash apps must be configured to require a login in order to use these credentials. The example below shows auser being added for web server access.
+
+```
+ct6_dash_mgr
+INFO:
+INFO:  ------------
+INFO:  | USERNAME |
+INFO:  ------------
+INFO:  0 credentials stored in /home/pja/.ct6_dash_credentials.json
+INFO:
+INFO:  A - Add a username/password.
+INFO:  D - Delete a username/password.
+INFO:  C - Check a username/password is stored.
+INFO:  Q - Quit.
+INPUT: Enter one of the above options: : a
+INFO:  Add a username/password
+INPUT: Enter the username: : auser
+INPUT: Enter the password: : apassword
+INFO:
+INFO:  ------------
+INFO:  | USERNAME |
+INFO:  ------------
+INFO:  |    auser |
+INFO:  ------------
+INFO:  1 credentials stored in /home/pja/.ct6_dash_credentials.json
+INFO:
+INFO:  A - Add a username/password.
+INFO:  D - Delete a username/password.
+INFO:  C - Check a username/password is stored.
+INFO:  Q - Quit.
+INPUT: Enter one of the above options: : q
+```
 
 - ct6_mfg_tool
 

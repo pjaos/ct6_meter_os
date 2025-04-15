@@ -2,9 +2,6 @@
 
 ## Schematic
 
-The schematic was created against the requirements for the project with reference
-to the data sheets for the various parts.
-
 ![alt text](images/schematic_top_level.png "CT6 Top Level Schematic")
 
 ![alt text](images/schematic_microcontroller.png "CT6 Microcontroller Schematic")
@@ -48,7 +45,7 @@ The [case](case) folder contains the FreeCad (0.20.2) design files for this proj
 
 ### Dissembling a CT6 unit
 
-Some info on how to take a CT6 unit apart if you want access to the PCB can be found here [here](README_DISSEMBLY.md)
+Some info on how to take a CT6 unit apart if you want access to the PCB can be found here [here](hardware/README_DISSEMBLY.md)
 
 ## Power Supply
 This project requires the use of an AC - AC supply. If you purchase a CT6 unit the CT6 PCB assembly will have been calibrated using the power supply detailed below.
