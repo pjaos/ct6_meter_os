@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "CT6"
-#define MyAppVersion "10.8"
+#define MyAppVersion "11.0"
 #define MyAppPublisher "Paul Austen"
 #define MyAppURL "https://github.com/pjaos/ct6_meter_os"
 
@@ -84,7 +84,7 @@ begin
   begin
     for I := 0 to GetArrayLength(KeyNames) - 1 do
     begin
-      if RegQueryStringValue(HKEY_CURRENT_USER, 
+      if RegQueryStringValue(HKEY_CURRENT_USER,
           'Software\Python\PythonCore\' + KeyNames[I] + '\InstallPath', '', InstallPath) then
       begin
         if FileExists(InstallPath + 'python.exe') then
