@@ -389,7 +389,7 @@ class CT6GUIServer(TabbedNiceGui):
         """@brief A dialog displayed as step 1 in the WiFi setup process when using a bluetooth interface to talk to the CT6 device."""
         # Create the dialog
         with ui.dialog() as self._bluetoothWiFiDialog1, ui.card():
-            ui.label("Hold the WiFi button down on the CT6 device until it restarts and the blue and green LED's flash.\n\nContinue ?").style('white-space: pre-wrap;')
+            ui.label("Hold the WiFi button down on the CT6 device until it restarts and the blue and green LED's flash. The CT6 device must be running at least V3.0 firmware.\n\nContinue ?").style('white-space: pre-wrap;')
             with ui.row():
                 ui.button("Ok", on_click=lambda: (self._bluetoothWiFiDialog1.close(), self._startBluetoothWifiSetup(),))
                 ui.button("Cancel", on_click=lambda: (self._bluetoothWiFiDialog1.close(), self._sendEnableAllButtons(True)))
