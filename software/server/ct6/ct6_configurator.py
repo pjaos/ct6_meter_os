@@ -81,6 +81,8 @@ class CT6GUIServer(TabbedNiceGui):
     SSID                        = "SSID"
     RSSI                        = "RSSI"
 
+    UPGRADE_CHECK               = "UPGRADE_CHECK"
+
     def __init__(self, uio, options):
         """@brief Constructor
            @param uio A UIO instance
@@ -267,6 +269,10 @@ class CT6GUIServer(TabbedNiceGui):
             btMacAddress = rxDict[CT6GUIServer.BT_MAC_ADDRESS]
             scanResultsDicts = rxDict[CT6GUIServer.CT6_WIFI_SCAN_COMPLETE]
             self._continueCT6WifiBTSetup(btMacAddress, scanResultsDicts)
+
+        elif CT6GUIServer.UPGRADE_CHECK in rxDict:
+            userPrompt = rxDict[CT6GUIServer.UPGRADE_CHECK]
+            self._upgradeCheckComplete(userPrompt)
 
     def _initWiFiTab(self):
         """@brief Create the Wifi tab contents."""
@@ -555,14 +561,46 @@ class CT6GUIServer(TabbedNiceGui):
 
     def _upgradeChecks(self):
         """@brief perform some check on the upgrade process."""
-        options = getCT6ToolCmdOpts()
-        devManager = YDevManager(self, options)
-        devManager.setIPAddress(self._ct6IPAddressInput1.value)
-        userPrompt = devManager.upgradeChecks()
+        ipAddress = self._ct6IPAddressInput1.value
+        self._initTask()
+        self._copyCT6Address(ipAddress)
+        self._saveConfig()
+        self._setExpectedProgressMsgCount(10,15)
+        threading.Thread( target=self._upgradeCheckThread, args=(ipAddress,)).start()
+
+    def _upgradeCheckComplete(self, userPrompt):
+        """@brief Called when the upgrade check thread is complete.
+           @param userPrompt The prompt returned by the upgrade check process."""
         if userPrompt is None:
             self._startUpgradeThread()
         else:
             self._showContinueUpgradeDialog(userPrompt)
+
+    def _upgradeCheckThread(self, ct6IPAddress):
+        """@brief Run a check thread before an upgrade is performed.
+           @param ct6IPAddress The address of the CT6 device."""
+        try:
+            try:
+                options = getCT6ToolCmdOpts()
+                devManager = YDevManager(self, options)
+                devManager.setIPAddress(ct6IPAddress)
+                pingT = devManager.doPing(ct6IPAddress)
+                if pingT is None:
+                    raise Exception(f"Unable to reach {ct6IPAddress}. Check IP address is correct.")
+                userPrompt = devManager.upgradeChecks()
+                self._sendUpgradeCheckResult(userPrompt)
+
+            except Exception as ex:
+                self.error(str(ex))
+
+        finally:
+            self._sendEnableAllButtons(True)
+
+    def _sendUpgradeCheckResult(self, userPrompt):
+        """@brief Send the result of an upgrade check back to the GUI thread.
+           @param userPrompt The user prompt after the check."""
+        msgDict = {CT6GUIServer.UPGRADE_CHECK: userPrompt}
+        self.updateGUI(msgDict)
 
     def _showContinueUpgradeDialog(self, userPrompt):
         """@brief Present a dialog to the user asking them if they with to proceed with the upgrade."""
