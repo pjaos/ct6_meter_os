@@ -512,6 +512,8 @@ class CT6GUIServer(TabbedNiceGui):
             ipAddress = ct6BlueTooth.get_ip(ct6Address)
             waitingForIP = False
             self.info(f"CT6 device IP address = {ipAddress}")
+            # Send a message to set the CT6 device IP address in the GUI
+            self._setCT6IPAddress(ipAddress)
             self.info("Turning off bluetooth interface on CT6 device.")
             ct6BlueTooth.disable_bluetooth(ct6Address)
             self.info("CT6 WiFi setup complete.")
