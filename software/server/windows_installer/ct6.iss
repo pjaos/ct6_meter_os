@@ -38,8 +38,13 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Icons]
 Name: "{group}\CT6 Configurator"; Filename: "{app}\ct6_configurator.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\CT6 App"; Filename: "{app}\ct6_app.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\CT6 DB Store"; Filename: "{app}\ct6_db_store.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\CT6 Dash"; Filename: "{app}\ct6_dash.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\CT6 Dash Manager"; Filename: "{app}\ct6_dash_mgr.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\CT6 Stats"; Filename: "{app}\ct6_stats.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\CT6 Shell"; Filename: "{app}\start_powershell.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
-Name: "{group}\Uninstall CT6"; Filename: "{uninstallexe}"
+Name: "{group}\CT6 Uninstall"; Filename: "{uninstallexe}"
 
 [Files]
 Source: "../../../LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
