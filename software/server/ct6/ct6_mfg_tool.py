@@ -13,7 +13,6 @@ import threading
 import tempfile
 import string
 
-from   retry import retry
 from   queue import Queue
 from   time import sleep, strftime, localtime, time
 
@@ -80,7 +79,7 @@ class FactorySetup(CT6Base):
             self._storeWiFiCredentials(ssid, password)
 
         elif not os.path.isfile(CT6Base.HOUSE_WIFI_CFG_FILE):
-            self._handleHouseWiFiConfigFileNotFound(ssid, password)
+            self._handleHouseWiFiConfigFileNotFound()
 
         if self._options.ac60hz:
             self._lineFreqHz   = 60
@@ -751,32 +750,41 @@ class FactorySetup(CT6Base):
             raise Exception(f"{nukeImage} file not found.")
         return nukeImage
 
-    @retry(Exception, tries=3, delay=1)
-    def _erasePicoWFlash(self):
-        """@brief Erase flash on the microcontroller (Pico W)"""
-        self._uio.info("Ensure the USB Pico W is connected to this PC.")
-        self._uio.info("Hold the button down on the Pico W and power up the CT6 device.")
-        picoPath = self._getPicoPath()
-        sourcePath = self._getPicoFlashNukeImage()
-        destinationPath = picoPath
-
-        self._waitForPicoPath(exists=True)
-
-        self._uio.info("")
-        self._uio.info("Release the button on the Pico W.")
-        self._uio.info("")
-
-        self._uio.info(f"Copying {sourcePath} to {destinationPath}")
-        shutil.copy(sourcePath, destinationPath)
-
-        self._waitForPicoPath(exists=False)
-
-        self._uio.info(f"Checking {picoPath}")
+    def _erasePicoWFlash(self, tries=3):
+        """@brief Erase flash on the microcontroller (Pico W).
+           @param tries The number of attempts to try before throwing an Exception."""
+        tryCount = 0
         while True:
-            if os.path.isdir(picoPath):
-                sleep(0.5)
+            try:
+                self._uio.info("Ensure the USB Pico W is connected to this PC.")
+                self._uio.info("Hold the button down on the Pico W and power up the CT6 device.")
+                picoPath = self._getPicoPath()
+                sourcePath = self._getPicoFlashNukeImage()
+                destinationPath = picoPath
+
+                self._waitForPicoPath(exists=True)
+
+                self._uio.info("")
+                self._uio.info("Release the button on the Pico W.")
+                self._uio.info("")
+
+                self._uio.info(f"Copying {sourcePath} to {destinationPath}")
+                shutil.copy(sourcePath, destinationPath)
+
+                self._waitForPicoPath(exists=False)
+
+                self._uio.info(f"Checking {picoPath}")
+                while True:
+                    if os.path.isdir(picoPath):
+                        sleep(0.5)
+                        break
+                    sleep(0.25)
                 break
-            sleep(0.25)
+
+            except Exception as ex:
+                tryCount += 1
+                if tryCount > tries:
+                    raise ex
 
     def _waitForPicoPath(self, exists=True):
         """@brief wait for the path that appears when the RPi Pico button is held down
@@ -801,26 +809,36 @@ class FactorySetup(CT6Base):
             raise Exception(f"{microPythonImage} file not found.")
         return microPythonImage
 
-    @retry(Exception, tries=3, delay=1)
-    def _loadMicroPython(self, showPrompt=True):
+    def _loadMicroPython(self, showPrompt=True, tries=3):
         """@brief Load Micropython image onto the RPi Pico W.
-           @param showPrompt Show the prompt to intruct the user."""
-        if showPrompt:
-            self._uio.info("Ensure the USB Pico W is connected to this PC.")
-            self._uio.info("Hold the button down on the Pico W and power up the CT6 device.")
-        picoPath = self._getPicoPath()
-        sourcePath = self._getPicoMicroPythonImage()
-        destinationPath = picoPath
+           @param showPrompt Show the prompt to instruct the user.
+           @param tries The number of attempts to try before throwing an Exception."""
+        tryCount = 0
+        while True:
+            try:
+                if showPrompt:
+                    self._uio.info("Ensure the USB Pico W is connected to this PC.")
+                    self._uio.info("Hold the button down on the Pico W and power up the CT6 device.")
 
-        self._waitForPicoPath(exists=True)
+                picoPath = self._getPicoPath()
+                sourcePath = self._getPicoMicroPythonImage()
+                destinationPath = picoPath
 
-        self._uio.info("Loading micropython image onto the RPi Pico W")
-        self._uio.info(f"Copying {sourcePath} to {destinationPath}")
-        shutil.copy(sourcePath, destinationPath)
+                self._waitForPicoPath(exists=True)
 
-        self._waitForPicoPath(exists=False)
-        sleep(2)
-        self._checkMicroPython()
+                self._uio.info("Loading micropython image onto the RPi Pico W")
+                self._uio.info(f"Copying {sourcePath} to {destinationPath}")
+                shutil.copy(sourcePath, destinationPath)
+
+                self._waitForPicoPath(exists=False)
+                sleep(2)
+                self._checkMicroPython()
+                break
+
+            except Exception as ex:
+                tryCount += 1
+                if tryCount > tries:
+                    raise ex
 
     def _initLogFile(self):
         """@brief Init the test log file to record the test an calibration of the unit."""
