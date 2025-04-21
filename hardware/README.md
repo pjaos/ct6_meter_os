@@ -16,6 +16,9 @@ below.
 
 ![alt text](images/pcb.png "CT6 PCB")
 
+## Bill Of Materials
+The BOM for the above PCB is available [here](ct_meter_2.1_bom.csv "Bill Of Materials") in CSV format.
+
 # Current transformer
 
 This project is tested with the YHDC SCT013 100A 0-1V split core current transformer when manufactured. If you wish to use a different current transformer then you must calibrate the unit as detailed at the end of [this](../software/server/setting_up_ct6_units.md) document.
