@@ -27,6 +27,7 @@ import hashlib
 
 from   p3lib.uio import UIO
 from   p3lib.helper import logTraceBack
+from p3lib.helper import getProgramVersion
 
 from   lib.base_constants import BaseConstants
 
@@ -88,25 +89,7 @@ class CT6Base(BaseConstants):
     def GetProgramVersion():
         """@brief Get the program version from the poetry pyproject.toml file.
            @return The version of the installed program (string value)."""
-        poetryConfigFile = os.path.join(CT6Base.LOCAL_PATH, CT6Base.POETRY_CONFIG_FILE)
-        if not os.path.isfile(poetryConfigFile):
-            poetryConfigFile = os.path.join(CT6Base.LOCAL_PATH, ".." + os.sep + CT6Base.POETRY_CONFIG_FILE)
-            poetryConfigFile2 = poetryConfigFile
-            if not os.path.isfile(poetryConfigFile):
-                raise Exception(f"{poetryConfigFile} and {poetryConfigFile2} file not found.")
-        programVersion = None
-        with open(poetryConfigFile, 'r') as fd:
-            lines = fd.readlines()
-            for line in lines:
-                line=line.strip("\r\n")
-                if line.startswith('version'):
-                    elems = line.split("=")
-                    if len(elems) == 2:
-                        programVersion = elems[1].strip('" ')
-                        break
-        if programVersion is None:
-            raise Exception(f"Failed to extract program version from '{line}' line of {poetryConfigFile} file.")
-        return programVersion
+        return getProgramVersion()
 
     HOUSE_WIFI_CFG_FILE         = os.path.join(os.path.join(os.path.expanduser('~')), "ct6_house_wifi.cfg" )
     WIFI_CFG_KEY                = "WIFI"
