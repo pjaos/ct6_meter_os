@@ -94,7 +94,9 @@ This provides functionality that is useful when checking the operation of CT6 un
 More details of how to use the installed software applications can be found [here](software/server/README.md).
 
 # Purchasing CT6 units
-Complete CT6 units or assembled PCB's and associated parts can be purchased on Tindie at https://www.tindie.com/products/pausten/ct6-energy-monitor/
+Complete CT6 units or assembled PCB's and associated parts can be purchased [here](https://www.tindie.com/products/pausten/ct6-energy-monitor/) on Tindie.
+
+If you wish to purchase the PCB and assemble it the PCB is available [here](https://www.ebay.co.uk/itm/197238433051?_skw=ct6+energy+monitor&itmmeta=01JSDZHK5C73DRCH2B6C3826B8&hash=item2dec53a51b:g:JuUAAOSwgS1oBlyi&itmprp=enc%3AAQAKAAAA8FkggFvd1GGDu0w3yXCmi1cBRlOOjv8sOKb%2FTHOQEqPMlhxXlGHQDXkllzre4%2BcAD9Xe%2BMO3c0eWxNT1whArwip%2BVjcEObn3zDHjn7rUXmn8Eg7MvTBtyVcclCey1ORpy%2FhiubO1FkwFZiuEHAs4gDc7YZebYCdjbKHG5OuyfSEBxeywqPoqp1HD85w0z3N8VLhNet%2Bpgp%2BQRGP00zPNf2Xa50bkNm3EAlkhm49pyxJM4nAW9pQ1wKwWL--ZpUE0TlTCsp9zG0qZx4K2688cyUG2xWnXUhBAK9Xy%2FJXSpeQd6Zgui8Vw8m%2FYUpzmoOYeIg%3D%3D%7Ctkp%3ABk9SR-yyxr_LZQ) on ebay and the Bill of materials (BOM) is available [here](hardware/ct_meter_2.1_bom.csv).
 
 # Warning
 This project is designed to use the YHDC SCT013 100A 0-1V split core current transformer. As mains voltage is dangerous it is the users responsibility to connect these current clamps safely using this hardware.
