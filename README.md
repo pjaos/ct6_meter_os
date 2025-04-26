@@ -32,7 +32,7 @@ The ct6 configurator app allows the user to setup/configure a CT6 unit via a GUI
 
 - ct6_app
 
-When at least one CT6 device is connected to your WiFi network you can start this app (enter ct6_app in a terminal window). This app will find all CT6 units. These CT6 units will send data to the ct6_app which ut then stores in an sqlite database. A server is then started and a browser window will open, connected to the server, to display the data from the database as shown.
+When at least one CT6 device is connected to your WiFi network you can start this app (enter ct6_app in a terminal window). This app will find all CT6 units. These CT6 units will send data to the ct6_app which then stores it in an sqlite database. A server is then started and a browser window will open, connected to the server, to display the data from the database as shown.
 
 ![alt text](software/server/images/ct6_dash.png "ct6_dash")
 
