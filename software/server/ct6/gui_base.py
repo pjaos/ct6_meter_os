@@ -337,8 +337,6 @@ class GUIBase(MultiAppServer):
         self._enableButtons(False)
 
     def _getActionButtonPanel(self):
-        self._powerButton = Button(label="Power", button_type=GUIBase.BUTTON_TYPE)
-        self._powerButton.on_click(self._powerButtonHandler)
 
         self._powerFactorButton = Button(label="Power Factor", button_type=GUIBase.BUTTON_TYPE)
         self._powerFactorButton.on_click(self._powerFactorButtonHandler)
@@ -349,7 +347,7 @@ class GUIBase(MultiAppServer):
         self._freqButton = Button(label="AC Frequency", button_type=GUIBase.BUTTON_TYPE)
         self._freqButton.on_click(self._showACFreq)
 
-        row1 = row(children=[self._powerButton, self._powerFactorButton, self._voltageButton])
+        row1 = row(children=[self._powerFactorButton, self._voltageButton, self._freqButton])
 
         self._tempButton = Button(label="Temperature", button_type=GUIBase.BUTTON_TYPE)
         self._tempButton.on_click(self._showTemp)
@@ -357,7 +355,7 @@ class GUIBase(MultiAppServer):
         self._rssiButton = Button(label="WiFi RSSI", button_type=GUIBase.BUTTON_TYPE)
         self._rssiButton.on_click(self._showRSSI)
 
-        row2 = row(children=[self._freqButton, self._tempButton, self._rssiButton])
+        row2 = row(children=[self._tempButton, self._rssiButton])
 
         return column(children=[row1, row2])
 
@@ -365,6 +363,9 @@ class GUIBase(MultiAppServer):
         """@brief Get an instance of the button panel.
            @param sensorNames A list of the names of the sensors.
            @return an instance of the button panel."""
+        self._updateButton = Button(label="Update", button_type=GUIBase.BUTTON_TYPE)
+        self._updateButton.on_click(self._powerButtonHandler)
+
         self._todayButton = Button(label="Today", button_type=GUIBase.BUTTON_TYPE)
         self._todayButton.on_click(self._todayButtonHandler)
 
@@ -406,11 +407,12 @@ class GUIBase(MultiAppServer):
 
         # Div to move the table down to the top edge of the plot.
         div1 = Div(height=20)
+        leftButtonPanel0 = column(children=[self._updateButton])
         leftButtonPanel = column(children=[self._todayButton, self._thisWeekButton, self._thisMonthButton, self._thisYearButton])
         rightButtonPanel = column(children=[self._yesterdayButton, self._lastWeekButton, self._lastMonthButton, self._lastYearButton])
-        buttonPanel0 = row(children=[leftButtonPanel, rightButtonPanel])
-        buttonPanel1 = row(children=[subtractStartDaybutton, self._startDateTimePicker, addStartDaybutton])
-        buttonPanel2 = row(children=[subtractStopDaybutton, self._stopDateTimePicker, addStopDaybutton])
+        buttonPanelA = row(children=[subtractStartDaybutton, self._startDateTimePicker, addStartDaybutton])
+        buttonPanelB = row(children=[subtractStopDaybutton, self._stopDateTimePicker, addStopDaybutton])
+        buttonPanelC = row(children=[leftButtonPanel0, leftButtonPanel, rightButtonPanel])
         self._line0StatusDiv = Div()
         self._line1StatusDiv = Div()
         self._line2StatusDiv = Div()
@@ -454,9 +456,9 @@ class GUIBase(MultiAppServer):
 
         buttonPanel = column(children=[div1,
                                        summaryTable,
-                                       buttonPanel0,
-                                       buttonPanel1,
-                                       buttonPanel2,
+                                       buttonPanelA,
+                                       buttonPanelB,
+                                       buttonPanelC,
                                        optionsButtonPanel,
                                        actionButtonPanel,
                                        self._line0StatusDiv,
@@ -466,7 +468,7 @@ class GUIBase(MultiAppServer):
                                        self._line4StatusDiv,
                                        self._line5StatusDiv])
 
-        self._cmdButtonList = ( self._powerButton,
+        self._cmdButtonList = ( self._updateButton,
                                 self._powerFactorButton,
                                 self._voltageButton,
                                 self._freqButton,
@@ -643,7 +645,7 @@ class GUIBase(MultiAppServer):
             pwrCallback = CustomJS(args=dict(axis=pp.yaxis[0]), code="""
                 axis.axis_label = "kW"
             """)
-            self._powerButton.js_on_click(pwrCallback)
+            self._updateButton.js_on_click(pwrCallback)
             self._todayButton.js_on_click(pwrCallback)
             self._yesterdayButton.js_on_click(pwrCallback)
             self._thisWeekButton.js_on_click(pwrCallback)
