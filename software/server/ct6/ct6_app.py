@@ -478,7 +478,7 @@ def main():
 
         parser.add_argument("-n", "--no_gui",       action='store_true', help="Do not display the GUI. By default a local web browser is opend displaying the GUI. If this option is used the user will need to connect to the server using a web browser before the GUI is displayed.")
         parser.add_argument("-m", "--maxpp",        help="The maximum number of plot points (default=86400).", type=int, default=86400)
-        parser.add_argument("-p", "--positive",     action='store_true', help="Display imported electricity on plots as positive values. The default is that imported electricity appears as -ve values.")
+        parser.add_argument("--negative",           action='store_true', help="Display imported electricity (kW) on plots as negative values.")
 
         parser.add_argument("--conv_dbs",           action='store_true', help="Convert MYSQL CT6 DB's into SQLITE DB's.")
 
