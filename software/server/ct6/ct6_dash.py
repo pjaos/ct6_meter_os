@@ -65,7 +65,7 @@ def main():
         parser.add_argument("-f", "--config_file",  help="The configuration file for the CT6 Dash Server"\
                             " (default={}).".format(CT6DashConfig.GetConfigFile(CT6DashConfig.DEFAULT_CONFIG_FILENAME)),
                             default=CT6DashConfig.GetConfigFile(CT6DashConfig.DEFAULT_CONFIG_FILENAME))
-        parser.add_argument("-p", "--positive",      action='store_true', help="Display imported electricity (kW) on plots as positive values.")
+        parser.add_argument("--negative",           action='store_true', help="Display imported electricity (kW) on plots as negative values.")
         parser.add_argument("-n", "--no_gui",       action='store_true', help="Do not display the GUI. By default a local web browser is opend displaying the GUI.")
         parser.add_argument("-s", "--enable_syslog",action='store_true', help="Enable syslog debug data.")
         # Default plot points allows 1 week of minute resolution (60*24*7 = 10080)

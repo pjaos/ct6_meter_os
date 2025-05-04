@@ -431,10 +431,18 @@ class GUIBase(MultiAppServer):
         buttonPanel4 = row(children=[self._pwrTypeRadioButtonGroup])
 
         pwrPolarityLabels = ["Import is positive", "Import is negative"]
-        if self._options.positive:
-            defaultpwrPolarity = 0
-        else:
-            defaultpwrPolarity = 1
+        if hasattr(self._options, 'positive'):
+            if self._options.positive:
+                defaultpwrPolarity = 0
+            else:
+                defaultpwrPolarity = 1
+
+        elif hasattr(self._options, 'negative'):
+            if self._options.negative:
+                defaultpwrPolarity = 1
+            else:
+                defaultpwrPolarity = 0
+
         self._pwrPolarityRadioButtonGroup = RadioButtonGroup(labels=pwrPolarityLabels, active=defaultpwrPolarity)
         buttonPanel5 = row(children=[self._pwrPolarityRadioButtonGroup])
 
