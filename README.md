@@ -93,6 +93,9 @@ This provides functionality that is useful when checking the operation of CT6 un
 
 More details of how to use the installed software applications can be found [here](software/server/README.md).
 
+# Home Assistant integration
+Click [here](software/server/homeassistant_README.md) for details of how to use CT6 devices with homeassistant.
+
 # Purchasing CT6 units
 Complete CT6 units or assembled PCB's and associated parts can be purchased [here](https://www.tindie.com/products/pausten/ct6-energy-monitor/) on Tindie.
 
