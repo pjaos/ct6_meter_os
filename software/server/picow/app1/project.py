@@ -2,6 +2,7 @@ from machine import SPI, Pin
 import st7789
 import vga2_bold_16x16 as font
 import ntptime
+import gc
 
 from lib.rest_server import RestServer
 from cmd_handler import CmdHandler
@@ -319,6 +320,7 @@ class ThisMachine(BaseMachine):
         # Call base class constructor
         super().__init__(uo, configFile, activeAppKey, activeApp, wdt)
 
+        gc.enable()
         self._ntp = None
         self._uo.info(f"Firmware Version = {Constants.FIRMWARE_VERSION}")
         # Init the display to display the booting message as early as possible.
@@ -496,6 +498,8 @@ class ThisMachine(BaseMachine):
                 if self._wdt:
                     self._wdt.feed()
 
+        # Attempt to force garbage collector to run.
+        gc.collect()
         return Constants.POLL_SECONDS
 
 
