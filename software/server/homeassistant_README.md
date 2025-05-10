@@ -13,7 +13,7 @@ One or more CT6 devices can be integrated with homeassistant as detailed below.
 
 Before attempting to setup home assistant ensure docker and docker-compose are installed. See https://docs.docker.com for more information on docker installation and https://docs.docker.com/compose/install/linux/ on docker-compose installation.
 
-Create a homeassistant folder to hold all your home assistant configuration files. For this example the homeassistant folder sits in the users home dir but it can be in any writable location.
+Create a homeassistant folder to hold all your home assistant configuration files. For this example the homeassistant folder sits in the users home dir but it can be in any writeable location.
 
 ```
 cd ~
