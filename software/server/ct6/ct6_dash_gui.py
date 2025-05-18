@@ -227,7 +227,7 @@ class GUI(GUIBase):
                     self._cdsDict[dbName + plotNames[i]] = cds
                     self._plotPanel.line(GUI.X_AXIS_NAME, GUI.DEFAULT_YAXIS_NAME, source=cds, name=plotNames[i], legend_label=plotNames[i], line_color=next(colors), line_width=3)
                     self._plotPanel.legend.click_policy="hide"
-            self._plotPanel.legend.location = 'bottom_left'
+                    self._plotPanel.legend.location = 'bottom_left'
 
             # The dBname = the device name = the tab name
             self._tabList.append( TabPanel(child=self._plotPanel,  title=dbName) )
@@ -236,8 +236,8 @@ class GUI(GUIBase):
         tabTextSizeSS = [{'.bk-tab': Styles(font_size='{}'.format(fontSize))}, {'.bk-tab': Styles(background='{}'.format('grey'))}]
         self._allTabsPanel = Tabs(tabs=self._tabList, sizing_mode="stretch_both", stylesheets=tabTextSizeSS)
         controlPanel = self._getControlPanel(plotNames)
-        leftPanel = column(children=[self._allTabsPanel], sizing_mode="stretch_both")
-        mainPanel = row(children=[leftPanel, controlPanel], sizing_mode="stretch_both")
+        rightPanel = column(children=[self._allTabsPanel], sizing_mode="stretch_both")
+        mainPanel = row(children=[controlPanel, rightPanel], sizing_mode="stretch_both")
 
         self._updateYAxis()
 
@@ -421,7 +421,6 @@ class GUI(GUIBase):
                 self._plotPanel.yaxis.axis_label = "Power Factor"
                 self._line1StatusDiv.text = ""
 
-            self._plotPanel.legend.visible=True
             for dbName in self._metaDataDict:
                 # This dict holds the values to be plotted
                 # key = The name of the trace
