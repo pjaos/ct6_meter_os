@@ -13,7 +13,6 @@ from lib.base_constants import BaseConstants
 from ct6.ct6_tool import CT6Base
 
 from bokeh.models import Div, Button, CustomJS, DatePicker, TextInput
-from bokeh.models import DatetimePicker
 from bokeh.models import RadioButtonGroup, DataTable, \
                          TableColumn, InlineStyleSheet, Tooltip, HelpButton
 from bokeh.models.widgets import HTMLTemplateFormatter
