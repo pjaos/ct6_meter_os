@@ -1,12 +1,10 @@
 import os
 import calendar
-import pytz
 import re
 
 from time import time, sleep
-
 from dateutil.relativedelta import relativedelta
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from queue import Queue
 
 from p3lib.bokeh_gui import MultiAppServer
@@ -14,7 +12,7 @@ from lib.base_constants import BaseConstants
 
 from ct6.ct6_tool import CT6Base
 
-from bokeh.models import Div, Button, CustomJS
+from bokeh.models import Div, Button, CustomJS, DatePicker, TextInput
 from bokeh.models import DatetimePicker
 from bokeh.models import RadioButtonGroup, DataTable, \
                          TableColumn, InlineStyleSheet, Tooltip, HelpButton
@@ -177,11 +175,11 @@ class GUIBase(MultiAppServer):
            @param event The button event."""
         # Set resolution to mins to set a good trade off between plot time and resolution
         self._resRadioButtonGroup.active = 1
-        today = datetime.today()
-        startOfDay = today.replace(hour=0, minute=0, second=0, microsecond=0)
-        self._startDateTimePicker.value = startOfDay.astimezone(pytz.utc)
-        endDateTime = today.replace(hour=23, minute=59, second=59, microsecond=999999)
-        self._stopDateTimePicker.value = endDateTime.astimezone(pytz.utc)
+        now = datetime.now()
+        self._startDatePicker.value = now.date()
+        self._startTimePicker.value = "00:00"
+        self._stopDatePicker.value = now.date()
+        self._stopTimePicker.value = "23:59"
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -190,13 +188,14 @@ class GUIBase(MultiAppServer):
            @param event The button event."""
         # Set resolution to mins to set a good trade off between plot time and resolution
         self._resRadioButtonGroup.active = 1
-        today = datetime.today()
-        yesterday = today - timedelta(days = 1)
-        startOfYesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-        self._startDateTimePicker.value = startOfYesterday.astimezone(pytz.utc)
-        endDateTime = startOfYesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
-        self._stopDateTimePicker.value = endDateTime.astimezone(pytz.utc)
-       # Kick of a plot attempt to save pressing the power button afterwards
+        # Get now using local timezone
+        now = datetime.now()
+        yesterday = now - timedelta(days = 1)
+        self._startDatePicker.value = yesterday.date()
+        self._startTimePicker.value = "00:00"
+        self._stopDatePicker.value = yesterday.date()
+        self._stopTimePicker.value = "23:59"
+        # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
     def _thisWeekButtonHandler(self, event):
@@ -210,8 +209,10 @@ class GUIBase(MultiAppServer):
         startOfWeek = startOfWeek.replace(hour=0, minute=0, second=0, microsecond=0)
         endOfWeek = startOfWeek + timedelta(days=7)
         endOfWeek = endOfWeek - timedelta(seconds=1)
-        self._startDateTimePicker.value = startOfWeek.astimezone(pytz.utc)
-        self._stopDateTimePicker.value = endOfWeek.astimezone(pytz.utc)
+        self._startDatePicker.value = startOfWeek.date()
+        self._startTimePicker.value = "00:00"
+        self._stopDatePicker.value = endOfWeek.date()
+        self._stopTimePicker.value = "23:59"
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -226,8 +227,10 @@ class GUIBase(MultiAppServer):
         startOfWeek = startOfWeek.replace(hour=0, minute=0, second=0, microsecond=0)
         endOfWeek = startOfWeek + timedelta(days=7)
         endOfWeek = endOfWeek - timedelta(seconds=1)
-        self._startDateTimePicker.value = startOfWeek.astimezone(pytz.utc)
-        self._stopDateTimePicker.value = endOfWeek.astimezone(pytz.utc)
+        self._startDatePicker.value = startOfWeek.date()
+        self._startTimePicker.value = "00:00"
+        self._stopDatePicker.value = endOfWeek.date()
+        self._stopTimePicker.value = "23:59"
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -244,8 +247,10 @@ class GUIBase(MultiAppServer):
         now = datetime.now()
         startD = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         stopD = self._get_last_of_month(now)
-        self._startDateTimePicker.value = startD.astimezone(pytz.utc)
-        self._stopDateTimePicker.value = stopD.astimezone(pytz.utc)
+        self._startDatePicker.value = startD.date()
+        self._startTimePicker.value = "00:00"
+        self._stopDatePicker.value = stopD.date()
+        self._stopTimePicker.value = "23:59"
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -268,8 +273,10 @@ class GUIBase(MultiAppServer):
         now = datetime.now()
         startD = self._get_first_of_previous_month(now)
         stopD = self._get_last_of_previous_month(now)
-        self._startDateTimePicker.value = startD.astimezone(pytz.utc)
-        self._stopDateTimePicker.value = stopD.astimezone(pytz.utc)
+        self._startDatePicker.value = startD.date()
+        self._startTimePicker.value = "00:00"
+        self._stopDatePicker.value = stopD.date()
+        self._stopTimePicker.value = "23:59"
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -286,8 +293,10 @@ class GUIBase(MultiAppServer):
         self._resRadioButtonGroup.active = 2
         now = datetime.now()
         startD, stopD = self._get_first_and_last_of_year(now)
-        self._startDateTimePicker.value = startD.astimezone(pytz.utc)
-        self._stopDateTimePicker.value  = stopD.astimezone(pytz.utc)
+        self._startDatePicker.value = startD.date()
+        self._startTimePicker.value = "00:00"
+        self._stopDatePicker.value = stopD.date()
+        self._stopTimePicker.value = "23:59"
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
 
@@ -300,10 +309,43 @@ class GUIBase(MultiAppServer):
         startD, stopD = self._get_first_and_last_of_year(now)
         startD = startD.replace(year=startD.year-1)
         stopD = stopD.replace(year=stopD.year-1)
-        self._startDateTimePicker.value = startD.astimezone(pytz.utc)
-        self._stopDateTimePicker.value  = stopD.astimezone(pytz.utc)
+        self._startDatePicker.value = startD.date()
+        self._startTimePicker.value = "00:00"
+        self._stopDatePicker.value = stopD.date()
+        self._stopTimePicker.value = "23:59"
         # Kick of a plot attempt to save pressing the power button afterwards
         self._plotSensorData(True)
+
+    def _getStartStopDateTimes(self):
+        """@brief Get the start and stop times entered by the user.
+           @return A tuple containing.
+                   0 = The start datetime as epoch time in milliseconds.
+                   1 = The stop datetime as epoch time in milliseconds."""
+        start_epoch_ms = None
+        stop_epoch_ms = None
+        try:
+            startDate = date.fromisoformat(self._startDatePicker.value)
+            startTimeStr = self._startTimePicker.value
+            # 1. Combine date and time into a datetime
+            start_dt = datetime.strptime(f"{startDate.isoformat()} {startTimeStr}", "%Y-%m-%d %H:%M")
+            # Set seconds and microseconds to min
+            start_dt = start_dt.replace(second=0, microsecond=0)
+            # 2. Convert to epoch time (milliseconds since epoch)
+            start_epoch_ms = int(start_dt.timestamp() * 1_000)
+
+            stopDate = date.fromisoformat(self._stopDatePicker.value)
+            stopTimeStr = self._stopTimePicker.value
+            # 1. Combine date and time into a datetime
+            stop_dt = datetime.strptime(f"{stopDate.isoformat()} {stopTimeStr}", "%Y-%m-%d %H:%M")
+            # Set seconds and microseconds to max
+            stop_dt = stop_dt.replace(second=59, microsecond=999999)
+            # 2. Convert to epoch time (milliseconds since epoch)
+            stop_epoch_ms = int(stop_dt.timestamp() * 1_000)
+
+        except:
+            pass
+
+        return (start_epoch_ms, stop_epoch_ms)
 
     def _powerButtonHandler(self, event):
         """@brief Process button click.
@@ -390,28 +432,31 @@ class GUIBase(MultiAppServer):
         self._lastYearButton = Button(label="Last Year", button_type=GUIBase.BUTTON_TYPE)
         self._lastYearButton.on_click(self._lastYearButtonHandler)
 
-        addStartDaybutton = Button(label = ">")
+        addStartDaybutton = Button(label = ">", height=50)
         addStartDaybutton.on_click(self._addStartDayCallBack)
 
-        subtractStartDaybutton = Button(label = "<")
+        subtractStartDaybutton = Button(label = "<", height=50)
         subtractStartDaybutton.on_click(self._subtractStartDayCallBack)
 
-        addStopDaybutton = Button(label = ">")
+        addStopDaybutton = Button(label = ">", height=50)
         addStopDaybutton.on_click(self._addStopDayCallBack)
 
-        subtractStopDaybutton = Button(label = "<")
+        subtractStopDaybutton = Button(label = "<", height=50)
         subtractStopDaybutton.on_click(self._subtractStopDayCallBack)
 
-        self._startDateTimePicker = DatetimePicker(title='Start (year-month-day hour:min)')
-        self._stopDateTimePicker = DatetimePicker(title='Stop (year-month-day hour:min)')
+        self._startDatePicker = DatePicker(title="Start Date", width=100)
+        self._startTimePicker = TextInput(title="Start Time (HH:MM)", width=100)
+
+        self._stopDatePicker = DatePicker(title="Stop Date", width=100)
+        self._stopTimePicker = TextInput(title="Stop Time (HH:MM)", width=100)
 
         # Div to move the table down to the top edge of the plot.
         div1 = Div(height=20)
         leftButtonPanel0 = column(children=[self._updateButton])
         leftButtonPanel = column(children=[self._todayButton, self._thisWeekButton, self._thisMonthButton, self._thisYearButton])
         rightButtonPanel = column(children=[self._yesterdayButton, self._lastWeekButton, self._lastMonthButton, self._lastYearButton])
-        buttonPanelA = row(children=[subtractStartDaybutton, self._startDateTimePicker, addStartDaybutton])
-        buttonPanelB = row(children=[subtractStopDaybutton, self._stopDateTimePicker, addStopDaybutton])
+        buttonPanelA = row(children=[subtractStartDaybutton, self._startDatePicker, addStartDaybutton, self._startTimePicker])
+        buttonPanelB = row(children=[subtractStopDaybutton, self._stopDatePicker, addStopDaybutton, self._stopTimePicker])
         buttonPanelC = row(children=[leftButtonPanel0, leftButtonPanel, rightButtonPanel])
         self._line0StatusDiv = Div()
         self._line1StatusDiv = Div()
@@ -450,15 +495,15 @@ class GUIBase(MultiAppServer):
                                         buttonPanel4,
                                         buttonPanel5])
 
-        resLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content="Select the plot resolution.", position="left"))
-        pwrTypeLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content="Select the power type. Active = Power normally charged by electricity supplier.", position="left"))
-        pwrPolarityLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content="Select imported electrical power to be plotted as negative or positive values.", position="left"))
+        resLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content="Select the plot resolution.", position="right"))
+        pwrTypeLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content="Select the power type. Active = Power normally charged by electricity supplier.", position="right"))
+        pwrPolarityLabelButton = HelpButton(label="", button_type="default", disabled=True, tooltip = Tooltip(content="Select imported electrical power to be plotted as negative or positive values.", position="right"))
 
         labelPanel = column(children=[resLabelButton,
                                       pwrTypeLabelButton,
                                       pwrPolarityLabelButton])
 
-        optionsButtonPanel = row(children=[labelPanel, buttonPanel6])
+        optionsButtonPanel = row(children=[buttonPanel6, labelPanel])
 
         actionButtonPanel = self._getActionButtonPanel()
 
@@ -496,26 +541,30 @@ class GUIBase(MultiAppServer):
     def _addStartDayCallBack(self, event):
         """@brief Called when the associated button is clicked to add a day to the start time.
            @param event The event that triggered the method call."""
-        dateTimeObj=datetime.fromtimestamp(self._startDateTimePicker.value/1000)
-        self._startDateTimePicker.value = (dateTimeObj + timedelta(days=1)).astimezone(pytz.utc)
+        currentDate = date.fromisoformat(self._startDatePicker.value)
+        tomorrow = currentDate + timedelta(days = 1)
+        self._startDatePicker.value = tomorrow
 
     def _subtractStartDayCallBack(self, event):
         """@brief Called when the associated button is clicked to subtract a day to the start time.
            @param event The event that triggered the method call."""
-        dateTimeObj=datetime.fromtimestamp(self._startDateTimePicker.value/1000)
-        self._startDateTimePicker.value = (dateTimeObj - timedelta(days=1)).astimezone(pytz.utc)
+        currentDate = date.fromisoformat(self._startDatePicker.value)
+        tomorrow = currentDate - timedelta(days = 1)
+        self._startDatePicker.value = tomorrow
 
     def _addStopDayCallBack(self, event):
         """@brief Called when the associated button is clicked to add a day to the stop time.
            @param event The event that triggered the method call."""
-        dateTimeObj=datetime.fromtimestamp(self._stopDateTimePicker.value/1000)
-        self._stopDateTimePicker.value = (dateTimeObj + timedelta(days=1)).astimezone(pytz.utc)
+        currentDate = date.fromisoformat(self._stopDatePicker.value)
+        tomorrow = currentDate + timedelta(days = 1)
+        self._stopDatePicker.value = tomorrow
 
     def _subtractStopDayCallBack(self, event):
         """@brief Called when the associated button is clicked to subtract a day to the stop time.
            @param event The event that triggered the method call."""
-        dateTimeObj=datetime.fromtimestamp(self._stopDateTimePicker.value/1000)
-        self._stopDateTimePicker.value = (dateTimeObj - timedelta(days=1)).astimezone(pytz.utc)
+        currentDate = date.fromisoformat(self._stopDatePicker.value)
+        tomorrow = currentDate - timedelta(days = 1)
+        self._stopDatePicker.value = tomorrow
 
     def _getSelectedDevice(self):
         """@brief Get the name of the selected CT6 device.

@@ -99,10 +99,11 @@ class GUI(GUIBase):
         self._enableReadDBButtons(False)
         self._clearSummaryTable()
         self._showStatus(0, "Reading Data...")
+        start_epoch, stop_epoch = self._getStartStopDateTimes()
         # Run thread to recover the data from the database.
-        threading.Thread( target=self._readDataBase, args=(self._startDateTimePicker.value,
-                                                           self._stopDateTimePicker.value,
-                                                           self._resRadioButtonGroup.active)).start()
+        threading.Thread( target=self._readDataBase, args=(start_epoch,
+                                                        stop_epoch,
+                                                        self._resRadioButtonGroup.active)).start()
 
     def _showACVolts(self):
         """@brief Show the AC volts plot."""
@@ -111,10 +112,11 @@ class GUI(GUIBase):
         self._clearSummaryTable()
         self._enableReadDBButtons(False)
         self._showStatus(0, "Reading Data...")
+        start_epoch, stop_epoch = self._getStartStopDateTimes()
         # Run thread to recover the data from the database.
-        threading.Thread( target=self._readDataBase, args=(self._startDateTimePicker.value,
-                                                           self._stopDateTimePicker.value,
-                                                           self._resRadioButtonGroup.active)).start()
+        threading.Thread( target=self._readDataBase, args=(start_epoch,
+                                                        stop_epoch,
+                                                        self._resRadioButtonGroup.active)).start()
 
     def _showACFreq(self):
         """@brief Show the AC freq plot."""
@@ -123,10 +125,11 @@ class GUI(GUIBase):
         self._clearSummaryTable()
         self._enableReadDBButtons(False)
         self._showStatus(0, "Reading Data...")
+        start_epoch, stop_epoch = self._getStartStopDateTimes()
         # Run thread to recover the data from the database.
-        threading.Thread( target=self._readDataBase, args=(self._startDateTimePicker.value,
-                                                           self._stopDateTimePicker.value,
-                                                           self._resRadioButtonGroup.active)).start()
+        threading.Thread( target=self._readDataBase, args=(start_epoch,
+                                                        stop_epoch,
+                                                        self._resRadioButtonGroup.active)).start()
 
     def _showTemp(self):
         """@brief Show unit temperature plot."""
@@ -135,10 +138,11 @@ class GUI(GUIBase):
         self._clearSummaryTable()
         self._enableReadDBButtons(False)
         self._showStatus(0, "Reading Data...")
+        start_epoch, stop_epoch = self._getStartStopDateTimes()
         # Run thread to recover the data from the database.
-        threading.Thread( target=self._readDataBase, args=(self._startDateTimePicker.value,
-                                                           self._stopDateTimePicker.value,
-                                                           self._resRadioButtonGroup.active)).start()
+        threading.Thread( target=self._readDataBase, args=(start_epoch,
+                                                        stop_epoch,
+                                                        self._resRadioButtonGroup.active)).start()
 
     def _showRSSI(self):
         """@brief Show the WiFi RSSI plot."""
@@ -147,10 +151,11 @@ class GUI(GUIBase):
         self._clearSummaryTable()
         self._enableReadDBButtons(False)
         self._showStatus(0, "Reading Data...")
+        start_epoch, stop_epoch = self._getStartStopDateTimes()
         # Run thread to recover the data from the database.
-        threading.Thread( target=self._readDataBase, args=(self._startDateTimePicker.value,
-                                                           self._stopDateTimePicker.value,
-                                                           self._resRadioButtonGroup.active)).start()
+        threading.Thread( target=self._readDataBase, args=(start_epoch,
+                                                        stop_epoch,
+                                                        self._resRadioButtonGroup.active)).start()
 
     def _getSelectedDataBase(self):
         """@brief The user can select the tab on the GUI. This tab is the name of the database for the CT6
@@ -260,7 +265,7 @@ class GUI(GUIBase):
         try:
             self._showStatus(0, "Plotting Data...")
 
-            self._plotPanel.legend.visible=False
+# PJA            self._plotPanel.legend.visible=False
 
             for dbName in self._metaDataDict:
                 devInfoDict = self._metaDataDict[dbName]
@@ -583,6 +588,16 @@ class GUI(GUIBase):
            @param The resolution of the data to read.
            @return A dict containing the results of the DB read."""
         results={}
+        if startDateTime is None:
+            self._error("The start time is not correct.")
+            self._sendEnableActionButtonsMsg(True)
+            return results
+
+        if stopDateTime is None:
+            self._error("The stop time is not correct.")
+            self._sendEnableActionButtonsMsg(True)
+            return results
+
         # Start and stop dates are in milliseconds since epoch time, convert to seconds since epoch time.
         startDT=datetime.fromtimestamp(startDateTime/1000)
         stopDT=datetime.fromtimestamp(stopDateTime/1000)
