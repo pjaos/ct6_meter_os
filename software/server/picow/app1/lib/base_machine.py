@@ -100,7 +100,7 @@ class BaseMachine(Constants):
         # If the user wishes to reset the WiFi settings
         if self._wifi.userWiFiReset():
             self._setDefaultConfig()
-            self._wifi.reboot()
+            self.reboot()
         # If the WiFi STA (this unit) failed to register with an AP.
         # If we're setup as an AP we should have a network.WLAN instance
         if wlan is None:
