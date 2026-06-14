@@ -400,14 +400,14 @@ files = [
 
 [[package]]
 name = "bokeh"
-version = "3.7.3"
+version = "3.9.1"
 description = "Interactive plots and applications in the browser from Python"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "bokeh-3.7.3-py3-none-any.whl", hash = "sha256:b0e79dd737f088865212e4fdcb0f3b95d087f0f088bf8ca186a300ab1641e2c7"},
-    {file = "bokeh-3.7.3.tar.gz", hash = "sha256:70a89a9f797b103d5ee6ad15fb7944adda115cf0da996ed0b75cfba61cb12f2b"},
+    {file = "bokeh-3.9.1-py3-none-any.whl", hash = "sha256:8bf2aae574509055fbd6b68f023046bebc91b0bbd631d204d0d60863b4237dbd"},
+    {file = "bokeh-3.9.1.tar.gz", hash = "sha256:1463d3c84fba61a925ea6ace0b4d3d9c0160ca214f6851edbfed6dc27e172b60"},
 ]
 
 [package.dependencies]
@@ -416,7 +416,6 @@ Jinja2 = ">=2.9"
 narwhals = ">=1.13"
 numpy = ">=1.16"
 packaging = ">=16.8"
-pandas = ">=1.2"
 pillow = ">=7.1.0"
 PyYAML = ">=3.10"
 tornado = {version = ">=6.2", markers = "sys_platform != \"emscripten\""}
@@ -1761,14 +1760,14 @@ files = [
 
 [[package]]
 name = "p3lib"
-version = "1.1.115"
+version = "1.1.163"
 description = "A group of python modules for networking, plotting data, config storage, automating boot scripts, ssh access and user input output."
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "p3lib-1.1.115-py2.py3-none-any.whl", hash = "sha256:736e7459a37008adff960a235ebcc17edae13ac8bdb25bcf0abd20d8cc97ebb5"},
-    {file = "p3lib-1.1.115.tar.gz", hash = "sha256:c802cd3cab60b036c223ac70f504b4a27c4a8ba601fae89ac6791e5b087c231f"},
+    {file = "p3lib-1.1.163-py2.py3-none-any.whl", hash = "sha256:623ac888fe2fab2d296664c2ec29d3a3b5cdd3f9616a36b9b7d3f5eca5f2fcba"},
+    {file = "p3lib-1.1.163.tar.gz", hash = "sha256:ec35cefcc13aff7f0f92c29a10219c8777d9ba185b938bad318aa40417412476"},
 ]
 
 [[package]]
@@ -3628,4 +3627,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10.12,<3.14"
-content-hash = "079367b3750716fc1eee63dd88b66b0b2a1c3b7ce1c368fced1b47ea7da63373"
+content-hash = "54fdc8b9fa75486244cc9541a50f38f9f25be34211ac482af609201eaed5a84c"

@@ -632,42 +632,63 @@ class GUIBase(MultiAppServer):
         """)
         summaryTable.stylesheets = [table_style]
 
+        # Keep a reference to the DataTable widget itself (not just its source)
+        # so that _replaceSummaryTableData() can swap out the source object
+        # to force a re-render in newer versions of Bokeh.
+        self._summaryTable = summaryTable
 
         return summaryTable
 
+
+    def _replaceSummaryTableData(self, data):
+        """@brief Replace the summary table's ColumnDataSource with a new instance
+                  containing the given data.
+           @param data A dict containing the new column data for the summary table.
+
+           Bokeh 3.8/3.9 can fail to re-render a DataTable when its existing
+           ColumnDataSource.data is updated in place (either via .patch() or
+           by assigning a new dict to .data). Creating a brand new
+           ColumnDataSource and assigning it to the DataTable's source
+           property forces BokehJS to rebuild the table view, which reliably
+           refreshes the displayed contents."""
+        newSource = ColumnDataSource(data)
+        self._summaryTableSource = newSource
+        if getattr(self, "_summaryTable", None) is not None:
+            self._summaryTable.source = newSource
 
     def _clearSummaryTable(self):
         """@brief Clear the sensor summary table of all data except the names of the sensors."""
         rowCount = GUIBase.SENSOR_COUNT
         emptySensorColumn = ["" for i in range(0, rowCount)]
-        data = dict(sensor=[(slice(rowCount),emptySensorColumn)],
-                    total=[(slice(rowCount),emptySensorColumn)],
-                    positive=[(slice(rowCount),emptySensorColumn)],
-                    negative=[(slice(rowCount),emptySensorColumn)]
-                    )
-        self._summaryTableSource.patch(data)
+        data = dict(
+            sensor=list(emptySensorColumn),
+            total=list(emptySensorColumn),
+            positive=list(emptySensorColumn),
+            negative=list(emptySensorColumn),
+        )
+        self._replaceSummaryTableData(data)
 
     def _updateSummaryTable(self, rxDict):
-        """@brief Clear the sensor summary table of all data except the names of the sensors.
+        """@brief Update a single row of the sensor summary table.
            @brief rxDict The dict received from the _calcKWH() method"""
         invertKw = self._invertKW()
         if GUIBase.SUMMARY_ROW in rxDict:
             row = rxDict[GUIBase.SUMMARY_ROW]
             if len(row) == 5:
                 rowIndex = row[0]-1 # Row index is one less than the CT number
+                # Copy the existing columns so that we can replace the
+                # ColumnDataSource wholesale (see _replaceSummaryTableData).
+                data = {key: list(values) for key, values in self._summaryTableSource.data.items()}
+                data["sensor"][rowIndex] = f"{row[1]}"
+                data["total"][rowIndex]  = f"{row[2]:.2f}"
                 if invertKw:
-                    data = dict(sensor=[(rowIndex,f"{row[1]}")],
-                                total=[(rowIndex,f"{row[2]:.2f}")],
-                                negative=[(rowIndex,f"{row[3]:.2f}")],
-                                positive=[(rowIndex,f"{row[4]:.2f}")]
-                                )
+                    data["negative"][rowIndex] = f"{row[3]:.2f}"
+                    data["positive"][rowIndex] = f"{row[4]:.2f}"
                 else:
-                    data = dict(sensor=[(rowIndex,f"{row[1]}")],
-                                total=[(rowIndex,f"{row[2]:.2f}")],
-                                positive=[(rowIndex,f"{row[3]:.2f}")],
-                                negative=[(rowIndex,f"{row[4]:.2f}")]
-                                )
-                self._summaryTableSource.patch(data)
+                    data["positive"][rowIndex] = f"{row[3]:.2f}"
+                    data["negative"][rowIndex] = f"{row[4]:.2f}"
+
+                self._replaceSummaryTableData(data)
 
     def _showStatus(self, statusID, line):
         """@brief Show Status messages
