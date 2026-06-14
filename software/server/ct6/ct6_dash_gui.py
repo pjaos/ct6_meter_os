@@ -240,6 +240,7 @@ class GUI(GUIBase):
 
         tabTextSizeSS = [{'.bk-tab': Styles(font_size='{}'.format(fontSize))}, {'.bk-tab': Styles(background='{}'.format('grey'))}]
         self._allTabsPanel = Tabs(tabs=self._tabList, sizing_mode="stretch_both", stylesheets=tabTextSizeSS)
+        self._allTabsPanel.on_change('active', self._onTabChange)
         controlPanel = self._getControlPanel(plotNames)
         rightPanel = column(children=[self._allTabsPanel], sizing_mode="stretch_both")
         mainPanel = row(children=[controlPanel, rightPanel], sizing_mode="stretch_both")
@@ -251,10 +252,34 @@ class GUI(GUIBase):
         self._doc.theme = theme
         self._doc.add_periodic_callback(self._updateCallBack, 100)
 
+        # Ensure the peak kWh CT port dropdown reflects the CT6 device
+        # (database) shown on the initially selected tab, rather than
+        # whichever device happened to be last when the control panel
+        # was built.
+        self._onTabChange(None, None, self._allTabsPanel.active)
+
         # On Startup set the start/stop dates to show today's data.
         self._todayButtonHandler(None)
 
         self._showStatus(5, f"Software Version: {self._programVersion}")
+
+    def _onTabChange(self, attr, old, new):
+        """@brief Called when the user selects a different tab (CT6 device).
+                  Updates the peak daily kWh CT port dropdown to reflect the
+                  sensors configured for the newly selected CT6 device.
+           @param attr The name of the attribute that changed.
+           @param old  The previous tab index.
+           @param new  The newly selected tab index."""
+        dBName = self._getSelectedDataBase()
+        if dBName in self._metaDataDict:
+            devInfoDict = self._metaDataDict[dBName]
+            sensorNames = (devInfoDict[GUI.CT1_NAME],
+                           devInfoDict[GUI.CT2_NAME],
+                           devInfoDict[GUI.CT3_NAME],
+                           devInfoDict[GUI.CT4_NAME],
+                           devInfoDict[GUI.CT5_NAME],
+                           devInfoDict[GUI.CT6_NAME])
+            self._updatePeakKWHCTOptions(sensorNames)
 
     def _plotSingleField(self, plotName, units, appPlotField, rxDict):
         """@brief Show a single value list on the plot area
@@ -339,6 +364,9 @@ class GUI(GUIBase):
 
         elif GUI.SUMMARY_ROW in rxDict:
             self._updateSummaryTable(rxDict)
+
+        elif GUI.PEAK_KWH_RESULT in rxDict:
+            self._peakKWHResultDiv.text = rxDict[GUI.PEAK_KWH_RESULT]
 
         else:
 
@@ -749,6 +777,125 @@ class GUI(GUIBase):
 
         self._uio.debug(f"{fName}: Execution time {exeTime:.1f} seconds.")
 
+    def _findPeakDailyKWh(self, startDateTime, stopDateTime, ctName, ctField):
+        """@brief Worker method (runs in its own thread) that searches the database
+                  for the day with the largest absolute daily kWh value for the
+                  selected CT sensor, between the given start and stop date/times.
+           @param startDateTime The start of the search range as epoch time in milliseconds.
+           @param stopDateTime  The end of the search range as epoch time in milliseconds.
+           @param ctName        The name of the selected CT sensor (used in the result message).
+           @param ctField       The DB column (xxx_ACT_WATTS) holding the active power
+                                 reading for the selected CT sensor."""
+        fName = inspect.currentframe().f_code.co_name
+        try:
+            if ctField is None:
+                self._error("No CT sensor is available to search.")
+                return
+
+            if startDateTime is None or stopDateTime is None:
+                self._error("The start/stop date/time is not correct.")
+                return
+
+            startT = time()
+
+            # Start and stop dates are in milliseconds since epoch time, convert to seconds since epoch time.
+            startDT = datetime.fromtimestamp(startDateTime/1000)
+            stopDT = datetime.fromtimestamp(stopDateTime/1000)
+            if startDT >= stopDT:
+                self._error("Stop must be after the start date.")
+                return
+
+            startDate = startDT.strftime("%Y-%m-%d")
+            stopDate = stopDT.strftime("%Y-%m-%d")
+            startHoursMins = startDT.strftime("%H:%M")
+            stopHoursMins = stopDT.strftime("%H:%M")
+
+            dBName = self._getSelectedDataBase()
+
+            self._uio.debug(f"{fName}: dBName={dBName}, ctName={ctName}, ctField={ctField}, "
+                            f"startDate={startDate}, stopDate={stopDate}")
+
+            connectedToDB = False
+            try:
+                self._dbIF.executeSQL("use {};".format(dBName))
+                connectedToDB = True
+            except:
+                pass
+            if not connectedToDB:
+                self._uio.info("Connecting to database.")
+                self._connectToDB()
+                self._uio.info("Connected to database.")
+            # We need to use the DB again as we may have failed above
+            try:
+                self._dbIF.executeSQL("use {};".format(dBName))
+            except:
+                # If the database no longer exists. It may have been manually deleted.
+                self._error(f"Failed to access the {dBName} database.")
+                return
+
+            # Use the hour resolution table so that even multi year searches
+            # complete quickly. The average power (Watts) for each calendar
+            # day is used to estimate the energy (kWh) generated/used that day
+            # (kWh = average Watts * 24 hours / 1000).
+            #
+            # Data outages (e.g. due to networking issues) can leave some
+            # days with fewer than 24 hourly samples. Including such days
+            # would skew the average (and hence the estimated daily kWh), so
+            # only days with a full set of HOURS_PER_DAY samples are
+            # considered.
+            tableName = BaseConstants.HOUR_RES_DB_DATA_TABLE_NAME
+            HOURS_PER_DAY = 24
+
+            cmd = f"SELECT DATE({BaseConstants.TIMESTAMP}) AS day, AVG({ctField}) AS avg_w, COUNT(*) AS sample_count "\
+                  f"FROM {tableName} "\
+                  f"WHERE {BaseConstants.TIMESTAMP} BETWEEN '{startDate} {startHoursMins}:00:000' AND '{stopDate} {stopHoursMins}:59:999' "\
+                  f"GROUP BY DATE({BaseConstants.TIMESTAMP});"
+            self._uio.debug(f"MYSQL CMD: {cmd}")
+            responseTuple = self._dbIF.executeSQL(cmd)
+            exeTime = time()-startT
+            self._uio.debug(f"MYSQL command execution time {exeTime:.1f} seconds.")
+
+            peakDay = None
+            peakKWh = None
+            totalDayCount = 0
+            incompleteDayCount = 0
+            for record in responseTuple:
+                avgWatts = record.get("avg_w")
+                day = record.get("day")
+                sampleCount = record.get("sample_count")
+                if avgWatts is None or day is None:
+                    continue
+                totalDayCount += 1
+                # Ignore days that don't have a full set of hourly samples
+                # (e.g. due to data outages caused by networking issues), as
+                # these would skew the average power, and hence the
+                # estimated daily kWh, for that day.
+                if sampleCount is None or sampleCount < HOURS_PER_DAY:
+                    incompleteDayCount += 1
+                    continue
+                dailyKWh = (avgWatts * 24.0)/1000.0
+                if peakKWh is None or abs(dailyKWh) > abs(peakKWh):
+                    peakKWh = dailyKWh
+                    peakDay = day
+
+            if peakDay is None:
+                resultText = f"{ctName}: No complete days (24 hours of data) found between {startDate} and {stopDate}."
+            else:
+                resultText = f"{ctName}: Peak daily kWh = {abs(peakKWh):.2f} kWh on {peakDay}."
+                if incompleteDayCount > 0:
+                    resultText += f" ({incompleteDayCount} of {totalDayCount} day(s) ignored due to incomplete data)"
+
+
+            self._uio.debug(f"{fName}: {resultText}")
+            msgDict = {GUI.PEAK_KWH_RESULT: resultText}
+            self._commsQueue.put(msgDict)
+
+        except Exception:
+            self._uio.errorException()
+            self._error("An error occurred while searching for the peak daily kWh value.")
+
+        finally:
+            self._sendEnableActionButtonsMsg(True)
 
 
 class CT6DashConfig(ConfigBase):

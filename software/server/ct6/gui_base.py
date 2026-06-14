@@ -1,6 +1,7 @@
 import os
 import calendar
 import re
+import threading
 
 from time import time, sleep
 from dateutil.relativedelta import relativedelta
@@ -12,7 +13,7 @@ from lib.base_constants import BaseConstants
 
 from ct6.ct6_tool import CT6Base
 
-from bokeh.models import Div, Button, CustomJS, DatePicker, TextInput
+from bokeh.models import Div, Button, CustomJS, DatePicker, TextInput, Select
 from bokeh.models import RadioButtonGroup, DataTable, \
                          TableColumn, InlineStyleSheet, Tooltip, HelpButton
 from bokeh.models.widgets import HTMLTemplateFormatter
@@ -41,6 +42,7 @@ class GUIBase(MultiAppServer):
     CMD_COMPLETE                = "CMD_COMPLETE"
     ENABLE_ACTION_BUTTONS       = "ENABLE_ACTION_BUTTONS"
     SUMMARY_ROW                 = "SUMMARY_ROW"
+    PEAK_KWH_RESULT             = "PEAK_KWH_RESULT"
 
     X_AXIS_NAME                 = "date"
     DEFAULT_YAXIS_NAME          = "kW"
@@ -356,6 +358,22 @@ class GUIBase(MultiAppServer):
            @param event The button event."""
         self._plotSensorData(False)
 
+    def _findPeakDayButtonHandler(self, event):
+        """@brief Process button click to find the day with the largest absolute
+                  daily kWh value, for the selected CT sensor, between the
+                  selected start and stop dates/times.
+           @param event The button event."""
+        self._peakKWHResultDiv.text = "Searching..."
+        self._enableReadDBButtons(False)
+        start_epoch, stop_epoch = self._getStartStopDateTimes()
+        ctName = self._peakKWHCTSelect.value
+        ctField = self._peakKWHCTFieldDict.get(ctName, None)
+        # Run the search in a separate thread so as not to block the GUI.
+        threading.Thread( target=self._findPeakDailyKWh, args=(start_epoch,
+                                                                 stop_epoch,
+                                                                 ctName,
+                                                                 ctField)).start()
+
     def _enableReadDBButtons(self, enabled):
         """@brief Enable/Disable all buttons that allow the user to read from the database.
            @param enabled If True the buttons are enabled."""
@@ -376,6 +394,46 @@ class GUIBase(MultiAppServer):
 
     def _setButtonsDisabled(self):
         self._enableButtons(False)
+
+    def _getPeakKWHCTOptions(self, sensorNames):
+        """@brief Build the list of CT port (sensor) names and a dict mapping each
+                  sensor name to its DB column (xxx_ACT_WATTS), for use by the
+                  peak daily kWh search feature.
+           @param sensorNames A tuple/list of the CT1...CT6 sensor names for a
+                  single CT6 device (may contain empty strings for unused ports).
+           @return A tuple of (options list, field dict)."""
+        ctActWattsFields = (BaseConstants.CT1_ACT_WATTS,
+                             BaseConstants.CT2_ACT_WATTS,
+                             BaseConstants.CT3_ACT_WATTS,
+                             BaseConstants.CT4_ACT_WATTS,
+                             BaseConstants.CT5_ACT_WATTS,
+                             BaseConstants.CT6_ACT_WATTS)
+        options = []
+        fieldDict = {}
+        for i in range(0, GUIBase.SENSOR_COUNT):
+            sensorName = sensorNames[i] if i < len(sensorNames) else None
+            if sensorName and len(sensorName) > 0:
+                options.append(sensorName)
+                fieldDict[sensorName] = ctActWattsFields[i]
+        return options, fieldDict
+
+    def _updatePeakKWHCTOptions(self, sensorNames):
+        """@brief Update the CT port dropdown (and associated field dict) used by
+                  the peak daily kWh search feature. This is called whenever the
+                  selected tab (CT6 device) changes, as different CT6 devices may
+                  have different sensors configured/named.
+           @param sensorNames A tuple/list of the CT1...CT6 sensor names for the
+                  newly selected CT6 device."""
+        options, fieldDict = self._getPeakKWHCTOptions(sensorNames)
+        self._peakKWHCTFieldDict = fieldDict
+        self._peakKWHCTSelect.options = options
+        if options:
+            # Try to keep the current selection if it's still valid for this
+            # device, otherwise default to the first available CT port.
+            if self._peakKWHCTSelect.value not in options:
+                self._peakKWHCTSelect.value = options[0]
+        else:
+            self._peakKWHCTSelect.value = ""
 
     def _getActionButtonPanel(self):
 
@@ -504,6 +562,33 @@ class GUIBase(MultiAppServer):
 
         optionsButtonPanel = row(children=[buttonPanel6, labelPanel])
 
+        # --- Peak daily kWh search panel ---
+        # Build a list of the configured sensor names (CT1...CT6) along with
+        # the DB column (xxx_ACT_WATTS) that holds the active power reading
+        # for that sensor, so the user can select which CT port to search.
+        # The options reflect the currently selected tab (CT6 device) and
+        # are refreshed via _updatePeakKWHCTOptions() when the user changes
+        # tabs, as different CT6 devices may have different sensor names.
+        peakKWHCTOptions, self._peakKWHCTFieldDict = self._getPeakKWHCTOptions(sensorNames)
+        defaultCTOption = peakKWHCTOptions[0] if peakKWHCTOptions else ""
+        self._peakKWHCTSelect = Select(title="CT Port", value=defaultCTOption, options=peakKWHCTOptions, width=120)
+
+        self._findPeakDayButton = Button(label="Find Peak Day", button_type=GUIBase.BUTTON_TYPE, width=120)
+        self._findPeakDayButton.on_click(self._findPeakDayButtonHandler)
+
+        peakKWHLabelButton = HelpButton(label="", button_type="default", disabled=True,
+                                         tooltip = Tooltip(content="Find the day with the largest daily kWh value (+ve or -ve) for the selected "
+                                                                    "CT port between the selected start and stop dates/times. This can be used "
+                                                                    "to gauge solar panel performance/degradation over time.", position="right"))
+
+        # Width matches the summary table above so this panel does not widen
+        # the control column (which would push the plot area to the right
+        # and leave a gap between the two).
+        self._peakKWHResultDiv = Div(text="", width=340)
+
+        peakKWHPanel = column(children=[row(children=[self._peakKWHCTSelect, self._findPeakDayButton, peakKWHLabelButton]),
+                                         self._peakKWHResultDiv])
+
         actionButtonPanel = self._getActionButtonPanel()
 
         buttonPanel = column(children=[div1,
@@ -512,6 +597,7 @@ class GUIBase(MultiAppServer):
                                        buttonPanelB,
                                        buttonPanelC,
                                        optionsButtonPanel,
+                                       peakKWHPanel,
                                        actionButtonPanel,
                                        self._line0StatusDiv,
                                        self._line1StatusDiv,
@@ -533,7 +619,8 @@ class GUIBase(MultiAppServer):
                                 self._thisMonthButton,
                                 self._lastMonthButton,
                                 self._thisYearButton,
-                                self._lastYearButton)
+                                self._lastYearButton,
+                                self._findPeakDayButton)
 
         return buttonPanel
 
