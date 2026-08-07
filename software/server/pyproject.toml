@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ct6"
-version = "12.4"
+version = "12.5"
 description = ""
 authors = ["Paul Austen <pjaos@gmail.com>"]
 readme = "README.md"
@@ -20,7 +20,7 @@ pyreadline3 = "*"
 python = ">=3.10.12,<3.14"
 # Fix security vulnerability reported by github dependabot.
 cryptography = ">=50.0.0"
-paramiko = ">=3.4.0"
+paramiko = ">=4.0.0"
 numpy = "*"
 # requires (on debian based Linux platforms)
 # sudo apt-get install python3-dev default-libmysqlclient-dev build-essential
@@ -30,7 +30,7 @@ mysqlclient = "*"
 paho-mqtt = "*"
 p3lib = ">=1.1.168"
 bokeh = ">=3.7.3"
-requests = "*"
+requests = ">=2.33.0"
 ifaddr = "*"
 pandas = "*"
 ping3 = "*"
@@ -41,7 +41,7 @@ mpy_cross = "*"
 pyflakes = "*"
 psutil = "*"
 objgraph = "*"
-nicegui = ">=3.7.0"
+nicegui = ">=3.15.0"
 rich = "*"
 test_equipment = "*"
 bleak = ">=0.22.3"
@@ -51,6 +51,10 @@ pillow = ">=12.3.0"
 orjson = ">=3.11.6"
 starlette = ">=1.4.1"
 tornado = ">=6.5.3"
+idna = ">=3.15"
+python-dotenv = ">=1.2.2"
+PyNaCl = ">=1.6.2"
+Pygments = ">=2.20.0"
 h11 = ">=0.16.0"    # Fixup for https://github.com/advisories/GHSA-vqfr-h8mv-ghfj
 #ip2geotools = "*" # Remove the # comment at the start of this line if you wish the server
                    # access log file to contain country, region and city information.
