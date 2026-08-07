@@ -12,6 +12,7 @@ git rev-parse --short HEAD > assets/git_hash.txt
 rm -rf dist/ct6-*-py3-none-any.whl
 rm -rf installers/ct6-*-py3-none-any.whl
 rm -rf dist
+cp pyproject.toml ct6/assets/
 pyflakes3 ct6/*.py
 poetry -vvv build
 cp dist/ct6-*-py3-none-any.whl installers/
