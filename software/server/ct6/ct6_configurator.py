@@ -9,7 +9,7 @@ import os
 import shutil
 import json
 
-from p3lib.ngt import TabbedNiceGui, YesNoDialog
+from p3lib.ngt3 import TabbedNiceGui, YesNoDialog
 
 from p3lib.uio import UIO
 from p3lib.helper import logTraceBack
@@ -87,7 +87,7 @@ class CT6GUIServer(TabbedNiceGui):
         """@brief Constructor
            @param uio A UIO instance
            @param options The command line options instance."""
-        super().__init__(uio.isDebugEnabled(), FactorySetup.LOG_PATH)
+        super().__init__(uio.isDebugEnabled(), FactorySetup.LOG_PATH, module_name="ct6")
         self._uio                       = uio
         self._options                   = options
         self._svrAddress                = options.address
@@ -1550,40 +1550,55 @@ The CT6 device will not attempt to send JSON data to an MQTT server unless enabl
             raise Exception("The maximum TCP port that you can bind the GUI server to is 65535.")
 
     def start(self):
-        """@brief Start the App server running."""
-        self._uio.info("Starting GUI...")
-        self._checkArgs()
-        try:
-            tabNameList = ('WiFi',
-                           'Upgrade',
-                           'Device Name',
-                           'Port Names',
-                           'MQTT Server',
-                           'Activate Device',
-                           'Install',
-                           'Scan',
-                           'Calibration')
-            # This must have the same number of elements as the above list
-            tabMethodInitList = [self._initWiFiTab,
-                                 self._initUpgradeTab,
-                                 self._initDevNameTab,
-                                 self._initPortNamesTab,
-                                 self._initMQTTServerTab,
-                                 self._initActivateDeviceTab,
-                                 self._initInstallTab,
-                                 self._initScanTab,
-                                 self._calibrateTab]
+            """@brief Start the App server running."""
+            self._uio.info("Starting GUI...")
+            self._checkArgs()
+            try:
+                tabNameList = ('WiFi',
+                            'Upgrade',
+                            'Device Name',
+                            'Port Names',
+                            'MQTT Server',
+                            'Activate Device',
+                            'Install',
+                            'Scan',
+                            'Calibration')
+                # This must have the same number of elements as the above list
+                tabMethodInitList = [self._initWiFiTab,
+                                    self._initUpgradeTab,
+                                    self._initDevNameTab,
+                                    self._initPortNamesTab,
+                                    self._initMQTTServerTab,
+                                    self._initActivateDeviceTab,
+                                    self._initInstallTab,
+                                    self._initScanTab,
+                                    self._calibrateTab]
 
-            self.initGUI(tabNameList,
-                          tabMethodInitList,
-                          address=self._svrAddress,
-                          port=self._svrPort,
-                          pageTitle=CT6GUIServer.PAGE_TITLE,
-                          reload=False)
+                # Configure the build, but keep ui.run() out of init_gui() so that
+                # nothing is created in the global scope.
+                self.set_init_gui_args(tabNameList,
+                                    tabMethodInitList,
+                                    address=self._svrAddress,
+                                    port=self._svrPort,
+                                    pageTitle=CT6GUIServer.PAGE_TITLE,
+                                    reload=False,
+                                    do_ui_run=False)
 
+                # Register '/' as a real route. NiceGUI builds it per client inside
+                # this function, so "script mode" never engages. ui.run() blocks
+                # until shutdown, so the finally: self.close() below only fires on exit.
+                @ui.page('/')
+                def index():
+                    self.init_gui()
 
-        finally:
-            self.close()
+                ui.run(host=self._svrAddress,
+                    port=self._svrPort,
+                    title=CT6GUIServer.PAGE_TITLE,
+                    dark=True,
+                    reload=False,
+                    uvicorn_logging_level="debug" if self._uio.isDebugEnabled() else "warning")
+            finally:
+                self.close()
 
 def main():
     """@brief Program entry point"""

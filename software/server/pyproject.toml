@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ct6"
-version = "12.3"
+version = "12.4"
 description = ""
 authors = ["Paul Austen <pjaos@gmail.com>"]
 readme = "README.md"
@@ -19,8 +19,8 @@ include = [
 pyreadline3 = "*"
 python = ">=3.10.12,<3.14"
 # Fix security vulnerability reported by github dependabot.
-cryptography = "^49.0.0"
-paramiko = "^3.4.0"
+cryptography = ">=50.0.0"
+paramiko = ">=3.4.0"
 numpy = "*"
 # requires (on debian based Linux platforms)
 # sudo apt-get install python3-dev default-libmysqlclient-dev build-essential
@@ -28,8 +28,8 @@ numpy = "*"
 mysql-connector-python = "*"
 mysqlclient = "*"
 paho-mqtt = "*"
-p3lib = "^1.1.163"
-bokeh = "^3.7.3"
+p3lib = ">=1.1.168"
+bokeh = ">=3.7.3"
 requests = "*"
 ifaddr = "*"
 pandas = "*"
@@ -41,11 +41,17 @@ mpy_cross = "*"
 pyflakes = "*"
 psutil = "*"
 objgraph = "*"
-nicegui = "*"
+nicegui = ">=3.7.0"
 rich = "*"
 test_equipment = "*"
-bleak = "^0.22.3"
-h11 = "^0.16.0"    # Fixup for https://github.com/advisories/GHSA-vqfr-h8mv-ghfj
+bleak = ">=0.22.3"
+urllib3 = ">=2.6.3"
+python-multipart = ">=0.0.27"
+pillow = ">=12.3.0"
+orjson = ">=3.11.6"
+starlette = ">=1.4.1"
+tornado = ">=6.5.3"
+h11 = ">=0.16.0"    # Fixup for https://github.com/advisories/GHSA-vqfr-h8mv-ghfj
 #ip2geotools = "*" # Remove the # comment at the start of this line if you wish the server
                    # access log file to contain country, region and city information.
                    # The down side to this is that about 70 extra python modules are pulled
