@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ct6"
-version = "12.5"
+version = "14.0"
 description = ""
 authors = ["Paul Austen <pjaos@gmail.com>"]
 readme = "README.md"
@@ -70,6 +70,8 @@ ct6_tool = "ct6.ct6_tool:main"
 ct6_configurator = "ct6.ct6_configurator:main"
 ct6_stats = "ct6.ct6_stats:main"
 ct6_app = "ct6.ct6_app:main"
+ct6_db_to_csv = "ct6.ct6_db_to_csv:main"
+ct6_heatpump_days = "ct6.ct6_heatpump_days:main"
 
 [build-system]
 requires = ["poetry-core"]
