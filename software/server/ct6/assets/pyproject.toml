@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ct6"
-version = "14.0"
+version = "14.1"
 description = ""
 authors = ["Paul Austen <pjaos@gmail.com>"]
 readme = "README.md"
@@ -17,7 +17,7 @@ include = [
 
 [tool.poetry.dependencies]
 pyreadline3 = "*"
-python = ">=3.10.12,<3.14"
+python = ">=3.10.12,<=3.16"
 # Fix security vulnerability reported by github dependabot.
 cryptography = ">=50.0.0"
 paramiko = ">=4.0.0"
