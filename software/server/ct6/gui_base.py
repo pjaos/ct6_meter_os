@@ -705,12 +705,21 @@ class GUIBase(MultiAppServer):
                                  )
 
         table_style = InlineStyleSheet(css="""
-            .slick-header-columns {
-                background-color: #17648D !important;
+            /* The header container and each individual header cell must be
+               styled. Bokeh's default theme gives each .slick-header-column
+               its own light background, which sits on top of the container
+               background and makes white title text unreadable. */
+            .slick-header-columns,
+            .slick-header-column {
+                background: #17648D !important;
+                background-image: none !important;
                 font-weight: bold;
                 font-size: 12pt;
-                color: #FFFFFF;
+                color: #FFFFFF !important;
                 text-align: right;
+            }
+            .slick-header-column .slick-column-name {
+                color: #FFFFFF !important;
             }
             .slick-row {
                 font-size:12pt;
