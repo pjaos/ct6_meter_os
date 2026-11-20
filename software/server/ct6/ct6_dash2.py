@@ -5,6 +5,8 @@
 import argparse
 import os
 
+from importlib import metadata
+
 from p3lib.helper import logTraceBack, get_program_version
 from p3lib.uio import UIO
 from p3lib.boot_manager import BootManager
@@ -16,6 +18,20 @@ from ct6.ct6_data_source import (create_data_source_factory, default_sqlite_path
 from ct6.ct6_dash2_gui import CT6Dash2GUI
 from ct6.ct6_dash2_auth import LoginManager, load_or_create_secret
 from ct6.ct6_dash_mgr import CRED_JSON_FILE
+
+
+def program_version():
+    """@brief Get the ct6 package version for display. Never raises: the version is
+              only shown in the GUI, so a lookup problem must not stop the app."""
+    try:
+        # Name the package explicitly. Without it p3lib guesses the package from the
+        # entry point script's folder, which is 'bin' when installed with pip/pipx.
+        return get_program_version("ct6")
+    except Exception:
+        try:
+            return metadata.version("ct6")
+        except Exception:
+            return "unknown"
 
 
 class CT6Dash2Config(ConfigBase):
@@ -120,7 +136,7 @@ def main():
                                   config.getAttr(ConfigBase.LOCAL_GUI_SERVER_ADDRESS),
                                   config.getAttr(ConfigBase.LOCAL_GUI_SERVER_PORT),
                                   access_log_file=config.getAttr(ConfigBase.SERVER_ACCESS_LOG_FILE),
-                                  version=get_program_version(),
+                                  version=program_version(),
                                   login_manager=login_manager,
                                   storage_path=os.path.join(config_dir, CT6Dash2Config.STORAGE_FOLDER),
                                   storage_secret=load_or_create_secret(os.path.join(config_dir, CT6Dash2Config.SECRET_FILENAME)))
