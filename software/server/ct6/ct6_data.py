@@ -56,6 +56,7 @@ class PlotType(Enum):
     AC_FREQ = "AC Frequency"
     TEMPERATURE = "Temperature"
     RSSI = "WiFi RSSI"
+    ENERGY = "Energy"
 
     @property
     def is_per_ct(self):
@@ -72,6 +73,8 @@ class PlotType(Enum):
 
     def y_axis_label(self, power_type=PowerType.ACTIVE):
         """@return The Y axis label for this plot."""
+        if self == PlotType.ENERGY:
+            return "kWh"
         if self == PlotType.POWER:
             return "kW" if power_type == PowerType.ACTIVE else "kVA"
         return {PlotType.POWER_FACTOR: "Power Factor",
@@ -252,6 +255,66 @@ def downsample_minmax(points, max_points):
     return out
 
 
+# ---------------------------------------------------------------- energy bars
+
+class EnergyBucket(Enum):
+    AUTO = "Auto"
+    DAY = "Day"
+    MONTH = "Month"
+
+
+ENERGY_AUTO_MAX_DAYS = 62
+
+
+def choose_bucket(bucket, start_dt, stop_dt):
+    """@brief Resolve EnergyBucket.AUTO: one bar per day up to ENERGY_AUTO_MAX_DAYS days, else per month.
+       @return EnergyBucket.DAY or EnergyBucket.MONTH."""
+    if bucket != EnergyBucket.AUTO:
+        return bucket
+    days = (stop_dt.date() - start_dt.date()).days + 1
+    return EnergyBucket.DAY if days <= ENERGY_AUTO_MAX_DAYS else EnergyBucket.MONTH
+
+
+def period_label(period, bucket):
+    """@return The x axis label for a bar: 2026-11-20 (day) or Nov 2026 (month)."""
+    return period.isoformat() if bucket == EnergyBucket.DAY else period.strftime("%b %Y")
+
+
+def energy_kwh(pos, neg, invert=False):
+    """@brief Convert stored-sign energy totals into a KWhResult, matching calc_kwh()'s
+              handling of an inverted (import is positive) display.
+       @param pos Energy from positive readings (>= 0).
+       @param neg Energy from negative readings (<= 0).
+       @return A KWhResult."""
+    if invert:
+        return KWhResult(-(pos + neg), -neg, -pos)
+    return KWhResult(pos + neg, pos, neg)
+
+
+def build_energy_bars(records, device, bucket, invert=False):
+    """@brief Build the bar chart data for the Energy plot.
+       @param records Rows from CT6DataSource.period_energy(): period (date) plus
+              CTn_ACT_WATTS_pos / CTn_ACT_WATTS_neg (kWh) for each active CT.
+       @param device The DeviceInfo.
+       @param bucket EnergyBucket.DAY or EnergyBucket.MONTH.
+       @param invert If True show imported energy as positive.
+       @return (labels, bars, totals): x axis labels, a list of dicts
+               (ct, name, pos: [kWh], neg: [kWh]) and a dict ct -> KWhResult."""
+    labels = [period_label(r["period"], bucket) for r in records]
+    bars = []
+    totals = {}
+    for ct_number, name in device.active_cts():
+        col = act_watts_field(ct_number)
+        pos = [float(r.get(f"{col}_pos") or 0.0) for r in records]
+        neg = [float(r.get(f"{col}_neg") or 0.0) for r in records]
+        totals[ct_number] = energy_kwh(sum(pos), sum(neg), invert)
+        if invert:
+            pos, neg = [-n for n in neg], [-p for p in pos]
+        bars.append({"ct": ct_number, "name": name,
+                     "pos": [round(v, 3) for v in pos], "neg": [round(v, 3) for v in neg]})
+    return labels, bars, totals
+
+
 # ---------------------------------------------------------------- live
 
 LIVE_WINDOW = timedelta(minutes=15)
@@ -347,9 +410,14 @@ def summary_row(ct_number, sensor_name, kwh, invert=False):
     pos, neg = (kwh.negative, kwh.positive) if invert else (kwh.positive, kwh.negative)
     return {"ct": ct_number,
             "sensor": sensor_name,
-            "total": f"{kwh.total:.2f}",
-            "positive": f"{pos:.2f}",
-            "negative": f"{neg:.2f}"}
+            "total": _kwh_text(kwh.total),
+            "positive": _kwh_text(pos),
+            "negative": _kwh_text(neg)}
+
+
+def _kwh_text(value):
+    """@return value to 2 decimal places, without a '-0.00'."""
+    return f"{0.0 if abs(value) < 0.005 else value:.2f}"
 
 
 # ---------------------------------------------------------------- peak day

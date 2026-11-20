@@ -152,6 +152,36 @@ class TestPeakDay(unittest.TestCase):
         self.assertIn("No complete days", cd.peak_result_text("X", datetime(2026, 1, 1), datetime(2026, 1, 2), r))
 
 
+class TestEnergy(unittest.TestCase):
+
+    def test_choose_bucket_and_labels(self):
+        s = datetime(2026, 1, 1)
+        self.assertEqual(cd.choose_bucket(cd.EnergyBucket.AUTO, s, s + timedelta(days=61)), cd.EnergyBucket.DAY)
+        self.assertEqual(cd.choose_bucket(cd.EnergyBucket.AUTO, s, s + timedelta(days=62)), cd.EnergyBucket.MONTH)
+        self.assertEqual(cd.choose_bucket(cd.EnergyBucket.DAY, s, s + timedelta(days=365)), cd.EnergyBucket.DAY)
+        self.assertEqual(cd.period_label(date(2026, 11, 1), cd.EnergyBucket.MONTH), "Nov 2026")
+        self.assertEqual(cd.period_label(date(2026, 11, 20), cd.EnergyBucket.DAY), "2026-11-20")
+
+    def test_bars_and_totals_match_kwh_table_conventions(self):
+        dev = cd.DeviceInfo("HOUSE", "HOUSE", ("Grid", "", "", "", "", ""))
+        recs = [{"period": date(2026, 11, 19), "CT1_ACT_WATTS_pos": 3.0, "CT1_ACT_WATTS_neg": -1.0},
+                {"period": date(2026, 11, 20), "CT1_ACT_WATTS_pos": 1.0, "CT1_ACT_WATTS_neg": -4.0}]
+        labels, bars, totals = cd.build_energy_bars(recs, dev, cd.EnergyBucket.DAY)
+        self.assertEqual(labels, ["2026-11-19", "2026-11-20"])
+        self.assertEqual((bars[0]["pos"], bars[0]["neg"]), ([3.0, 1.0], [-1.0, -4.0]))
+        self.assertEqual(cd.summary_row(1, "Grid", totals[1]),
+                         {"ct": 1, "sensor": "Grid", "total": "-1.00", "positive": "4.00", "negative": "-5.00"})
+        # Inverted: bars flip sign, and the summary row matches what calc_kwh(invert=True) would give.
+        _, bars_i, totals_i = cd.build_energy_bars(recs, dev, cd.EnergyBucket.DAY, invert=True)
+        self.assertEqual((bars_i[0]["pos"], bars_i[0]["neg"]), ([1.0, 4.0], [-3.0, -1.0]))
+        rows = [{TS: datetime(2026, 1, 1, 0, 0), "CT1_ACT_WATTS": 0.0},
+                {TS: datetime(2026, 1, 1, 1, 0), "CT1_ACT_WATTS": 4000.0},
+                {TS: datetime(2026, 1, 1, 2, 0), "CT1_ACT_WATTS": -5000.0}]
+        ref = cd.calc_kwh(rows, "CT1_ACT_WATTS", invert=True)
+        got = cd.energy_kwh(4.0, -5.0, invert=True)
+        self.assertEqual((got.total, got.positive, got.negative), (ref.total, ref.positive, ref.negative))
+
+
 class TestLive(unittest.TestCase):
 
     def test_status_and_age(self):

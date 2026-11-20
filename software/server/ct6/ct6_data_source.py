@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 
 from lib.base_constants import BaseConstants
 
-from ct6.ct6_data import DeviceInfo, TIMESTAMP
+from ct6.ct6_data import DeviceInfo, EnergyBucket, TIMESTAMP
 
 
 class CT6DataSource(ABC):
@@ -36,6 +36,16 @@ class CT6DataSource(ABC):
     def daily_averages(self, device_id, column, start_dt, stop_dt):
         """@brief Average a column per calendar day using the hour resolution table.
            @return A list of dicts with day (date), avg_w (float) and sample_count (int)."""
+
+    @abstractmethod
+    def period_energy(self, device_id, columns, start_dt, stop_dt, bucket):
+        """@brief Total power columns per day or month using the minute resolution table.
+                  Each minute row counts as one minute at that power.
+           @param columns The power columns (e.g. CT1_ACT_WATTS).
+           @param bucket EnergyBucket.DAY or EnergyBucket.MONTH.
+           @return A list of dicts ordered by period: period (date, first day of the day/month)
+                   plus <column>_pos (kWh from positive readings, >= 0) and
+                   <column>_neg (kWh from negative readings, <= 0) for each column."""
 
     @abstractmethod
     def recent_rows(self, device_id, since_dt):
@@ -131,6 +141,26 @@ class MySQLDataSource(CT6DataSource):
               f"FROM {_quote_name(device_id)}.{BaseConstants.HOUR_RES_DB_DATA_TABLE_NAME} " \
               f"WHERE {TIMESTAMP} BETWEEN %s AND %s GROUP BY DATE({TIMESTAMP}) ORDER BY day"
         return self._query(sql, (start_dt, stop_dt))
+
+    def period_energy(self, device_id, columns, start_dt, stop_dt, bucket):
+        if bucket == EnergyBucket.MONTH:
+            period = f"DATE_SUB(DATE({TIMESTAMP}), INTERVAL DAYOFMONTH({TIMESTAMP}) - 1 DAY)"
+        else:
+            period = f"DATE({TIMESTAMP})"
+        sums = []
+        for c in columns:
+            c = _check_column(c)
+            sums.append(f"SUM(GREATEST({c}, 0)) / 60000.0 AS {c}_pos")
+            sums.append(f"SUM(LEAST({c}, 0)) / 60000.0 AS {c}_neg")
+        sql = f"SELECT {period} AS period, {', '.join(sums)} " \
+              f"FROM {_quote_name(device_id)}.{BaseConstants.MINUTE_RES_DB_DATA_TABLE_NAME} " \
+              f"WHERE {TIMESTAMP} BETWEEN %s AND %s GROUP BY period ORDER BY period"
+        rows = self._query(sql, (start_dt, stop_dt))
+        for r in rows:
+            for k, v in r.items():
+                if k != "period":
+                    r[k] = float(v or 0.0)
+        return rows
 
     def recent_rows(self, device_id, since_dt):
         sql = f"SELECT * FROM {_quote_name(device_id)}.{BaseConstants.MAX_RES_DB_DATA_TABLE_NAME} " \

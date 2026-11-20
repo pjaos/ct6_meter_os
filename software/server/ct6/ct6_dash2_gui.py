@@ -18,7 +18,7 @@ from time import time
 from nicegui import app, ui
 
 from ct6 import ct6_data as cd
-from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution
+from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution, EnergyBucket
 
 # Message types posted by worker threads.
 MSG_STATUS = "status"
@@ -34,6 +34,12 @@ MSG_LIVE = "live"           # Live tab update (has its own request counter, see 
 LIVE_TAB = "__live__"       # Tab name of the Live tab
 LIVE_SECONDS = 2.0          # Live tab refresh period
 LIVE_STATUS_COLOURS = {"ok": "text-positive", "stale": "text-warning", "offline": "text-negative"}
+
+# The ECharts default palette. Energy bars set colours explicitly (two series per CT)
+# using the same order, so a CT keeps its colour in every view.
+PALETTE = ["#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de", "#3ba272", "#fc8452", "#9a60b4", "#ea7ccc"]
+HELP_ENERGY_BUCKET = "Energy per bar. Auto = one bar per day for ranges up to " \
+                     f"{cd.ENERGY_AUTO_MAX_DAYS} days, else one bar per month."
 
 # Chart height = viewport height minus the space used by the header, tabs,
 # plot type selector and the collapsed kWh bar.
@@ -95,6 +101,10 @@ class _DeviceTab:
     status: object = None
     kwh_bar: object = None      # ui.expansion holding the kWh table
     kwh_summary: object = None  # One line kWh totals shown in the collapsed header
+    bucket_toggle: object = None  # Auto/Day/Month (Energy plot only)
+    bucket_row: object = None
+    mode: str = "line"          # Current chart layout: "line" or "bar"
+    chart_box: object = None    # Container the chart is (re)built in
 
 
 @dataclass
@@ -214,7 +224,28 @@ class _ClientSession:
             return
         post(MSG_DEVICES, devices=devices)
 
+    def _worker_energy(self, post, p):
+        """@brief Read daily/monthly energy totals and post them as bar chart data."""
+        device = p["device"]
+        dev_id = device.device_id
+        start_t = time()
+        post(MSG_STATUS, device_id=dev_id, message="Reading Data...")
+        bucket = cd.choose_bucket(p["bucket"], p["start"], p["stop"])
+        columns = [cd.act_watts_field(n) for n, _ in device.active_cts()]
+        with self._gui.data_source_factory() as ds:
+            records = ds.period_energy(dev_id, columns, p["start"], p["stop"], bucket)
+        labels, bars, totals = cd.build_energy_bars(records, device, bucket, p["invert"])
+        post(MSG_PLOT_DATA, device_id=dev_id, kind="bar", labels=labels, bars=bars,
+             y_label=PlotType.ENERGY.y_axis_label(), scale=False, has_kwh=True)
+        for ct_number, name in device.active_cts():
+            post(MSG_SUMMARY_ROW, device_id=dev_id, row=cd.summary_row(ct_number, name, totals[ct_number], p["invert"]))
+        post(MSG_STATUS, device_id=dev_id,
+             message=f"Energy per {bucket.value.lower()} from minute data: {len(labels)} bar(s) "
+                     f"in {time() - start_t:.1f} seconds.")
+
     def _worker_read(self, post, p):
+        if p["plot_type"] == PlotType.ENERGY:
+            return self._worker_energy(post, p)
         device = p["device"]
         dev_id = device.device_id
         start_t = time()
@@ -337,7 +368,8 @@ class _ClientSession:
                   "start": start,
                   "stop": stop,
                   "maxpp": self._options.maxpp,
-                  "maxdp": self._options.maxdp}
+                  "maxdp": self._options.maxdp,
+                  "bucket": EnergyBucket(dt.bucket_toggle.value)}
         self._start_job(self._worker_read, params)
 
     def _invert_kw(self):
@@ -363,7 +395,7 @@ class _ClientSession:
             self._start_time.value = r.start_time
             self._stop_date.value = r.stop_date.isoformat()
             self._stop_time.value = r.stop_time
-            if dt is not None:
+            if dt is not None and dt.plot_toggle.value != PlotType.ENERGY.value:
                 dt.plot_toggle.value = PlotType.POWER.value
         finally:
             self._suppress_events = False
@@ -377,10 +409,20 @@ class _ClientSession:
         date_input.value = d.isoformat()
 
     def _on_plot_type_change(self, device_id):
+        tab = self._tabs.get(device_id)
+        if tab is not None:
+            tab.bucket_row.set_visibility(tab.plot_toggle.value == PlotType.ENERGY.value)
         if self._suppress_events:
             return
         dt = self._selected_tab()
         if dt is not None and dt.device.device_id == device_id and dt.plot_toggle.value:
+            self._read_selected()
+
+    def _on_bucket_change(self, device_id):
+        if self._suppress_events:
+            return
+        dt = self._selected_tab()
+        if dt is not None and dt.device.device_id == device_id and dt.plot_toggle.value == PlotType.ENERGY.value:
             self._read_selected()
 
     def _on_tab_change(self):
@@ -416,7 +458,8 @@ class _ClientSession:
         for w in self._controls:
             w.enable() if enabled else w.disable()
         for dt in self._tabs.values():
-            dt.plot_toggle.enable() if enabled else dt.plot_toggle.disable()
+            for w in (dt.plot_toggle, dt.bucket_toggle):
+                w.enable() if enabled else w.disable()
 
     def _show_status(self, device_id, message, error=False):
         dt = self._tabs.get(device_id) if device_id else self._selected_tab()
@@ -428,15 +471,47 @@ class _ClientSession:
         dt = self._tabs.get(msg["device_id"])
         if dt is None:
             return
+        kind = msg.get("kind", "line")
+        self._set_chart_mode(dt, kind)
         opts = dt.chart.options
         opts["yAxis"]["name"] = msg["y_label"]
         opts["yAxis"]["scale"] = msg["scale"]
-        opts["series"] = [{"name": s["name"], "type": "line", "showSymbol": False, "sampling": "lttb",
-                           "lineStyle": {"width": 2}, "emphasis": {"disabled": True}, "data": s["data"]}
-                          for s in msg["series"]]
-        opts["legend"]["data"] = [s["name"] for s in msg["series"]]
+        if kind == "bar":
+            # Two series per CT (positive above zero, negative below) sharing a name, stack and
+            # colour, so the legend shows each CT once and toggles both.
+            opts["xAxis"]["data"] = msg["labels"]
+            series = []
+            for i, b in enumerate(msg["bars"]):
+                colour = PALETTE[i % len(PALETTE)]
+                for key in ("pos", "neg"):
+                    series.append({"name": b["name"], "type": "bar", "stack": f"ct{b['ct']}",
+                                   "itemStyle": {"color": colour}, "emphasis": {"focus": "series"},
+                                   "data": b[key]})
+            opts["series"] = series
+            opts["legend"]["data"] = [b["name"] for b in msg["bars"]]
+        else:
+            opts["series"] = [{"name": s["name"], "type": "line", "showSymbol": False, "sampling": "lttb",
+                               "lineStyle": {"width": 2}, "emphasis": {"disabled": True}, "data": s["data"]}
+                              for s in msg["series"]]
+            opts["legend"]["data"] = [s["name"] for s in msg["series"]]
         dt.chart.update()
         dt.kwh_bar.set_visibility(msg["has_kwh"])
+        self._set_chart_height(dt)
+
+    def _set_chart_mode(self, dt, mode):
+        """@brief Switch a device chart between the time series ("line") and Energy ("bar") layouts."""
+        if dt.mode == mode:
+            return
+        dt.mode = mode
+        opts = _base_chart_options(self._gui.dark)
+        if mode == "bar":
+            opts["xAxis"] = {**opts["xAxis"], "type": "category", "data": []}
+            opts["tooltip"] = {"trigger": "axis", "axisPointer": {"type": "shadow"}}
+            opts["toolbox"]["feature"] = {"saveAsImage": {}}
+        # Rebuild the chart element: ECharts doesn't reliably switch axis types in place.
+        dt.chart_box.clear()
+        with dt.chart_box:
+            dt.chart = ui.echart(opts).classes("w-full")
         self._set_chart_height(dt)
 
     def _update_summary_row(self, device_id, row):
@@ -583,6 +658,12 @@ class _ClientSession:
                     dt.plot_toggle = ui.toggle([p.value for p in PlotType], value=PlotType.POWER.value,
                                                on_change=lambda _e, d=dev_id: self._on_plot_type_change(d)) \
                                        .props("no-caps dense")
+                    with ui.row().classes("items-center gap-1 no-wrap") as dt.bucket_row:
+                        dt.bucket_toggle = ui.toggle([b.value for b in EnergyBucket], value=EnergyBucket.AUTO.value,
+                                                     on_change=lambda _e, d=dev_id: self._on_bucket_change(d)) \
+                                             .props("no-caps dense")
+                        self._help(HELP_ENERGY_BUCKET)
+                    dt.bucket_row.set_visibility(False)
                     dt.status = ui.label("").classes("text-sm text-grey-5")
                 # kWh table above the plot, collapsed by default. The header shows the totals.
                 dt.kwh_bar = ui.expansion(value=self._kwh_expanded,
@@ -595,7 +676,8 @@ class _ClientSession:
                 with dt.kwh_bar:
                     dt.table = ui.table(columns=SUMMARY_COLUMNS, rows=[], row_key="ct") \
                                  .props("dense flat bordered hide-bottom").classes("min-w-[340px]")
-                dt.chart = ui.echart(_base_chart_options(self._gui.dark)).classes("w-full")
+                with ui.element("div").classes("w-full") as dt.chart_box:
+                    dt.chart = ui.echart(_base_chart_options(self._gui.dark)).classes("w-full")
                 self._set_chart_height(dt)
 
     # ------------------------------------------------------------ page
