@@ -9,13 +9,22 @@
    - Each request carries an incrementing job ID. Messages from older jobs are
      dropped so the newest request always wins."""
 
+import asyncio
 import queue
 import threading
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from time import time
+from urllib.parse import quote
 
-from nicegui import app, ui
+from fastapi import Request
+from fastapi.responses import RedirectResponse
+from nicegui import app, run, ui
+from nicegui.storage import Storage
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from ct6 import ct6_dash2_auth as auth
 
 from ct6 import ct6_data as cd
 from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution, EnergyBucket
@@ -122,8 +131,9 @@ class _LiveCard:
 class _ClientSession:
     """@brief The state and widgets for one browser client (one page load)."""
 
-    def __init__(self, gui):
+    def __init__(self, gui, address="?"):
         self._gui = gui
+        self._address = address
         self._uio = gui.uio
         self._options = gui.options
         self._queue = queue.Queue()
@@ -741,6 +751,11 @@ class _ClientSession:
             ui.label(self._gui.PAGE_TITLE).classes("text-lg")
             ui.space()
             ui.label(f"Software Version: {self._gui.version}").classes("text-xs")
+            if self._gui.login_manager is not None:
+                username = app.storage.user.get(auth.USERNAME, "")
+                ui.icon("person").classes("q-ml-md")
+                ui.label(username).classes("text-sm")
+                ui.button("Log out", icon="logout", on_click=self._logout).props("flat dense no-caps color=white")
 
         with ui.left_drawer(value=None, bordered=True).props("width=370").classes("q-pa-sm") as drawer:
             self._build_controls()
@@ -753,6 +768,11 @@ class _ClientSession:
         ui.timer(POLL_SECONDS, self._poll)
         ui.timer(LIVE_SECONDS, self._live_tick)
         self._start_job(self._worker_list_devices)
+
+    def _logout(self):
+        self._gui.log_event(f"logout {app.storage.user.get(auth.USERNAME, '')}", self._address)
+        app.storage.user.clear()
+        ui.navigate.to("/login")
 
     def _date_input(self, label):
         with ui.input(label).props("dense").classes("w-32") as inp:
@@ -846,7 +866,7 @@ class CT6Dash2GUI:
     PAGE_TITLE = "CT6 Dashboard"
 
     def __init__(self, uio, options, data_source_factory, address, port, access_log_file=None,
-                 version="", dark=True):
+                 version="", dark=True, login_manager=None, storage_path=None, storage_secret=None):
         """@param uio A UIO instance.
            @param options The argparse options (uses maxpp, maxdp, negative, no_gui).
            @param data_source_factory A callable returning a new CT6DataSource (called once per job).
@@ -854,7 +874,10 @@ class CT6Dash2GUI:
            @param port The TCP port to serve on.
            @param access_log_file If set, page accesses are appended to this file.
            @param version The software version shown in the GUI.
-           @param dark If True use the dark theme."""
+           @param dark If True use the dark theme.
+           @param login_manager A ct6_dash2_auth.LoginManager to require a login, or None for no login.
+           @param storage_path The folder NiceGUI keeps per-browser session data in.
+           @param storage_secret The secret used to sign session cookies (required for login)."""
         self.uio = uio
         self.options = options
         self.data_source_factory = data_source_factory
@@ -863,23 +886,104 @@ class CT6Dash2GUI:
         self.access_log_file = access_log_file
         self.version = version
         self.dark = dark
+        self.login_manager = login_manager
+        self.storage_path = storage_path
+        self.storage_secret = storage_secret
+        if login_manager is not None and not storage_secret:
+            raise ValueError("A storage secret is required when login is enabled.")
 
-    def _log_access(self, client):
+    @staticmethod
+    def _client_address(request):
+        return request.client.host if request is not None and request.client else "?"
+
+    def log_event(self, text, address="?"):
+        """@brief Record an access/login event in the access log file (if configured)."""
         if not self.access_log_file:
             return
         try:
-            host = client.request.client.host if client.request and client.request.client else "?"
             with open(self.access_log_file, "a") as fd:
-                fd.write(f"{datetime.now().isoformat(timespec='seconds')} {host} GET /\n")
+                fd.write(f"{datetime.now().isoformat(timespec='seconds')} {address} {text}\n")
         except Exception as ex:
             self.uio.debug(f"Access log write failed: {ex}")
 
+    def _add_login(self):
+        """@brief Require a login for every page except /login (and NiceGUI's own assets)."""
+        mgr = self.login_manager
+
+        class AuthMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                path = request.url.path
+                if not (path.startswith("/_nicegui") or path in ("/login", "/favicon.ico")):
+                    if mgr.session_user(app.storage.user) is None:
+                        return RedirectResponse(f"/login?redirect_to={quote(path)}")
+                return await call_next(request)
+
+        app.add_middleware(AuthMiddleware)
+
+        @ui.page("/login", title=f"{self.PAGE_TITLE} - Log in")
+        def login_page(request: Request, redirect_to: str = "/"):
+            target = auth.safe_redirect(redirect_to)
+            if mgr.session_user(app.storage.user) is not None:
+                return RedirectResponse(target)
+            address = self._client_address(request)
+
+            async def try_login():
+                user = (username.value or "").strip()
+                remaining = mgr.lockout_remaining(address)
+                if remaining:
+                    message.set_text(f"Too many failed logins. Try again in {remaining} seconds.")
+                    return
+                login_btn.disable()
+                message.set_text("")
+                try:
+                    ok = await run.io_bound(mgr.verify, user, password.value or "")
+                    if ok:
+                        mgr.clear_failures(address)
+                        app.storage.user.update(mgr.new_session(user))
+                        self.log_event(f"login {user}", address)
+                        self.uio.info(f"ct6_dash2: {user} logged in from {address}.")
+                        ui.navigate.to(target)
+                        return
+                    locked = mgr.record_failure(address)
+                    self.log_event(f"login failed {user}", address)
+                    self.uio.warn(f"ct6_dash2: failed login for '{user}' from {address}.")
+                    await asyncio.sleep(auth.FAILURE_DELAY_SECS)
+                    if locked:
+                        message.set_text(f"Too many failed logins. Try again in {auth.LOCKOUT_SECS // 60} minutes.")
+                    else:
+                        message.set_text("Incorrect username or password.")
+                    password.value = ""
+                finally:
+                    login_btn.enable()
+
+            with ui.card().classes("absolute-center w-80 q-pa-lg"):
+                ui.label(self.PAGE_TITLE).classes("text-h6")
+                username = ui.input("Username").props("autofocus autocomplete=username").classes("w-full")
+                password = ui.input("Password", password=True, password_toggle_button=True) \
+                             .props("autocomplete=current-password").classes("w-full")
+                message = ui.label("").classes("text-negative text-sm")
+                login_btn = ui.button("Log in", on_click=try_login).classes("w-full")
+                username.on("keydown.enter", lambda: password.run_method("focus"))
+                password.on("keydown.enter", try_login)
+
     def run(self):
         """@brief Start the web server. Blocks until shutdown."""
+        if self.storage_path:
+            # Keep session data with the config rather than in the working directory
+            # (which may not be writable when running as a service).
+            Storage.path = Path(self.storage_path).resolve()
+            Storage.path.mkdir(mode=0o700, parents=True, exist_ok=True)
+            Storage.path.chmod(0o700)   # Session files are only for this user
+        if self.login_manager is not None:
+            self._add_login()
+
         @ui.page("/")
-        def index(client):
-            self._log_access(client)
-            _ClientSession(self).build()
+        def index(request: Request):
+            address = self._client_address(request)
+            if self.login_manager is not None and self.login_manager.session_user(app.storage.user) is None:
+                return RedirectResponse("/login")
+            self.log_event("GET /", address)
+            _ClientSession(self, address).build()
 
         app.on_startup(lambda: self.uio.info(f"ct6_dash2 serving on port {self.port}."))
         ui.run(host=self.address or "0.0.0.0",
@@ -889,4 +993,5 @@ class CT6Dash2GUI:
                reload=False,
                show=not self.options.no_gui,
                show_welcome_message=False,
+               storage_secret=self.storage_secret,
                uvicorn_logging_level="debug" if self.uio.isDebugEnabled() else "warning")

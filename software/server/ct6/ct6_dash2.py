@@ -14,6 +14,8 @@ from lib.config import ConfigBase
 from ct6.ct6_data_source import (create_data_source_factory, default_sqlite_path,
                                   BACKEND_MYSQL, BACKEND_SQLITE, DB_BACKEND, SQLITE_DB_PATH)
 from ct6.ct6_dash2_gui import CT6Dash2GUI
+from ct6.ct6_dash2_auth import LoginManager, load_or_create_secret
+from ct6.ct6_dash_mgr import CRED_JSON_FILE
 
 
 class CT6Dash2Config(ConfigBase):
@@ -28,8 +30,11 @@ class CT6Dash2Config(ConfigBase):
         ConfigBase.DB_PASSWORD:                 "",
         ConfigBase.LOCAL_GUI_SERVER_ADDRESS:    "",
         ConfigBase.LOCAL_GUI_SERVER_PORT:       10001,
-        ConfigBase.SERVER_ACCESS_LOG_FILE:      ""
+        ConfigBase.SERVER_ACCESS_LOG_FILE:      "",
+        ConfigBase.SERVER_LOGIN:                False
     }
+    SECRET_FILENAME = "ct6Dash2.secret"         # Signs session cookies (created on first run, mode 0600)
+    STORAGE_FOLDER = "ct6_dash2_sessions"       # NiceGUI per-browser session data
 
     def edit(self, key):
         """@brief Edit a config parameter (adds the database backend settings to ConfigBase.edit())."""
@@ -101,13 +106,24 @@ def main():
                 config.configure(editConfigMethod=config.edit)
 
             else:
+                config_dir = os.path.dirname(os.path.abspath(options.config_file))
+                login_manager = None
+                if config.getAttr(ConfigBase.SERVER_LOGIN):
+                    login_manager = LoginManager(CRED_JSON_FILE)
+                    if login_manager.user_count() == 0:
+                        raise Exception(f"Login is enabled but no users are set up in {CRED_JSON_FILE}. "
+                                        "Run ct6_dash_mgr to add a user, or disable login with ct6_dash2 -c.")
+                    uio.info(f"Login enabled ({login_manager.user_count()} user(s) in {CRED_JSON_FILE}).")
                 gui = CT6Dash2GUI(uio,
                                   options,
                                   create_data_source_factory(config, sqlite_path=options.sqlite),
                                   config.getAttr(ConfigBase.LOCAL_GUI_SERVER_ADDRESS),
                                   config.getAttr(ConfigBase.LOCAL_GUI_SERVER_PORT),
                                   access_log_file=config.getAttr(ConfigBase.SERVER_ACCESS_LOG_FILE),
-                                  version=get_program_version())
+                                  version=get_program_version(),
+                                  login_manager=login_manager,
+                                  storage_path=os.path.join(config_dir, CT6Dash2Config.STORAGE_FOLDER),
+                                  storage_secret=load_or_create_secret(os.path.join(config_dir, CT6Dash2Config.SECRET_FILENAME)))
                 gui.run()
 
     # If the program throws a system exit exception
