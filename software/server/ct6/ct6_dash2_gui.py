@@ -323,7 +323,7 @@ class _ClientSession:
             return
         data = text.encode("utf-8")
         post(MSG_DOWNLOAD, device_id=dev_id, content=data,
-             filename=cd.csv_filename(dev_id, p["start"], p["stop"], label),
+             filename=cd.csv_filename(device.name, p["start"], p["stop"], label),
              message=f"Exported {count} row(s) to CSV ({len(data) / 1024:.0f} KiB).")
 
     def _on_csv(self):

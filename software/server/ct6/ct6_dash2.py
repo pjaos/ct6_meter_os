@@ -3,6 +3,7 @@
           It can run alongside ct6_dash as it uses its own config file and TCP port."""
 
 import argparse
+import os
 
 from p3lib.helper import logTraceBack, get_program_version
 from p3lib.uio import UIO
@@ -10,7 +11,8 @@ from p3lib.boot_manager import BootManager
 
 from lib.config import ConfigBase
 
-from ct6.ct6_data_source import create_data_source_factory
+from ct6.ct6_data_source import (create_data_source_factory, default_sqlite_path,
+                                  BACKEND_MYSQL, BACKEND_SQLITE, DB_BACKEND, SQLITE_DB_PATH)
 from ct6.ct6_dash2_gui import CT6Dash2GUI
 
 
@@ -18,6 +20,8 @@ class CT6Dash2Config(ConfigBase):
     """@brief The ct6_dash2 configuration. Separate from ct6_dash's so both can run at once."""
     DEFAULT_CONFIG_FILENAME = "ct6Dash2.cfg"
     DEFAULT_CONFIG = {
+        DB_BACKEND:                             BACKEND_MYSQL,
+        SQLITE_DB_PATH:                         default_sqlite_path(),
         ConfigBase.DB_HOST:                     "127.0.0.1",
         ConfigBase.DB_PORT:                     3306,
         ConfigBase.DB_USERNAME:                 "",
@@ -27,14 +31,46 @@ class CT6Dash2Config(ConfigBase):
         ConfigBase.SERVER_ACCESS_LOG_FILE:      ""
     }
 
+    def edit(self, key):
+        """@brief Edit a config parameter (adds the database backend settings to ConfigBase.edit())."""
+        if key == DB_BACKEND:
+            previous = self.getAttr(DB_BACKEND)
+            while True:
+                self.inputStr(DB_BACKEND, f"Enter the database type: '{BACKEND_MYSQL}' (ct6_db_store) "
+                                          f"or '{BACKEND_SQLITE}' (ct6_app)", False)
+                value = str(self.getAttr(DB_BACKEND)).strip().lower()
+                if value in (BACKEND_MYSQL, BACKEND_SQLITE):
+                    self.addAttr(DB_BACKEND, value)
+                    break
+                self._uio.error(f"Enter {BACKEND_MYSQL} or {BACKEND_SQLITE}.")
+                self.addAttr(DB_BACKEND, previous)
+
+        elif key == SQLITE_DB_PATH:
+            previous = self.getAttr(SQLITE_DB_PATH)
+            while True:
+                self.inputStr(SQLITE_DB_PATH, "Enter the folder holding the ct6_app SQLite (.db) files "
+                                              "(enter d for the default value)", False)
+                path = str(self.getAttr(SQLITE_DB_PATH)).strip()
+                if path.lower() == "d":
+                    path = default_sqlite_path()
+                path = os.path.abspath(os.path.expanduser(path))
+                self.addAttr(SQLITE_DB_PATH, path)
+                if os.path.isdir(path):
+                    break
+                self._uio.error(f"{path} folder not found.")
+                self.addAttr(SQLITE_DB_PATH, previous)
+
+        else:
+            super().edit(key)
+
 
 def main():
     """@brief Program entry point"""
     uio = UIO()
     options = None
     try:
-        parser = argparse.ArgumentParser(description="A web dashboard (NiceGUI) to view the data stored in the\n"
-                                                     "MySQL database by ct6_db_store.",
+        parser = argparse.ArgumentParser(description="A web dashboard (NiceGUI) to view CT6 data stored in the\n"
+                                                     "MySQL database by ct6_db_store or the SQLite databases by ct6_app.",
                                          formatter_class=argparse.RawDescriptionHelpFormatter)
         parser.add_argument("-d", "--debug",         action='store_true', help="Enable debugging.")
         parser.add_argument("-c", "--configure",     action='store_true', help="Enter/Modify the app configuration.")
@@ -45,6 +81,8 @@ def main():
         parser.add_argument("-n", "--no_gui",        action='store_true', help="Do not display the GUI. By default a local web browser is opened displaying the GUI.")
         parser.add_argument("-s", "--enable_syslog", action='store_true', help="Enable syslog debug data.")
         parser.add_argument("-m", "--maxpp",         help="The maximum number of values that may be read from the database for one plot (default=86400).", type=int, default=86400)
+        parser.add_argument("--sqlite",              help="Read the SQLite database files written by ct6_app from this folder, "
+                                                          "instead of using the database type set in the configuration.", default=None)
         parser.add_argument("--maxdp",               help="The maximum number of points per trace sent to the browser. Larger plots are reduced, keeping the min/max values (default=20000).", type=int, default=20000)
         BootManager.AddCmdArgs(parser)
 
@@ -65,7 +103,7 @@ def main():
             else:
                 gui = CT6Dash2GUI(uio,
                                   options,
-                                  create_data_source_factory(config),
+                                  create_data_source_factory(config, sqlite_path=options.sqlite),
                                   config.getAttr(ConfigBase.LOCAL_GUI_SERVER_ADDRESS),
                                   config.getAttr(ConfigBase.LOCAL_GUI_SERVER_PORT),
                                   access_log_file=config.getAttr(ConfigBase.SERVER_ACCESS_LOG_FILE),
