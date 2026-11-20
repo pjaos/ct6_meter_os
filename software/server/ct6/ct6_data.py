@@ -7,6 +7,9 @@
    in ct6_dash_gui.py / gui_base.py so results match ct6_dash."""
 
 import calendar
+import csv
+import io
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
@@ -313,6 +316,68 @@ def build_energy_bars(records, device, bucket, invert=False):
         bars.append({"ct": ct_number, "name": name,
                      "pos": [round(v, 3) for v in pos], "neg": [round(v, 3) for v in neg]})
     return labels, bars, totals
+
+
+# ---------------------------------------------------------------- CSV export
+
+_CT_COLUMN = re.compile(r"^CT([1-6])_")
+
+
+def csv_column_name(column, device):
+    """@return The CSV header for a DB column: CT columns get the CT's name added,
+               e.g. 'CT1_ACT_WATTS (Grid)'. Other columns are unchanged."""
+    m = _CT_COLUMN.match(column)
+    if m:
+        name = device.ct_names[int(m.group(1)) - 1]
+        if name:
+            return f"{column} ({name})"
+    return column
+
+
+def rows_to_csv(rows, device):
+    """@brief Convert DB rows to CSV text. Every column is included, with values as stored.
+       @param rows Row dicts (as returned by CT6DataSource.read_rows()).
+       @param device The DeviceInfo (for CT names in the header).
+       @return The CSV text."""
+    out = io.StringIO()
+    if not rows:
+        return ""
+    columns = list(rows[0].keys())
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow([csv_column_name(c, device) for c in columns])
+    for r in rows:
+        writer.writerow([r[c].strftime(X_FORMAT) if c == TIMESTAMP and r[c] is not None else r[c]
+                         for c in columns])
+    return out.getvalue()
+
+
+def energy_to_csv(records, device, bucket):
+    """@brief Convert period_energy() records to CSV text (the Energy view's bar figures).
+              Values keep the stored sign: positive readings, negative readings and their net.
+       @return The CSV text."""
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    header = ["PERIOD"]
+    cts = device.active_cts()
+    for n, name in cts:
+        col = act_watts_field(n)
+        header += [f"{col}_POS_KWH ({name})", f"{col}_NEG_KWH ({name})", f"{col}_NET_KWH ({name})"]
+    writer.writerow(header)
+    for r in records:
+        row = [r["period"].isoformat() if bucket == EnergyBucket.DAY else r["period"].strftime("%Y-%m")]
+        for n, _ in cts:
+            col = act_watts_field(n)
+            pos = float(r.get(f"{col}_pos") or 0.0)
+            neg = float(r.get(f"{col}_neg") or 0.0)
+            row += [f"{pos:.4f}", f"{neg:.4f}", f"{pos + neg:.4f}"]
+        writer.writerow(row)
+    return out.getvalue()
+
+
+def csv_filename(device_id, start_dt, stop_dt, label):
+    """@return e.g. HOUSE_20261120-0000_20261120-2359_Min.csv"""
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", device_id)
+    return f"{safe}_{start_dt:%Y%m%d-%H%M}_{stop_dt:%Y%m%d-%H%M}_{label}.csv"
 
 
 # ---------------------------------------------------------------- live

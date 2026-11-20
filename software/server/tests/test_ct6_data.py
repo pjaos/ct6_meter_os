@@ -182,6 +182,27 @@ class TestEnergy(unittest.TestCase):
         self.assertEqual((got.total, got.positive, got.negative), (ref.total, ref.positive, ref.negative))
 
 
+class TestCSV(unittest.TestCase):
+    DEV = cd.DeviceInfo("HOUSE", "HOUSE", ("Grid", "", "", "", "", ""))
+
+    def test_rows_to_csv_keeps_stored_values_and_names_cts(self):
+        rows = [{TS: datetime(2026, 11, 20, 10, 0), "CT1_ACT_WATTS": -512.5, "CT2_ACT_WATTS": 0.0, "VOLTAGE": 241.2}]
+        text = cd.rows_to_csv(rows, self.DEV)
+        self.assertEqual(text.splitlines(), ["TIMESTAMP,CT1_ACT_WATTS (Grid),CT2_ACT_WATTS,VOLTAGE",
+                                             "2026-11-20 10:00:00,-512.5,0.0,241.2"])
+        self.assertEqual(cd.rows_to_csv([], self.DEV), "")
+
+    def test_energy_csv(self):
+        recs = [{"period": date(2026, 11, 1), "CT1_ACT_WATTS_pos": 3.0, "CT1_ACT_WATTS_neg": -1.25}]
+        lines = cd.energy_to_csv(recs, self.DEV, cd.EnergyBucket.MONTH).splitlines()
+        self.assertEqual(lines, ["PERIOD,CT1_ACT_WATTS_POS_KWH (Grid),CT1_ACT_WATTS_NEG_KWH (Grid),CT1_ACT_WATTS_NET_KWH (Grid)",
+                                 "2026-11,3.0000,-1.2500,1.7500"])
+
+    def test_filename(self):
+        self.assertEqual(cd.csv_filename("MY DEV", datetime(2026, 11, 20), datetime(2026, 11, 20, 23, 59), "Min"),
+                         "MY_DEV_20261120-0000_20261120-2359_Min.csv")
+
+
 class TestLive(unittest.TestCase):
 
     def test_status_and_age(self):

@@ -29,6 +29,7 @@ MSG_PEAK_RESULT = "peak_result"
 MSG_ENABLE_CONTROLS = "enable_controls"
 MSG_ERROR = "error"
 MSG_DONE = "done"
+MSG_DOWNLOAD = "download"
 MSG_LIVE = "live"           # Live tab update (has its own request counter, see _start_live_job())
 
 LIVE_TAB = "__live__"       # Tab name of the Live tab
@@ -208,6 +209,9 @@ class _ClientSession:
             self._peak_label.set_text(msg["message"])
         elif t == MSG_ENABLE_CONTROLS:
             self._set_controls_enabled(msg["enabled"])
+        elif t == MSG_DOWNLOAD:
+            ui.download.content(msg["content"], msg["filename"], media_type="text/csv")
+            self._show_status(msg["device_id"], msg["message"])
         elif t == MSG_DONE:
             self._set_controls_enabled(True)
 
@@ -292,6 +296,52 @@ class _ClientSession:
         if downsampled:
             msg += f" Display reduced to {p['maxdp']} points per trace."
         post(MSG_STATUS, device_id=dev_id, message=msg)
+
+    def _worker_csv(self, post, p):
+        """@brief Build a CSV of the current view in the worker thread and post it for download."""
+        device = p["device"]
+        dev_id = device.device_id
+        post(MSG_STATUS, device_id=dev_id, message="Creating CSV file...")
+        with self._gui.data_source_factory() as ds:
+            if p["plot_type"] == PlotType.ENERGY:
+                bucket = cd.choose_bucket(p["bucket"], p["start"], p["stop"])
+                columns = [cd.act_watts_field(n) for n, _ in device.active_cts()]
+                records = ds.period_energy(dev_id, columns, p["start"], p["stop"], bucket)
+                text = cd.energy_to_csv(records, device, bucket)
+                count, label = len(records), f"Energy_{bucket.value}"
+            else:
+                count = ds.count_rows(dev_id, p["start"], p["stop"], p["resolution"])
+                if count > p["maxpp"]:
+                    post(MSG_ERROR, device_id=dev_id,
+                         message=f"Reduce the resolution to export ({count} rows, max = {p['maxpp']}).")
+                    return
+                rows = ds.read_rows(dev_id, p["start"], p["stop"], p["resolution"])
+                text = cd.rows_to_csv(rows, device)
+                label = p["resolution"].value
+        if not text:
+            post(MSG_ERROR, device_id=dev_id, message="No data to export for the selected dates.")
+            return
+        data = text.encode("utf-8")
+        post(MSG_DOWNLOAD, device_id=dev_id, content=data,
+             filename=cd.csv_filename(dev_id, p["start"], p["stop"], label),
+             message=f"Exported {count} row(s) to CSV ({len(data) / 1024:.0f} KiB).")
+
+    def _on_csv(self):
+        dt = self._selected_tab()
+        if dt is None:
+            ui.notify("Select a device tab to export its data.", type="info")
+            return
+        try:
+            start, stop = self._get_start_stop()
+        except ValueError as ex:
+            self._show_status(dt.device.device_id, str(ex), error=True)
+            return
+        self._start_job(self._worker_csv, {"device": dt.device,
+                                           "plot_type": PlotType(dt.plot_toggle.value),
+                                           "resolution": Resolution(self._resolution.value),
+                                           "bucket": EnergyBucket(dt.bucket_toggle.value),
+                                           "start": start, "stop": stop,
+                                           "maxpp": self._options.maxpp})
 
     def _start_live_job(self):
         """@brief Fetch new Live tab rows in a worker thread.
@@ -737,7 +787,11 @@ class _ClientSession:
     def _build_controls(self):
         with ui.column().classes("w-full gap-3"):
             update_btn = ui.button("Update", icon="refresh", on_click=self._on_update).classes("w-full")
-            self._controls.append(update_btn)
+            csv_btn = ui.button("Download CSV", icon="download", on_click=self._on_csv) \
+                        .props("outline no-caps dense").classes("w-full") \
+                        .tooltip("Save the selected device's data for the selected dates and resolution "
+                                 "(every column, values as stored). On the Energy view, saves the bar figures.")
+            self._controls += [update_btn, csv_btn]
 
             with ui.grid(columns=2).classes("w-full gap-1"):
                 for preset in cd.PRESETS:
