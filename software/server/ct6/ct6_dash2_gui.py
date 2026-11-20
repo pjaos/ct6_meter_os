@@ -863,8 +863,7 @@ def _valid_hhmm(value):
 class CT6Dash2GUI:
     """@brief Serves the ct6_dash2 NiceGUI dashboard."""
 
-    PAGE_TITLE = "CT6 Dashboard"            # Heading shown in the page
-    BROWSER_TITLE = "CT6 Dashboard 2"       # Browser tab title (tells it apart from ct6_dash)
+    PAGE_TITLE = "CT6 Dashboard 2"          # Header and browser tab title (tells it apart from ct6_dash)
 
     def __init__(self, uio, options, data_source_factory, address, port, access_log_file=None,
                  version="", dark=True, login_manager=None, storage_path=None, storage_secret=None):
@@ -921,7 +920,7 @@ class CT6Dash2GUI:
 
         app.add_middleware(AuthMiddleware)
 
-        @ui.page("/login", title=f"{self.BROWSER_TITLE} - Log in")
+        @ui.page("/login", title=f"{self.PAGE_TITLE} - Log in")
         def login_page(request: Request, redirect_to: str = "/"):
             target = auth.safe_redirect(redirect_to)
             if mgr.session_user(app.storage.user) is not None:
@@ -989,7 +988,7 @@ class CT6Dash2GUI:
         app.on_startup(lambda: self.uio.info(f"ct6_dash2 serving on port {self.port}."))
         ui.run(host=self.address or "0.0.0.0",
                port=self.port,
-               title=self.BROWSER_TITLE,
+               title=self.PAGE_TITLE,
                dark=self.dark,
                reload=False,
                show=not self.options.no_gui,
