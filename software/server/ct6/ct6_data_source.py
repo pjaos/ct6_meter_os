@@ -38,6 +38,15 @@ class CT6DataSource(ABC):
            @return A list of dicts with day (date), avg_w (float) and sample_count (int)."""
 
     @abstractmethod
+    def recent_rows(self, device_id, since_dt):
+        """@brief Read the full resolution rows newer than since_dt (used by the Live tab).
+           @return A list of row dicts ordered by time."""
+
+    @abstractmethod
+    def latest_timestamp(self, device_id):
+        """@return The datetime of the newest full resolution row, or None if there is none."""
+
+    @abstractmethod
     def close(self):
         """@brief Release the connection."""
 
@@ -122,6 +131,16 @@ class MySQLDataSource(CT6DataSource):
               f"FROM {_quote_name(device_id)}.{BaseConstants.HOUR_RES_DB_DATA_TABLE_NAME} " \
               f"WHERE {TIMESTAMP} BETWEEN %s AND %s GROUP BY DATE({TIMESTAMP}) ORDER BY day"
         return self._query(sql, (start_dt, stop_dt))
+
+    def recent_rows(self, device_id, since_dt):
+        sql = f"SELECT * FROM {_quote_name(device_id)}.{BaseConstants.MAX_RES_DB_DATA_TABLE_NAME} " \
+              f"WHERE {TIMESTAMP} > %s ORDER BY {TIMESTAMP}"
+        return self._query(sql, (since_dt,))
+
+    def latest_timestamp(self, device_id):
+        sql = f"SELECT MAX({TIMESTAMP}) AS t FROM {_quote_name(device_id)}.{BaseConstants.MAX_RES_DB_DATA_TABLE_NAME}"
+        rows = self._query(sql)
+        return rows[0]["t"] if rows else None
 
     def close(self):
         if self._conn:

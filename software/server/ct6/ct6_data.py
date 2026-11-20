@@ -252,6 +252,57 @@ def downsample_minmax(points, max_points):
     return out
 
 
+# ---------------------------------------------------------------- live
+
+LIVE_WINDOW = timedelta(minutes=15)
+LIVE_OK_SECS = 10
+LIVE_STALE_SECS = 60
+LIVE_FIELDS = (BaseConstants.VOLTAGE, BaseConstants.FREQUENCY, BaseConstants.TEMPERATURE, BaseConstants.RSSI_DBM)
+
+
+def live_status(age_secs):
+    """@brief Classify how fresh a device's data is.
+       @param age_secs Seconds since the newest row, or None if there is no data.
+       @return "ok" (< 10 s), "stale" (< 60 s) or "offline"."""
+    if age_secs is None or age_secs >= LIVE_STALE_SECS:
+        return "offline"
+    return "ok" if age_secs < LIVE_OK_SECS else "stale"
+
+
+def format_age(age_secs):
+    """@return A short 'time since' string, e.g. '3 s ago', '5 min ago', '2 h ago', '4 days ago'."""
+    if age_secs is None:
+        return "no data"
+    age_secs = max(0, int(age_secs))
+    if age_secs < 60:
+        return f"{age_secs} s ago"
+    if age_secs < 3600:
+        return f"{age_secs // 60} min ago"
+    if age_secs < 86400:
+        return f"{age_secs // 3600} h ago"
+    days = age_secs // 86400
+    return f"{days} day{'s' if days != 1 else ''} ago"
+
+
+def live_columns(device):
+    """@return The DB columns the Live tab needs for a device (keeps worker messages small)."""
+    return [TIMESTAMP] + [act_watts_field(n) for n, _ in device.active_cts()] + list(LIVE_FIELDS)
+
+
+def merge_live_rows(existing, new_rows, now, window=LIVE_WINDOW):
+    """@brief Append new rows to a device's rolling Live window and drop rows older than the window.
+       @param existing The current list of rows (oldest first).
+       @param new_rows Newer rows (oldest first).
+       @param now The current datetime.
+       @return The new list of rows."""
+    cutoff = now - window
+    rows = existing + list(new_rows)
+    i = 0
+    while i < len(rows) and rows[i][TIMESTAMP] < cutoff:
+        i += 1
+    return rows[i:]
+
+
 # ---------------------------------------------------------------- kWh
 
 @dataclass

@@ -152,6 +152,27 @@ class TestPeakDay(unittest.TestCase):
         self.assertIn("No complete days", cd.peak_result_text("X", datetime(2026, 1, 1), datetime(2026, 1, 2), r))
 
 
+class TestLive(unittest.TestCase):
+
+    def test_status_and_age(self):
+        self.assertEqual([cd.live_status(a) for a in (None, 0, 9.9, 10, 59, 60)],
+                         ["offline", "ok", "ok", "stale", "stale", "offline"])
+        self.assertEqual([cd.format_age(a) for a in (None, 3.7, 125, 7300, 86400, 200000)],
+                         ["no data", "3 s ago", "2 min ago", "2 h ago", "1 day ago", "2 days ago"])
+
+    def test_merge_trims_to_window(self):
+        now = datetime(2026, 11, 20, 12, 0)
+        old = [{TS: now - timedelta(minutes=m)} for m in (20, 16, 14)]
+        new = [{TS: now - timedelta(seconds=1)}]
+        merged = cd.merge_live_rows(old, new, now)
+        self.assertEqual([r[TS] for r in merged], [now - timedelta(minutes=14), now - timedelta(seconds=1)])
+
+    def test_live_columns(self):
+        d = cd.DeviceInfo("HOUSE", "HOUSE", ("Grid", "", "Solar", "", "", ""))
+        self.assertEqual(cd.live_columns(d), [TS, "CT1_ACT_WATTS", "CT3_ACT_WATTS",
+                                              "VOLTAGE", "FREQUENCY", "BOARD_TEMPERATURE", "RSSI_DBM"])
+
+
 class TestPlotTypesAndDevices(unittest.TestCase):
 
     def test_fields_and_labels(self):

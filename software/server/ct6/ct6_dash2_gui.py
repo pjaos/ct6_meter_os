@@ -29,6 +29,11 @@ MSG_PEAK_RESULT = "peak_result"
 MSG_ENABLE_CONTROLS = "enable_controls"
 MSG_ERROR = "error"
 MSG_DONE = "done"
+MSG_LIVE = "live"           # Live tab update (has its own request counter, see _start_live_job())
+
+LIVE_TAB = "__live__"       # Tab name of the Live tab
+LIVE_SECONDS = 2.0          # Live tab refresh period
+LIVE_STATUS_COLOURS = {"ok": "text-positive", "stale": "text-warning", "offline": "text-negative"}
 
 # Chart height = viewport height minus the space used by the header, tabs,
 # plot type selector and the collapsed kWh bar.
@@ -92,6 +97,17 @@ class _DeviceTab:
     kwh_summary: object = None  # One line kWh totals shown in the collapsed header
 
 
+@dataclass
+class _LiveCard:
+    """@brief The Live tab widgets for one device."""
+    device: cd.DeviceInfo
+    dot: object = None
+    age: object = None
+    stats: object = None
+    ct_values: dict = None      # ct_number -> ui.label
+    chart: object = None
+
+
 class _ClientSession:
     """@brief The state and widgets for one browser client (one page load)."""
 
@@ -108,6 +124,13 @@ class _ClientSession:
         self._controls = []        # Widgets disabled while a job runs
         self._peak_ct_fields = {}  # CT name -> ACT_WATTS column
         self._job_start = None
+        self._devices = {}         # device_id -> DeviceInfo (set once, read by workers)
+        # Live tab state (GUI thread only)
+        self._live_cards = {}      # device_id -> _LiveCard
+        self._live_rows = {}       # device_id -> rows in the rolling window (oldest first)
+        self._live_last_ts = {}    # device_id -> newest row timestamp seen
+        self._live_id = 0
+        self._live_busy = False
 
     # ------------------------------------------------------------ jobs
 
@@ -144,6 +167,14 @@ class _ClientSession:
                 msg = self._queue.get_nowait()
             except queue.Empty:
                 return
+            if msg["type"] == MSG_LIVE:
+                if msg.get("live_id") == self._live_id:
+                    self._live_busy = False
+                    try:
+                        self._update_live(msg)
+                    except Exception:
+                        self._uio.errorException()
+                continue
             if msg.get("job_id") != self._job_id:
                 continue    # From a superseded job
             try:
@@ -231,6 +262,42 @@ class _ClientSession:
             msg += f" Display reduced to {p['maxdp']} points per trace."
         post(MSG_STATUS, device_id=dev_id, message=msg)
 
+    def _start_live_job(self):
+        """@brief Fetch new Live tab rows in a worker thread.
+                  Live requests don't use the main job ID, so they never cancel a plot
+                  read or disable the controls, and plot reads never cancel them."""
+        self._live_id += 1
+        live_id = self._live_id
+        self._live_busy = True
+        now = datetime.now()
+        since = {dev_id: self._live_last_ts.get(dev_id) or (now - cd.LIVE_WINDOW) for dev_id in self._devices}
+        devices = dict(self._devices)
+        need_latest = {dev_id for dev_id in self._devices if dev_id not in self._live_last_ts}
+
+        def run():
+            msg = {"type": MSG_LIVE, "live_id": live_id, "rows": {}, "latest": {}, "error": None}
+            try:
+                with self._gui.data_source_factory() as ds:
+                    for dev_id, dev in devices.items():
+                        cols = cd.live_columns(dev)
+                        rows = [{c: r.get(c) for c in cols} for r in ds.recent_rows(dev_id, since[dev_id])]
+                        msg["rows"][dev_id] = rows
+                        if not rows and dev_id in need_latest:
+                            msg["latest"][dev_id] = ds.latest_timestamp(dev_id)
+            except Exception as ex:
+                self._uio.errorException()
+                msg["error"] = f"Live update failed: {ex}"
+            msg["now"] = datetime.now()
+            self._queue.put(msg)
+
+        threading.Thread(target=run, daemon=True, name=f"ct6_dash2_live_{live_id}").start()
+
+    def _live_tick(self):
+        """@brief Called every LIVE_SECONDS. Only reads the database while the Live tab is shown."""
+        if self._tab_panels is None or self._tab_panels.value != LIVE_TAB or not self._devices or self._live_busy:
+            return
+        self._start_live_job()
+
     def _worker_peak(self, post, p):
         try:
             with self._gui.data_source_factory() as ds:
@@ -278,6 +345,9 @@ class _ClientSession:
         return self._polarity.value == Polarity.IMPORT_POSITIVE.value
 
     def _on_update(self):
+        if self._tab_panels.value == LIVE_TAB:
+            self._live_tick()
+            return
         dt = self._selected_tab()
         if dt is not None and not dt.plot_toggle.value:
             dt.plot_toggle.value = PlotType.POWER.value
@@ -315,6 +385,9 @@ class _ClientSession:
 
     def _on_tab_change(self):
         if self._suppress_events:
+            return
+        if self._tab_panels.value == LIVE_TAB:
+            self._live_tick()
             return
         self._update_peak_options()
         self._read_selected()
@@ -405,6 +478,45 @@ class _ClientSession:
         finally:
             self._suppress_events = False
 
+    def _update_live(self, msg):
+        """@brief Show a Live tab update (GUI thread)."""
+        self._live_status.set_text(msg["error"] or "")
+        now = msg["now"]
+        invert = self._invert_kw()
+        for dev_id, card in self._live_cards.items():
+            new_rows = msg["rows"].get(dev_id, [])
+            rows = cd.merge_live_rows(self._live_rows.get(dev_id, []), new_rows, now)
+            self._live_rows[dev_id] = rows
+            if new_rows:
+                self._live_last_ts[dev_id] = new_rows[-1][cd.TIMESTAMP]
+            last_ts = self._live_last_ts.get(dev_id) or msg["latest"].get(dev_id)
+            age = (now - last_ts).total_seconds() if last_ts else None
+            state = cd.live_status(age)
+            card.dot.classes(replace=LIVE_STATUS_COLOURS[state])
+            card.age.set_text(f"Last data {cd.format_age(age)}" if last_ts else "No data")
+
+            latest = rows[-1] if rows else None
+            for ct_number, label in card.ct_values.items():
+                w = latest.get(cd.act_watts_field(ct_number)) if latest and state != "offline" else None
+                label.set_text("–" if w is None else _kw_text((-w if invert else w) / 1000.0))
+            if latest and state != "offline":
+                b = cd.BaseConstants
+                card.stats.set_text(f"{latest[b.VOLTAGE]:.1f} V · {latest[b.FREQUENCY]:.2f} Hz · "
+                                    f"{latest[b.TEMPERATURE]:.1f} °C · {latest[b.RSSI_DBM]:.0f} dBm")
+            else:
+                card.stats.set_text("")
+
+            series = []
+            for ct_number, name in card.device.active_cts():
+                col = cd.act_watts_field(ct_number)
+                data = [[r[cd.TIMESTAMP].strftime(cd.X_FORMAT), round((-r[col] if invert else r[col]) / 1000.0, 3)]
+                        for r in rows if r.get(col) is not None]
+                series.append({"name": name, "type": "line", "showSymbol": False,
+                               "lineStyle": {"width": 2}, "emphasis": {"disabled": True}, "data": data})
+            card.chart.options["series"] = series
+            card.chart.options["legend"]["data"] = [s["name"] for s in series]
+            card.chart.update()
+
     def _update_peak_options(self):
         dt = self._selected_tab()
         if dt is None:
@@ -421,10 +533,13 @@ class _ClientSession:
             return
         self._suppress_events = True
         try:
+            self._devices = {dev.device_id: dev for dev in devices}
             with self._tabs_bar:
+                live_tab = ui.tab(LIVE_TAB, label="Live", icon="sensors")
                 for dev in devices:
                     self._tabs[dev.device_id] = _DeviceTab(device=dev, tab=ui.tab(dev.device_id, label=dev.name))
             with self._tab_panels:
+                self._build_live_panel(live_tab, devices)
                 for dev in devices:
                     self._build_device_panel(self._tabs[dev.device_id])
             self._tab_panels.value = devices[0].device_id
@@ -433,6 +548,32 @@ class _ClientSession:
         self._update_peak_options()
         # On startup show today's data (as ct6_dash).
         self._on_preset("Today")
+
+    def _build_live_panel(self, live_tab, devices):
+        """@brief Build the Live tab: one card per device with its latest readings and a rolling chart."""
+        with ui.tab_panel(live_tab).classes("p-0 w-full"):
+            with ui.column().classes("w-full gap-2"):
+                self._live_status = ui.label("").classes("text-sm text-negative")
+                for dev in devices:
+                    card = _LiveCard(device=dev, ct_values={})
+                    with ui.card().classes("w-full q-pa-sm"):
+                        with ui.row().classes("w-full items-center gap-2"):
+                            card.dot = ui.icon("circle", size="xs").classes("text-grey-6")
+                            ui.label(dev.name).classes("text-subtitle1 text-weight-bold")
+                            card.age = ui.label("").classes("text-sm text-grey-5")
+                            ui.space()
+                            card.stats = ui.label("").classes("text-sm text-grey-4")
+                        with ui.row().classes("w-full gap-6"):
+                            for ct_number, name in dev.active_cts():
+                                with ui.column().classes("gap-0"):
+                                    ui.label(name).classes("text-xs text-grey-5")
+                                    card.ct_values[ct_number] = ui.label("–").classes("text-h6")
+                        opts = _base_chart_options(self._gui.dark)
+                        opts.pop("dataZoom")
+                        opts.pop("toolbox")
+                        opts["grid"] = {"left": 60, "right": 20, "top": 30, "bottom": 25}
+                        card.chart = ui.echart(opts).classes("w-full").style("height: 200px")
+                    self._live_cards[dev.device_id] = card
 
     def _build_device_panel(self, dt):
         dev_id = dt.device.device_id
@@ -478,6 +619,7 @@ class _ClientSession:
             self._global_status = ui.label("").classes("text-sm text-grey-5")
 
         ui.timer(POLL_SECONDS, self._poll)
+        ui.timer(LIVE_SECONDS, self._live_tick)
         self._start_job(self._worker_list_devices)
 
     def _date_input(self, label):
@@ -547,6 +689,11 @@ class _ClientSession:
                 self._help(HELP_PEAK)
             self._peak_label = ui.label("").classes("text-sm whitespace-normal")
             self._controls += [peak_btn]
+
+
+def _kw_text(kw):
+    """@return kW formatted to 2 decimal places, without a '-0.00'."""
+    return f"{0.0 if abs(kw) < 0.005 else kw:.2f} kW"
 
 
 def _valid_hhmm(value):
