@@ -247,7 +247,7 @@ class TestIOGEVSlots(unittest.TestCase):
         rows = ct.cost_table_rows(self.cost(grid, evs, self.tariff()), "ZAPPI")
         self.assertEqual(rows[-1]["item"], "EV slots costed off-peak (half-hours)")
         self.assertEqual(rows[-1]["kwh"], "1")
-        self.assertIn("Intelligent Octopus Go", ct.cost_caveat(self.tariff()))
+        self.assertIn("EV charging rule", ct.cost_caveat(self.tariff()))
         self.assertIn("Only 23:30-05:30 is off-peak", ct.cost_caveat(iog()))
 
     def test_settings_round_trip_and_old_files(self):

@@ -419,10 +419,10 @@ def cost_caveat(tariff):
     if tariff.ev_slots_offpeak:
         cap = (f"up to {tariff.ev_daily_cap_hours:g} h of EV charging per day (midday to midday); "
                "EV charging beyond that is costed at peak" if tariff.ev_daily_cap_hours else "no daily EV cap")
-        return (f"Intelligent Octopus Go: import in {window} is off-peak, and so is any half-hour outside it "
+        return (f"EV charging rule: import in {window} is off-peak, and so is any half-hour outside it "
                 f"where the EV used at least {tariff.ev_slot_min_kwh:g} kWh with at least "
                 f"{tariff.ev_slot_min_grid_share * 100:.0f}% of it from the grid (a smart charging slot), "
-                f"{cap}. Boost charging is billed at peak but is treated as a slot here.")
+                f"{cap}. EV charging your supplier bills at peak (e.g. a manual boost) is still treated as off-peak here.")
     return (f"Only {window} is off-peak. Smart charging slots outside it are costed at the peak rate, "
             "so the actual cost may be lower.")
 

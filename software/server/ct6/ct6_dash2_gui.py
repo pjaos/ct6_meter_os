@@ -427,7 +427,7 @@ class _ClientSession:
             if ref is not None and ref.device_id not in devices:
                 return problem(f"The {what} CT's device ({ref.device_id}) was not found in the database.")
         if tariff.ev_slots_offpeak and roles.ev is None:
-            return problem("The Intelligent Octopus Go EV slot rule needs an EV CT ('Tariff & CT roles').")
+            return problem("The EV charging rule needs an EV CT ('Tariff & CT roles').")
         with self._gui.data_source_factory() as ds:
             grid = ds.half_hour_energy(roles.grid.device_id, cd.act_watts_field(roles.grid.ct), start, stop)
             ev = None
@@ -853,7 +853,7 @@ class _ClientSession:
     # ------------------------------------------------------------ Tariff & CT roles dialog
 
     def _open_settings(self):
-        """@brief Show the dialog to edit the tariff, the IOG EV slot rule and the site CT roles."""
+        """@brief Show the dialog to edit the tariff, the EV charging rule and the site CT roles."""
         try:
             settings = self._gui.settings_store.load()
         except Exception as ex:
@@ -908,8 +908,8 @@ class _ClientSession:
             ui.button("Add rate period", icon="add", on_click=add_rate).props("flat dense no-caps")
 
             ui.separator()
-            ui.checkbox("Intelligent Octopus Go: EV charging outside the off-peak window is a cheap-rate slot "
-                        "(the whole house is costed off-peak in those half-hours)").bind_value(ev_rule, "on")
+            ui.checkbox("All EV charging is at the off-peak rate, and the whole house is off-peak in any half-hour "
+                        "where the EV charges").bind_value(ev_rule, "on")
             with ui.row().classes("items-center gap-3") as ev_row:
                 ui.number("Min EV kWh per half-hour", format="%.2f", min=0.01, step=0.05) \
                   .props("dense").classes("w-44").bind_value(ev_rule, "min_kwh")
@@ -918,7 +918,8 @@ class _ClientSession:
                   .tooltip("Stops solar-only EV charging counting as a slot. 0 = no check.")
                 ui.number("Daily EV cap (hours)", format="%.1f", min=0, step=0.5) \
                   .props("dense").classes("w-36").bind_value(ev_rule, "cap") \
-                  .tooltip("IOG gives up to 6 h of cheap EV charging per day (midday to midday). 0 = no cap.")
+                  .tooltip("Off-peak EV charging allowed per day (midday to midday), "
+                           "e.g. 6 h on Intelligent Octopus Go. Beyond it EV charging is costed at peak. 0 = no cap.")
             ev_row.bind_visibility_from(ev_rule, "on")
 
             ui.separator()
@@ -961,7 +962,7 @@ class _ClientSession:
                     if site_roles.grid is not None and site_roles.grid == site_roles.ev:
                         raise ValueError("The grid CT and the EV CT must be different CTs.")
                     if tariff.ev_slots_offpeak and site_roles.ev is None:
-                        raise ValueError("Select the EV CT to use the Intelligent Octopus Go EV slot rule.")
+                        raise ValueError("Select the EV CT to use the EV charging rule.")
                     self._gui.settings_store.save(tf.Settings(tariff, site_roles))
                 except (ValueError, KeyError) as ex:
                     error.set_text(str(ex))
