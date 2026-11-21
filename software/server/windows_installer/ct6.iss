@@ -41,6 +41,7 @@ Name: "{group}\CT6 Configurator"; Filename: "{app}\ct6_configurator.bat"; Workin
 Name: "{group}\CT6 App"; Filename: "{app}\ct6_app.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\CT6 DB Store"; Filename: "{app}\ct6_db_store.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\CT6 Dash"; Filename: "{app}\ct6_dash.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{group}\CT6 Dash 2"; Filename: "{app}\ct6_dash2.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\CT6 Dash Manager"; Filename: "{app}\ct6_dash_mgr.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\CT6 Stats"; Filename: "{app}\ct6_stats.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
 Name: "{group}\CT6 Shell"; Filename: "{app}\start_powershell.bat"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
@@ -57,6 +58,7 @@ Source: "../picow/*"; DestDir: "{app}/picow/"; Flags: ignoreversion recursesubdi
 Source: "ct6_configurator.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_dash_mgr.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_dash.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "ct6_dash2.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_app.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_db_store.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "ct6_mfg_tool.bat"; DestDir: "{app}"; Flags: ignoreversion
