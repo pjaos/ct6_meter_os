@@ -14,8 +14,9 @@
 import os
 import re
 import sqlite3
+import threading
 from abc import ABC, abstractmethod
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 
 from lib.base_constants import BaseConstants
 
@@ -95,6 +96,55 @@ def _check_column(column):
     if not column or not _VALID_COLUMN.match(column):
         raise ValueError(f"Invalid column name: {column!r}")
     return column
+
+
+class HalfHourEnergyCache:
+    """@brief Keeps the half-hour energy of completed days, so repeat cost calculations
+              (another tab, Update, a different range) don't re-read them from the database.
+              Days before today don't change, so they are cached; today is always read.
+              Shared by all browser clients and worker threads."""
+
+    def __init__(self, max_days=20000):
+        self._days = {}               # (backend, device_id, column, date) -> list of slot dicts
+        self._lock = threading.Lock()
+        self._max_days = max_days
+
+    def clear(self):
+        with self._lock:
+            self._days.clear()
+
+    def half_hour_energy(self, ds, device_id, column, start_dt, stop_dt, today=None):
+        """@brief As CT6DataSource.half_hour_energy() but using cached days where possible.
+                  Returns the half-hours that start within start_dt..stop_dt."""
+        today = today or date.today()
+        backend = type(ds).__name__
+        first_day, last_day = start_dt.date(), stop_dt.date()
+        last_cached_day = min(last_day, today - timedelta(days=1))
+        days = [first_day + timedelta(days=i) for i in range((last_cached_day - first_day).days + 1)]
+        with self._lock:
+            missing = [d for d in days if (backend, device_id, column, d) not in self._days]
+        if missing:
+            rows = ds.half_hour_energy(device_id, column, datetime.combine(missing[0], time()),
+                                       datetime.combine(missing[-1], time(23, 59, 59)))
+            by_day = {d: [] for d in missing}
+            for r in rows:
+                if r["slot"].date() in by_day:
+                    by_day[r["slot"].date()].append(r)
+            with self._lock:
+                if len(self._days) + len(by_day) > self._max_days:
+                    self._days.clear()
+                for d, day_rows in by_day.items():
+                    self._days[(backend, device_id, column, d)] = day_rows
+        result = []
+        with self._lock:
+            for d in days:
+                result += self._days.get((backend, device_id, column, d), [])
+        if last_day > last_cached_day:
+            # Today (or later): always read, it is still changing.
+            live_start = max(start_dt, datetime.combine(last_cached_day + timedelta(days=1), time()))
+            result += ds.half_hour_energy(device_id, column, live_start, stop_dt)
+        lo = start_dt.replace(minute=start_dt.minute - start_dt.minute % 30, second=0, microsecond=0)
+        return [dict(r) for r in result if lo <= r["slot"] <= stop_dt]
 
 
 class MySQLDataSource(CT6DataSource):

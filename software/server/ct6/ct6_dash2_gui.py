@@ -29,6 +29,7 @@ from ct6 import ct6_dash2_auth as auth
 from ct6 import ct6_data as cd
 from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution, EnergyBucket
 from ct6 import ct6_tariff as tf
+from ct6.ct6_data_source import HalfHourEnergyCache
 
 # Message types posted by worker threads.
 MSG_STATUS = "status"
@@ -266,10 +267,10 @@ class _ClientSession:
              y_label=PlotType.ENERGY.y_axis_label(), scale=False, has_kwh=True)
         for ct_number, name in device.active_cts():
             post(MSG_SUMMARY_ROW, device_id=dev_id, row=cd.summary_row(ct_number, name, totals[ct_number], p["invert"]))
-        post(MSG_COST, device_id=dev_id, **self._calc_cost(p["start"], p["stop"]))
+        cost_secs = self._post_cost(post, dev_id, p["start"], p["stop"])
         post(MSG_STATUS, device_id=dev_id,
              message=f"Energy per {bucket.value.lower()} from minute data: {len(labels)} bar(s) "
-                     f"in {time() - start_t:.1f} seconds.")
+                     f"in {time() - start_t:.1f} seconds (costs {cost_secs:.1f} s).")
 
     def _worker_read(self, post, p):
         if p["plot_type"] == PlotType.ENERGY:
@@ -315,11 +316,12 @@ class _ClientSession:
                 kwh = cd.calc_kwh(rows, cd.act_watts_field(ct_number), p["invert"])
                 post(MSG_SUMMARY_ROW, device_id=dev_id, row=cd.summary_row(ct_number, name, kwh, p["invert"]))
 
+        cost_text = ""
         if plot_type.is_per_ct:
-            post(MSG_COST, device_id=dev_id, **self._calc_cost(p["start"], p["stop"]))
+            cost_text = f", costs {self._post_cost(post, dev_id, p['start'], p['stop']):.1f} s"
 
         msg = f"Took {time() - start_t:.1f} seconds to read and plot the data " \
-              f"({len(rows)} rows, DB read {read_secs:.1f} s)."
+              f"({len(rows)} rows, DB read {read_secs:.1f} s{cost_text})."
         if downsampled:
             msg += f" Display reduced to {p['maxdp']} points per trace."
         post(MSG_STATUS, device_id=dev_id, message=msg)
@@ -406,6 +408,14 @@ class _ClientSession:
             return
         self._start_live_job()
 
+    def _post_cost(self, post, dev_id, start, stop):
+        """@brief Calculate the costs and post them (worker thread). The plot is already shown.
+           @return The seconds taken."""
+        cost_t = time()
+        post(MSG_COST, device_id=dev_id, ok=True, warn=False, summary="Calculating costs...", caveat="", rows=[])
+        post(MSG_COST, device_id=dev_id, **self._calc_cost(start, stop))
+        return time() - cost_t
+
     def _calc_cost(self, start, stop):
         """@brief Calculate the whole-site cost for the period (runs in the worker thread).
                   The grid CT and EV CT may be on different CT6 devices, so the result
@@ -429,10 +439,11 @@ class _ClientSession:
         if tariff.ev_slots_offpeak and roles.ev is None:
             return problem("The EV charging rule needs an EV CT ('Tariff & CT roles').")
         with self._gui.data_source_factory() as ds:
-            grid = ds.half_hour_energy(roles.grid.device_id, cd.act_watts_field(roles.grid.ct), start, stop)
+            cache = self._gui.half_hour_cache
+            grid = cache.half_hour_energy(ds, roles.grid.device_id, cd.act_watts_field(roles.grid.ct), start, stop)
             ev = None
             if roles.ev is not None:
-                ev = ds.half_hour_energy(roles.ev.device_id, cd.act_watts_field(roles.ev.ct), start, stop)
+                ev = cache.half_hour_energy(ds, roles.ev.device_id, cd.act_watts_field(roles.ev.ct), start, stop)
         res = tf.calc_cost(grid, tariff, start, stop, import_negative=roles.grid_import_negative, ev_slots=ev)
         ev_name = (devices[roles.ev.device_id].ct_names[roles.ev.ct - 1] or f"CT{roles.ev.ct}") if roles.ev else None
         summary = tf.cost_summary_text(res, ev_name)
@@ -1095,6 +1106,7 @@ class CT6Dash2GUI:
         self.uio = uio
         self.options = options
         self.data_source_factory = data_source_factory
+        self.half_hour_cache = HalfHourEnergyCache()
         self.address = address
         self.port = int(port)
         self.access_log_file = access_log_file

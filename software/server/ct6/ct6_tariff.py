@@ -26,6 +26,7 @@ import tempfile
 import threading
 from dataclasses import dataclass, field, asdict
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 
 DEFAULT_OFFPEAK_START = "23:30"
 DEFAULT_OFFPEAK_END = "05:30"
@@ -36,7 +37,9 @@ DEFAULT_EV_SLOT_MIN_GRID_SHARE = 0.5 # Share of that EV energy that must come fr
 DEFAULT_EV_DAILY_CAP_HOURS = 6.0     # IOG off-peak EV charging allowance per day (0 = no cap)
 
 
+@lru_cache(maxsize=64)
 def _parse_hhmm(value):
+    """@brief Parse HH:MM. Cached because is_offpeak() runs for every half-hour (strptime is slow)."""
     return datetime.strptime(str(value).strip(), "%H:%M").time()
 
 
