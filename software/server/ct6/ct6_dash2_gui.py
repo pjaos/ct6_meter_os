@@ -55,7 +55,7 @@ HELP_ENERGY_BUCKET = "Energy per bar. Auto = one bar per day for ranges up to " 
 
 # Chart height = viewport height minus the space used by the header, tabs,
 # plot type selector and the collapsed kWh bar.
-CHART_OFFSET_PX = 257
+CHART_OFFSET_PX = 221
 
 COST_COLUMNS = [
     {"name": "item", "label": "Cost", "field": "item", "align": "left"},
@@ -842,7 +842,7 @@ class _ClientSession:
             self._build_controls()
 
         with ui.column().classes("w-full gap-1"):
-            self._tabs_bar = ui.tabs(on_change=None).classes("w-full").props("align=left no-caps")
+            self._tabs_bar = ui.tabs(on_change=None).classes("w-full").props("align=left no-caps dense inline-label")
             self._tab_panels = ui.tab_panels(self._tabs_bar, on_change=self._on_tab_change).classes("w-full")
             self._global_status = ui.label("").classes("text-sm text-grey-5")
 
