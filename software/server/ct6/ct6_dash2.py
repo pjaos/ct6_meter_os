@@ -17,6 +17,7 @@ from ct6.ct6_data_source import (create_data_source_factory, default_sqlite_path
                                   BACKEND_MYSQL, BACKEND_SQLITE, DB_BACKEND, SQLITE_DB_PATH)
 from ct6.ct6_dash2_gui import CT6Dash2GUI
 from ct6.ct6_dash2_auth import LoginManager, load_or_create_secret
+from ct6.ct6_tariff import SettingsStore
 from ct6.ct6_dash_mgr import CRED_JSON_FILE
 
 
@@ -50,6 +51,7 @@ class CT6Dash2Config(ConfigBase):
         ConfigBase.SERVER_LOGIN:                False
     }
     SECRET_FILENAME = "ct6Dash2.secret"         # Signs session cookies (created on first run, mode 0600)
+    SETTINGS_FILENAME = "ct6Dash2Settings.json" # Tariff & CT roles (edited in the GUI)
     STORAGE_FOLDER = "ct6_dash2_sessions"       # NiceGUI per-browser session data
 
     def edit(self, key):
@@ -139,7 +141,8 @@ def main():
                                   version=program_version(),
                                   login_manager=login_manager,
                                   storage_path=os.path.join(config_dir, CT6Dash2Config.STORAGE_FOLDER),
-                                  storage_secret=load_or_create_secret(os.path.join(config_dir, CT6Dash2Config.SECRET_FILENAME)))
+                                  storage_secret=load_or_create_secret(os.path.join(config_dir, CT6Dash2Config.SECRET_FILENAME)),
+                                  settings_store=SettingsStore(os.path.join(config_dir, CT6Dash2Config.SETTINGS_FILENAME)))
                 gui.run()
 
     # If the program throws a system exit exception

@@ -43,6 +43,14 @@ class CT6DataSource(ABC):
            @return A list of dicts with day (date), avg_w (float) and sample_count (int)."""
 
     @abstractmethod
+    def half_hour_energy(self, device_id, column, start_dt, stop_dt):
+        """@brief Total a power column per half-hour using the minute resolution table.
+                  Each minute row is taken as one minute at that power. Used for costs.
+           @return A list of dicts with slot (datetime, start of the half-hour),
+                   pos_kwh (energy from positive readings, >= 0) and
+                   neg_kwh (energy from negative readings, <= 0), ordered by slot."""
+
+    @abstractmethod
     def period_energy(self, device_id, columns, start_dt, stop_dt, bucket):
         """@brief Total power columns per day or month using the minute resolution table.
                   Each minute row counts as one minute at that power.
@@ -127,8 +135,19 @@ class MySQLDataSource(CT6DataSource):
             if BaseConstants.CT6_META_TABLE_NAME in tables and BaseConstants.MAX_RES_DB_DATA_TABLE_NAME in tables:
                 meta = self._query(f"SELECT * FROM {_quote_name(db_name)}.{BaseConstants.CT6_META_TABLE_NAME} LIMIT 1")
                 if meta:
-                    devices.append(DeviceInfo.from_meta_row(db_name, db_name, meta[0]))
+                    dev = DeviceInfo.from_meta_row(db_name, db_name, meta[0])
+                    dev.first_date = self._first_date(db_name, tables)
+                    devices.append(dev)
         return devices
+
+    def _first_date(self, db_name, tables):
+        """@return The date of the earliest row (indexed MIN, so fast), or None."""
+        for table in (BaseConstants.DAY_RES_DB_DATA_TABLE_NAME, BaseConstants.MAX_RES_DB_DATA_TABLE_NAME):
+            if table in tables:
+                rows = self._query(f"SELECT MIN({TIMESTAMP}) AS t FROM {_quote_name(db_name)}.{table}")
+                if rows and rows[0]["t"]:
+                    return rows[0]["t"].date()
+        return None
 
     def count_rows(self, device_id, start_dt, stop_dt, resolution):
         sql = f"SELECT COUNT(*) AS n FROM {_quote_name(device_id)}.{resolution.table_name} " \
@@ -146,6 +165,20 @@ class MySQLDataSource(CT6DataSource):
               f"FROM {_quote_name(device_id)}.{BaseConstants.HOUR_RES_DB_DATA_TABLE_NAME} " \
               f"WHERE {TIMESTAMP} BETWEEN %s AND %s GROUP BY DATE({TIMESTAMP}) ORDER BY day"
         return self._query(sql, (start_dt, stop_dt))
+
+    def half_hour_energy(self, device_id, column, start_dt, stop_dt):
+        column = _check_column(column)
+        slot = f"DATE_SUB({TIMESTAMP}, INTERVAL MOD(MINUTE({TIMESTAMP}), 30) * 60 + SECOND({TIMESTAMP}) SECOND)"
+        sql = f"SELECT {slot} AS slot, " \
+              f"SUM(GREATEST({column}, 0)) / 60000.0 AS pos_kwh, " \
+              f"SUM(LEAST({column}, 0)) / 60000.0 AS neg_kwh " \
+              f"FROM {_quote_name(device_id)}.{BaseConstants.MINUTE_RES_DB_DATA_TABLE_NAME} " \
+              f"WHERE {TIMESTAMP} BETWEEN %s AND %s GROUP BY slot ORDER BY slot"
+        rows = self._query(sql, (start_dt, stop_dt))
+        for r in rows:
+            r["pos_kwh"] = float(r["pos_kwh"] or 0.0)
+            r["neg_kwh"] = float(r["neg_kwh"] or 0.0)
+        return rows
 
     def period_energy(self, device_id, columns, start_dt, stop_dt, bucket):
         if bucket == EnergyBucket.MONTH:
@@ -255,7 +288,9 @@ class SQLiteDataSource(CT6DataSource):
                 continue        # Not a CT6 database (or not an SQLite file)
             meta = meta[0] if meta else {}
             name = (meta.get(BaseConstants.UNIT_NAME) or "").strip() or os.path.splitext(entry)[0]
-            devices.append(DeviceInfo.from_meta_row(path, name, meta))
+            dev = DeviceInfo.from_meta_row(path, name, meta)
+            dev.first_date = self._first_date(path, tables)
+            devices.append(dev)
         # Make tab names unique if two files have the same unit name.
         counts = {}
         for d in devices:
@@ -264,6 +299,15 @@ class SQLiteDataSource(CT6DataSource):
             if counts[d.name] > 1:
                 d.name = f"{d.name} ({os.path.splitext(os.path.basename(d.device_id))[0]})"
         return sorted(devices, key=lambda d: d.name)
+
+    def _first_date(self, device_id, tables):
+        """@return The date of the earliest row (indexed MIN, so fast), or None."""
+        for table in (BaseConstants.DAY_RES_DB_DATA_TABLE_NAME, BaseConstants.MAX_RES_DB_DATA_TABLE_NAME):
+            if table in tables:
+                rows = self._query(device_id, f"SELECT MIN({TIMESTAMP}) AS t FROM {table}")
+                if rows and rows[0]["t"]:
+                    return self._parse_ts(rows[0]["t"]).date()
+        return None
 
     def count_rows(self, device_id, start_dt, stop_dt, resolution):
         sql = f"SELECT COUNT(*) AS n FROM {resolution.table_name} WHERE {TIMESTAMP} BETWEEN ? AND ?"
@@ -281,6 +325,21 @@ class SQLiteDataSource(CT6DataSource):
         rows = self._query(device_id, sql, (self._ts_text(start_dt), self._ts_text(stop_dt)))
         for r in rows:
             r["day"] = date.fromisoformat(r["day"]) if r["day"] else None
+        return rows
+
+    def half_hour_energy(self, device_id, column, start_dt, stop_dt):
+        column = _check_column(column)
+        # Text timestamps: the half-hour is the first 14 characters ('YYYY-MM-DD HH:') plus 00 or 30.
+        slot = f"SUBSTR({TIMESTAMP}, 1, 14) || CASE WHEN CAST(SUBSTR({TIMESTAMP}, 15, 2) AS INTEGER) < 30 " \
+               f"THEN '00:00' ELSE '30:00' END"
+        sql = f"SELECT {slot} AS slot, SUM(MAX({column}, 0)) / 60000.0 AS pos_kwh, " \
+              f"SUM(MIN({column}, 0)) / 60000.0 AS neg_kwh FROM {BaseConstants.MINUTE_RES_DB_DATA_TABLE_NAME} " \
+              f"WHERE {TIMESTAMP} BETWEEN ? AND ? GROUP BY slot ORDER BY slot"
+        rows = self._query(device_id, sql, (self._ts_text(start_dt), self._ts_text(stop_dt)))
+        for r in rows:
+            r["slot"] = self._parse_ts(r["slot"])
+            r["pos_kwh"] = float(r["pos_kwh"] or 0.0)
+            r["neg_kwh"] = float(r["neg_kwh"] or 0.0)
         return rows
 
     def period_energy(self, device_id, columns, start_dt, stop_dt, bucket):

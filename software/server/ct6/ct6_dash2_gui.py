@@ -28,6 +28,7 @@ from ct6 import ct6_dash2_auth as auth
 
 from ct6 import ct6_data as cd
 from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution, EnergyBucket
+from ct6 import ct6_tariff as tf
 
 # Message types posted by worker threads.
 MSG_STATUS = "status"
@@ -35,6 +36,7 @@ MSG_DEVICES = "devices"
 MSG_PLOT_DATA = "plot_data"
 MSG_SUMMARY_ROW = "summary_row"
 MSG_PEAK_RESULT = "peak_result"
+MSG_COST = "cost"
 MSG_ENABLE_CONTROLS = "enable_controls"
 MSG_ERROR = "error"
 MSG_DONE = "done"
@@ -53,7 +55,13 @@ HELP_ENERGY_BUCKET = "Energy per bar. Auto = one bar per day for ranges up to " 
 
 # Chart height = viewport height minus the space used by the header, tabs,
 # plot type selector and the collapsed kWh bar.
-CHART_OFFSET_PX = 235
+CHART_OFFSET_PX = 257
+
+COST_COLUMNS = [
+    {"name": "item", "label": "Cost", "field": "item", "align": "left"},
+    {"name": "kwh", "label": "kWh", "field": "kwh", "align": "right"},
+    {"name": "cost", "label": "£", "field": "cost", "align": "right"},
+]
 KWH_ROW_PX = 29
 KWH_TABLE_HEADER_PX = 36
 
@@ -111,6 +119,9 @@ class _DeviceTab:
     status: object = None
     kwh_bar: object = None      # ui.expansion holding the kWh table
     kwh_summary: object = None  # One line kWh totals shown in the collapsed header
+    cost_summary: object = None # One line cost summary shown in the collapsed header
+    cost_tip: object = None     # Tooltip explaining how off-peak was decided
+    cost_table: object = None
     bucket_toggle: object = None  # Auto/Day/Month (Energy plot only)
     bucket_row: object = None
     mode: str = "line"          # Current chart layout: "line" or "bar"
@@ -215,6 +226,8 @@ class _ClientSession:
             self._update_plot(msg)
         elif t == MSG_SUMMARY_ROW:
             self._update_summary_row(msg["device_id"], msg["row"])
+        elif t == MSG_COST:
+            self._update_cost(msg)
         elif t == MSG_PEAK_RESULT:
             self._peak_label.set_text(msg["message"])
         elif t == MSG_ENABLE_CONTROLS:
@@ -253,6 +266,7 @@ class _ClientSession:
              y_label=PlotType.ENERGY.y_axis_label(), scale=False, has_kwh=True)
         for ct_number, name in device.active_cts():
             post(MSG_SUMMARY_ROW, device_id=dev_id, row=cd.summary_row(ct_number, name, totals[ct_number], p["invert"]))
+        post(MSG_COST, device_id=dev_id, **self._calc_cost(p["start"], p["stop"]))
         post(MSG_STATUS, device_id=dev_id,
              message=f"Energy per {bucket.value.lower()} from minute data: {len(labels)} bar(s) "
                      f"in {time() - start_t:.1f} seconds.")
@@ -300,6 +314,9 @@ class _ClientSession:
             for ct_number, name in device.active_cts():
                 kwh = cd.calc_kwh(rows, cd.act_watts_field(ct_number), p["invert"])
                 post(MSG_SUMMARY_ROW, device_id=dev_id, row=cd.summary_row(ct_number, name, kwh, p["invert"]))
+
+        if plot_type.is_per_ct:
+            post(MSG_COST, device_id=dev_id, **self._calc_cost(p["start"], p["stop"]))
 
         msg = f"Took {time() - start_t:.1f} seconds to read and plot the data " \
               f"({len(rows)} rows, DB read {read_secs:.1f} s)."
@@ -388,6 +405,42 @@ class _ClientSession:
         if self._tab_panels is None or self._tab_panels.value != LIVE_TAB or not self._devices or self._live_busy:
             return
         self._start_live_job()
+
+    def _calc_cost(self, start, stop):
+        """@brief Calculate the whole-site cost for the period (runs in the worker thread).
+                  The grid CT and EV CT may be on different CT6 devices, so the result
+                  is the same whichever device tab is selected.
+           @return A dict with summary, caveat, rows, ok and warn."""
+        settings = self._gui.settings_store.load()
+        roles, tariff = settings.roles, settings.tariff
+        caveat = tf.cost_caveat(tariff)
+
+        def problem(text):
+            return {"ok": False, "summary": text, "caveat": caveat, "rows": []}
+
+        if roles.grid is None:
+            return problem("Set the grid CT in 'Tariff & CT roles' to see costs.")
+        if not tariff.rates:
+            return problem("Add your rates in 'Tariff & CT roles' to see costs.")
+        devices = self._devices
+        for ref, what in ((roles.grid, "grid"), (roles.ev, "EV")):
+            if ref is not None and ref.device_id not in devices:
+                return problem(f"The {what} CT's device ({ref.device_id}) was not found in the database.")
+        if tariff.ev_slots_offpeak and roles.ev is None:
+            return problem("The Intelligent Octopus Go EV slot rule needs an EV CT ('Tariff & CT roles').")
+        with self._gui.data_source_factory() as ds:
+            grid = ds.half_hour_energy(roles.grid.device_id, cd.act_watts_field(roles.grid.ct), start, stop)
+            ev = None
+            if roles.ev is not None:
+                ev = ds.half_hour_energy(roles.ev.device_id, cd.act_watts_field(roles.ev.ct), start, stop)
+        res = tf.calc_cost(grid, tariff, start, stop, import_negative=roles.grid_import_negative, ev_slots=ev)
+        ev_name = (devices[roles.ev.device_id].ct_names[roles.ev.ct - 1] or f"CT{roles.ev.ct}") if roles.ev else None
+        summary = tf.cost_summary_text(res, ev_name)
+        warning = tf.uncosted_warning(res, tariff)
+        if warning:
+            summary = f"{warning} · {summary}"
+        return {"ok": True, "warn": bool(warning), "summary": summary, "caveat": caveat,
+                "rows": tf.cost_table_rows(res, ev_name)}
 
     def _worker_peak(self, post, p):
         try:
@@ -587,10 +640,28 @@ class _ClientSession:
         dt.table.rows = []
         dt.table.update()
         dt.kwh_summary.set_text("")
+        dt.cost_summary.set_text("")
+        dt.cost_table.rows = []
+        dt.cost_table.update()
+
+    def _update_cost(self, msg):
+        dt = self._tabs.get(msg["device_id"])
+        if dt is None:
+            return
+        dt.cost_summary.set_text(msg["summary"])
+        normal = msg["ok"] and not msg.get("warn")
+        dt.cost_summary.classes(replace="text-sm ellipsis " + ("text-grey-4" if normal else "text-warning"))
+        dt.cost_tip.set_text(msg["caveat"])
+        dt.cost_table.rows = msg["rows"]
+        dt.cost_table.update()
+        dt.cost_table.set_visibility(bool(msg["rows"]))
+        self._set_chart_height(dt)
 
     def _kwh_table_px(self, dt):
         """@return The height the open kWh table adds below its header."""
-        return KWH_TABLE_HEADER_PX + KWH_ROW_PX * max(1, len(dt.device.active_cts())) + 8
+        rows = max(1, len(dt.device.active_cts()),
+                   len(dt.cost_table.rows) if dt.cost_table.visible else 0)
+        return KWH_TABLE_HEADER_PX + KWH_ROW_PX * rows + 8
 
     def _set_chart_height(self, dt):
         """@brief Size the chart so the page fits the window with the kWh table open or closed."""
@@ -730,12 +801,22 @@ class _ClientSession:
                                           on_value_change=lambda e: self._on_kwh_toggle(e.value)) \
                                .props("dense dense-toggle header-class=q-px-sm").classes("w-full")
                 with dt.kwh_bar.add_slot("header"):
-                    with ui.row().classes("w-full items-center gap-3 no-wrap"):
-                        ui.label("kWh").classes("text-sm text-weight-bold")
-                        dt.kwh_summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
+                    with ui.column().classes("w-full gap-0"):
+                        with ui.row().classes("w-full items-center gap-3 no-wrap"):
+                            ui.label("kWh").classes("text-sm text-weight-bold w-6")
+                            dt.kwh_summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
+                        with ui.row().classes("w-full items-center gap-3 no-wrap"):
+                            ui.label("£").classes("text-sm text-weight-bold w-6")
+                            dt.cost_summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
+                            with ui.icon("info_outline", size="xs").classes("text-grey-5"):
+                                dt.cost_tip = ui.tooltip("").classes("text-body2").style("max-width: 420px")
                 with dt.kwh_bar:
-                    dt.table = ui.table(columns=SUMMARY_COLUMNS, rows=[], row_key="ct") \
-                                 .props("dense flat bordered hide-bottom").classes("min-w-[340px]")
+                    with ui.row().classes("w-full items-start gap-4"):
+                        dt.table = ui.table(columns=SUMMARY_COLUMNS, rows=[], row_key="ct") \
+                                     .props("dense flat bordered hide-bottom").classes("min-w-[340px]")
+                        dt.cost_table = ui.table(columns=COST_COLUMNS, rows=[], row_key="id") \
+                                          .props("dense flat bordered hide-bottom").classes("min-w-[340px]")
+                        dt.cost_table.set_visibility(False)
                 with ui.element("div").classes("w-full") as dt.chart_box:
                     dt.chart = ui.echart(_base_chart_options(self._gui.dark)).classes("w-full")
                 self._set_chart_height(dt)
@@ -768,6 +849,134 @@ class _ClientSession:
         ui.timer(POLL_SECONDS, self._poll)
         ui.timer(LIVE_SECONDS, self._live_tick)
         self._start_job(self._worker_list_devices)
+
+    # ------------------------------------------------------------ Tariff & CT roles dialog
+
+    def _open_settings(self):
+        """@brief Show the dialog to edit the tariff, the IOG EV slot rule and the site CT roles."""
+        try:
+            settings = self._gui.settings_store.load()
+        except Exception as ex:
+            ui.notify(f"Failed to read {self._gui.settings_store.filename}: {ex}", type="negative")
+            return
+        t = settings.tariff
+        rates = [r.to_dict() for r in sorted(t.rates, key=lambda r: r.valid_from)]
+        if not rates:
+            # Start the first rate period before the earliest data so the whole history is costed.
+            first_dates = [d.first_date for d in self._devices.values() if d.first_date]
+            first = min(first_dates) if first_dates else date(2000, 1, 1)
+            rates = [{"valid_from": first.isoformat(), "peak": None, "offpeak": None,
+                      "export": None, "standing": None}]
+        r = settings.roles
+        roles = {"grid": r.grid.key() if r.grid else "",
+                 "ev": r.ev.key() if r.ev else "",
+                 "grid_import_negative": r.grid_import_negative}
+        ev_rule = {"on": t.ev_slots_offpeak, "min_kwh": t.ev_slot_min_kwh,
+                   "share_pc": round(t.ev_slot_min_grid_share * 100), "cap": t.ev_daily_cap_hours}
+
+        with ui.dialog() as dialog, ui.card().classes("w-[840px] max-w-full"):
+            ui.label("Tariff & CT roles").classes("text-h6")
+            ui.label("Costs are for the whole site, so they are the same on every device tab.") \
+              .classes("text-sm text-grey-5")
+            ui.label("Off-peak window (local time). Import inside it uses the off-peak rate.").classes("text-sm text-grey-5")
+            with ui.row().classes("items-center gap-4"):
+                op_start = self._time_input("Off-peak start")
+                op_start.value = t.offpeak_start
+                op_end = self._time_input("Off-peak end")
+                op_end.value = t.offpeak_end
+
+            ui.label("Rates. Each applies from its date until the next one starts.").classes("text-sm text-grey-5 q-mt-sm")
+
+            @ui.refreshable
+            def rate_rows():
+                for i, rr in enumerate(rates):
+                    with ui.row().classes("items-center gap-2 no-wrap"):
+                        d = self._date_input("Valid from")
+                        d.bind_value(rr, "valid_from")
+                        for key, label in (("peak", "Peak p/kWh"), ("offpeak", "Off-peak p/kWh"),
+                                           ("export", "Export p/kWh"), ("standing", "Standing p/day")):
+                            ui.number(label, format="%.2f", min=0).props("dense").classes("w-28") \
+                              .bind_value(rr, key)
+                        ui.button(icon="delete", on_click=lambda _e, i=i: (rates.pop(i), rate_rows.refresh())) \
+                          .props("flat dense round").tooltip("Remove this rate period")
+            rate_rows()
+
+            def add_rate():
+                last = rates[-1] if rates else {}
+                rates.append({**last, "valid_from": date.today().isoformat()})
+                rate_rows.refresh()
+            ui.button("Add rate period", icon="add", on_click=add_rate).props("flat dense no-caps")
+
+            ui.separator()
+            ui.checkbox("Intelligent Octopus Go: EV charging outside the off-peak window is a cheap-rate slot "
+                        "(the whole house is costed off-peak in those half-hours)").bind_value(ev_rule, "on")
+            with ui.row().classes("items-center gap-3") as ev_row:
+                ui.number("Min EV kWh per half-hour", format="%.2f", min=0.01, step=0.05) \
+                  .props("dense").classes("w-44").bind_value(ev_rule, "min_kwh")
+                ui.number("Min share from grid %", format="%.0f", min=0, max=100, step=5) \
+                  .props("dense").classes("w-40").bind_value(ev_rule, "share_pc") \
+                  .tooltip("Stops solar-only EV charging counting as a slot. 0 = no check.")
+                ui.number("Daily EV cap (hours)", format="%.1f", min=0, step=0.5) \
+                  .props("dense").classes("w-36").bind_value(ev_rule, "cap") \
+                  .tooltip("IOG gives up to 6 h of cheap EV charging per day (midday to midday). 0 = no cap.")
+            ev_row.bind_visibility_from(ev_rule, "on")
+
+            ui.separator()
+            ui.label("CT roles. The grid CT and EV CT can be on different CT6 devices.").classes("text-sm text-grey-5")
+            sign_opts = {True: "Import is negative (CT6 default)", False: "Import is positive"}
+            ct_opts = {"": "None"}
+            for dev_id, dev in self._devices.items():
+                for n, name in dev.active_cts():
+                    ct_opts[tf.CTRef(dev_id, n).key()] = f"{dev.name} · CT{n} {name}"
+            # Keep a saved CT that isn't currently listed (e.g. device offline) selectable.
+            for key in (roles["grid"], roles["ev"]):
+                if key and key not in ct_opts:
+                    ct_opts[key] = f"{key} (not found)"
+            with ui.row().classes("items-center gap-3"):
+                ui.select(ct_opts, label="Grid CT").props("dense").classes("w-60").bind_value(roles, "grid")
+                ui.select(sign_opts, label="Grid CT sign").props("dense").classes("w-60") \
+                  .bind_value(roles, "grid_import_negative")
+            with ui.row().classes("items-center gap-3"):
+                ui.select(ct_opts, label="EV CT").props("dense").classes("w-60").bind_value(roles, "ev")
+
+            error = ui.label("").classes("text-negative text-sm")
+
+            def save():
+                try:
+                    new_rates = []
+                    for rr in rates:
+                        if any(rr.get(k) is None for k in ("peak", "offpeak", "export")):
+                            raise ValueError("Enter the peak, off-peak and export rates for every rate period.")
+                        new_rates.append(tf.RatePeriod.from_dict({**rr, "standing": rr.get("standing") or 0.0}))
+                    if any(ev_rule[k] is None for k in ("min_kwh", "share_pc", "cap")):
+                        raise ValueError("Enter all the EV slot settings.")
+                    tariff = tf.Tariff(str(op_start.value or ""), str(op_end.value or ""), new_rates,
+                                       ev_slots_offpeak=bool(ev_rule["on"]),
+                                       ev_slot_min_kwh=float(ev_rule["min_kwh"]),
+                                       ev_slot_min_grid_share=float(ev_rule["share_pc"]) / 100.0,
+                                       ev_daily_cap_hours=float(ev_rule["cap"]))
+                    site_roles = tf.SiteRoles(grid=tf.CTRef.from_key(roles["grid"]),
+                                              ev=tf.CTRef.from_key(roles["ev"]),
+                                              grid_import_negative=bool(roles["grid_import_negative"]))
+                    if site_roles.grid is not None and site_roles.grid == site_roles.ev:
+                        raise ValueError("The grid CT and the EV CT must be different CTs.")
+                    if tariff.ev_slots_offpeak and site_roles.ev is None:
+                        raise ValueError("Select the EV CT to use the Intelligent Octopus Go EV slot rule.")
+                    self._gui.settings_store.save(tf.Settings(tariff, site_roles))
+                except (ValueError, KeyError) as ex:
+                    error.set_text(str(ex))
+                    return
+                except OSError as ex:
+                    error.set_text(f"Failed to save the settings: {ex}")
+                    return
+                dialog.close()
+                ui.notify("Tariff & CT roles saved.", type="positive")
+                self._read_selected()
+
+            with ui.row().classes("w-full justify-end gap-2"):
+                ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
+                ui.button("Save", on_click=save).props("no-caps")
+        dialog.open()
 
     def _logout(self):
         self._gui.log_event(f"logout {app.storage.user.get(auth.USERNAME, '')}", self._address)
@@ -811,6 +1020,8 @@ class _ClientSession:
                         .props("outline no-caps dense").classes("w-full") \
                         .tooltip("Save the selected device's data for the selected dates and resolution "
                                  "(every column, values as stored). On the Energy view, saves the bar figures.")
+            ui.button("Tariff & CT roles", icon="payments", on_click=self._open_settings) \
+              .props("outline no-caps dense").classes("w-full")
             self._controls += [update_btn, csv_btn]
 
             with ui.grid(columns=2).classes("w-full gap-1"):
@@ -866,7 +1077,8 @@ class CT6Dash2GUI:
     PAGE_TITLE = "CT6 Dashboard 2"          # Header and browser tab title (tells it apart from ct6_dash)
 
     def __init__(self, uio, options, data_source_factory, address, port, access_log_file=None,
-                 version="", dark=True, login_manager=None, storage_path=None, storage_secret=None):
+                 version="", dark=True, login_manager=None, storage_path=None, storage_secret=None,
+                 settings_store=None):
         """@param uio A UIO instance.
            @param options The argparse options (uses maxpp, maxdp, negative, no_gui).
            @param data_source_factory A callable returning a new CT6DataSource (called once per job).
@@ -877,7 +1089,8 @@ class CT6Dash2GUI:
            @param dark If True use the dark theme.
            @param login_manager A ct6_dash2_auth.LoginManager to require a login, or None for no login.
            @param storage_path The folder NiceGUI keeps per-browser session data in.
-           @param storage_secret The secret used to sign session cookies (required for login)."""
+           @param storage_secret The secret used to sign session cookies (required for login).
+           @param settings_store A ct6_tariff.SettingsStore holding the tariff and CT roles."""
         self.uio = uio
         self.options = options
         self.data_source_factory = data_source_factory
@@ -889,6 +1102,7 @@ class CT6Dash2GUI:
         self.login_manager = login_manager
         self.storage_path = storage_path
         self.storage_secret = storage_secret
+        self.settings_store = settings_store or tf.SettingsStore("ct6Dash2Settings.json")
         if login_manager is not None and not storage_secret:
             raise ValueError("A storage secret is required when login is enabled.")
 

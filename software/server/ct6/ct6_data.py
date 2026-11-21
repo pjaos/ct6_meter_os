@@ -119,6 +119,7 @@ class DeviceInfo:
     name: str               # Name shown on the tab
     ct_names: tuple = field(default_factory=lambda: ("",) * SENSOR_COUNT)
     hw_assy: str = ""
+    first_date: object = None   # Date of the earliest data (or None if unknown)
 
     def active_cts(self):
         """@return A list of (ct_number, name) for CT ports that have a name."""
