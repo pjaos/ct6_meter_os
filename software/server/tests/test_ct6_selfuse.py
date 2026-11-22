@@ -1,0 +1,106 @@
+"""Unit tests for ct6_selfuse (solar and battery self-consumption figures)."""
+import os
+import sys
+import unittest
+from datetime import datetime
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from ct6 import ct6_selfuse as su  # noqa: E402
+from ct6 import ct6_tariff as tf  # noqa: E402
+
+T0, T1, T2 = datetime(2025, 6, 1, 2), datetime(2025, 6, 1, 12), datetime(2025, 6, 1, 19)
+
+
+def slot(t, pos=0.0, neg=0.0):
+    return {"slot": t, "pos_kwh": pos, "neg_kwh": -neg}
+
+
+class TestSelfUse(unittest.TestCase):
+    """CT6 default signs: grid import negative, solar generation negative, battery charge positive."""
+
+    def setUp(self):
+        # 02:00 night: import 2.0 (house 0.5 + battery charge 1.5).
+        # 12:00 midday: solar 3.0, house 1.0, battery charges 1.5, export 0.5.
+        # 19:00 evening: house 1.2 from battery 1.0 + import 0.2.
+        self.grid = [slot(T0, neg=2.0), slot(T1, pos=0.5), slot(T2, neg=0.2)]
+        self.solar = [slot(T0, pos=0.01), slot(T1, neg=3.0)]
+        self.battery = [slot(T0, pos=1.5), slot(T1, pos=1.5), slot(T2, neg=1.0)]
+
+    def test_solar_and_battery(self):
+        r = su.calc_self_use(self.grid, self.solar, self.battery)
+        self.assertAlmostEqual(r.import_kwh, 2.2)
+        self.assertAlmostEqual(r.export_kwh, 0.5)
+        self.assertAlmostEqual(r.solar_kwh, 3.0)
+        self.assertAlmostEqual(r.solar_reverse_kwh, 0.01)
+        self.assertAlmostEqual(r.home_kwh, 0.5 + 1.0 + 1.2)   # Inverter standby is part of the home import
+        self.assertAlmostEqual(r.solar_battery_kwh, 1.5)
+        self.assertAlmostEqual(r.solar_home_kwh, 1.0)
+        self.assertAlmostEqual(r.grid_battery_kwh, 1.5)
+        self.assertAlmostEqual(r.charge_kwh, 3.0)
+        self.assertAlmostEqual(r.discharge_kwh, 1.0)
+        self.assertAlmostEqual(r.self_consumption, 2.5 / 3.0)
+        self.assertAlmostEqual(r.battery_efficiency, 1.0 / 3.0)
+        self.assertAlmostEqual(r.home_grid_kwh, 0.5 + 0.2)
+        # Home supply adds up.
+        self.assertAlmostEqual(r.solar_home_kwh + r.discharge_kwh + r.home_grid_kwh, 0.5 + 1.0 + 1.2)
+        self.assertAlmostEqual(r.self_sufficiency, 2.0 / r.home_kwh)
+        self.assertFalse(r.solar_sign_suspect)
+
+    def test_signs_flipped(self):
+        def flip(slots):
+            return [{"slot": s["slot"], "pos_kwh": -s["neg_kwh"], "neg_kwh": -s["pos_kwh"]} for s in slots]
+        a = su.calc_self_use(self.grid, self.solar, self.battery)
+        b = su.calc_self_use(flip(self.grid), flip(self.solar), flip(self.battery), grid_import_negative=False,
+                             solar_gen_negative=False, battery_charge_negative=True)
+        self.assertEqual(a, b)
+
+    def test_wrong_solar_sign_is_flagged(self):
+        r = su.calc_self_use(self.grid, self.solar, self.battery, solar_gen_negative=False)
+        self.assertTrue(r.solar_sign_suspect)
+        self.assertTrue(su.summary_text(r).startswith("⚠ Check the solar CT sign"))
+
+    def test_battery_only(self):
+        r = su.calc_self_use(self.grid, None, self.battery)
+        self.assertFalse(r.has_solar)
+        self.assertEqual(r.solar_kwh, 0.0)
+        # Without a solar CT, midday charging looks like grid charging and the export is unexplained.
+        self.assertAlmostEqual(r.grid_battery_kwh, 3.0)
+        text = su.summary_text(r)
+        self.assertIn("Battery in 3.00 · out 1.00 kWh", text)
+        self.assertIn("from battery", text)
+        items = [row["item"] for row in su.table_rows(r)]
+        self.assertFalse(any(i.startswith("Solar generated") for i in items))
+        self.assertIn("  from the grid", items)
+
+    def test_solar_only(self):
+        r = su.calc_self_use(self.grid[:2], self.solar)
+        self.assertAlmostEqual(r.solar_home_kwh, 2.5)
+        self.assertAlmostEqual(r.self_consumption, 2.5 / 3.0)
+        rows = {row["item"]: row for row in su.table_rows(r)}
+        self.assertEqual(rows["Solar generated (% used)"]["pc"], "83%")
+        self.assertEqual(rows["  exported"]["kwh"], "0.50")
+        self.assertNotIn("Battery charged", rows)
+
+    def test_empty(self):
+        r = su.calc_self_use([], [], [])
+        self.assertIsNone(r.self_consumption)
+        self.assertIsNone(r.self_sufficiency)
+        self.assertIn("Solar 0.00 kWh, – used on site", su.summary_text(r))
+
+    def test_roles_round_trip_and_check(self):
+        roles = tf.SiteRoles(grid=tf.CTRef("A", 1), solar=tf.CTRef("A", 2), solar_gen_negative=False,
+                             battery=tf.CTRef("B", 3), battery_charge_negative=True)
+        self.assertEqual(tf.SiteRoles.from_dict(roles.to_dict()), roles)
+        old = tf.SiteRoles.from_dict({"grid": {"device_id": "A", "ct": 1}})
+        self.assertIsNone(old.solar)
+        self.assertTrue(old.solar_gen_negative)
+        self.assertFalse(old.battery_charge_negative)
+        roles.check()
+        roles.battery = tf.CTRef("A", 2)
+        with self.assertRaises(ValueError):
+            roles.check()
+
+
+if __name__ == "__main__":
+    unittest.main()

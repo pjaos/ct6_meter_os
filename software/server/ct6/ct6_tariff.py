@@ -32,7 +32,7 @@ from ct6.ct6_heatpump import HeatPumpSettings
 
 DEFAULT_OFFPEAK_START = "23:30"
 DEFAULT_OFFPEAK_END = "05:30"
-SETTINGS_VERSION = 4
+SETTINGS_VERSION = 5
 
 DEFAULT_EV_SLOT_MIN_KWH = 0.1        # EV energy in a half-hour that marks an IOG slot
 DEFAULT_EV_SLOT_MIN_GRID_SHARE = 0.5 # Share of that EV energy that must come from the grid
@@ -152,23 +152,39 @@ class CTRef:
 
 @dataclass
 class SiteRoles:
-    """@brief Which CTs measure the grid connection and the EV charger.
-              They may be on different CT6 devices. None = not set."""
+    """@brief Which CTs measure the grid connection, the EV charger, the solar inverter
+              and the battery. They may be on different CT6 devices. None = not set."""
     grid: CTRef = None
     ev: CTRef = None
     grid_import_negative: bool = True   # CT6 default: import power is a negative value
+    solar: CTRef = None
+    solar_gen_negative: bool = True     # Generation flows into the home, like import
+    battery: CTRef = None
+    battery_charge_negative: bool = False   # Discharge flows into the home (negative), so charge is positive
 
     def to_dict(self):
-        return {"grid": self.grid.to_dict() if self.grid else None,
-                "ev": self.ev.to_dict() if self.ev else None,
-                "grid_import_negative": self.grid_import_negative}
+        def ref(r):
+            return r.to_dict() if r else None
+        return {"grid": ref(self.grid), "ev": ref(self.ev), "grid_import_negative": self.grid_import_negative,
+                "solar": ref(self.solar), "solar_gen_negative": self.solar_gen_negative,
+                "battery": ref(self.battery), "battery_charge_negative": self.battery_charge_negative}
 
     @staticmethod
     def from_dict(d):
         d = d or {}
         return SiteRoles(grid=CTRef.from_dict(d.get("grid")),
                          ev=CTRef.from_dict(d.get("ev")),
-                         grid_import_negative=bool(d.get("grid_import_negative", True)))
+                         grid_import_negative=bool(d.get("grid_import_negative", True)),
+                         solar=CTRef.from_dict(d.get("solar")),
+                         solar_gen_negative=bool(d.get("solar_gen_negative", True)),
+                         battery=CTRef.from_dict(d.get("battery")),
+                         battery_charge_negative=bool(d.get("battery_charge_negative", False)))
+
+    def check(self):
+        """@brief Raise ValueError if one CT is given two roles."""
+        refs = [r for r in (self.grid, self.ev, self.solar, self.battery) if r is not None]
+        if len(refs) != len(set((r.device_id, r.ct) for r in refs)):
+            raise ValueError("Each CT can only have one role (grid, EV, solar or battery).")
 
     @staticmethod
     def from_v1_devices(devices):

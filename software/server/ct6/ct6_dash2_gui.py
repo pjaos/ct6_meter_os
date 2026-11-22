@@ -30,6 +30,7 @@ from ct6 import ct6_data as cd
 from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution, EnergyBucket
 from ct6 import ct6_tariff as tf
 from ct6 import ct6_heatpump as hp
+from ct6 import ct6_selfuse as su
 from ct6.ct6_data_source import HalfHourEnergyCache
 
 # Message types posted by worker threads.
@@ -45,6 +46,7 @@ MSG_DONE = "done"
 MSG_DOWNLOAD = "download"
 MSG_LIVE = "live"           # Live tab update (has its own request counter, see _start_live_job())
 MSG_HEATPUMP = "heatpump"   # Heat pump tab results
+MSG_SELFUSE = "selfuse"     # Solar / battery self-consumption figures
 
 LIVE_TAB = "__live__"       # Tab name of the Live tab
 HP_TAB = "__heatpump__"     # Tab name of the Heat pump tab
@@ -75,6 +77,14 @@ HELP_ENERGY_BUCKET = "Energy per bar. Auto = one bar per day for ranges up to " 
 # plot type selector and the collapsed kWh bar.
 CHART_OFFSET_PX = 221
 
+SELFUSE_COLUMNS = [
+    {"name": "item", "label": "Solar & battery", "field": "item", "align": "left",
+     "style": "white-space: pre"},
+    {"name": "kwh", "label": "kWh", "field": "kwh", "align": "right"},
+    {"name": "pc", "label": "%", "field": "pc", "align": "right"},
+]
+KWH_TABLES_MAX_PX = 300     # The open kWh bar's tables scroll beyond this height
+SELFUSE_LINE_PX = 20        # Height of the solar & battery line in the kWh bar header
 COST_COLUMNS = [
     {"name": "item", "label": "Cost", "field": "item", "align": "left"},
     {"name": "kwh", "label": "kWh", "field": "kwh", "align": "right"},
@@ -140,6 +150,10 @@ class _DeviceTab:
     cost_summary: object = None # One line cost summary shown in the collapsed header
     cost_tip: object = None     # Tooltip explaining how off-peak was decided
     cost_table: object = None
+    self_row: object = None     # Solar & battery line in the collapsed header (hidden if no solar/battery CT)
+    self_summary: object = None
+    self_tip: object = None
+    self_table: object = None
     bucket_toggle: object = None  # Auto/Day/Month (Energy plot only)
     bucket_row: object = None
     mode: str = "line"          # Current chart layout: "line" or "bar"
@@ -263,6 +277,8 @@ class _ClientSession:
             self._update_summary_row(msg["device_id"], msg["row"])
         elif t == MSG_COST:
             self._update_cost(msg)
+        elif t == MSG_SELFUSE:
+            self._update_self_use(msg)
         elif t == MSG_PEAK_RESULT:
             self._peak_label.set_text(msg["message"])
         elif t == MSG_ENABLE_CONTROLS:
@@ -304,6 +320,7 @@ class _ClientSession:
         for ct_number, name in device.active_cts():
             post(MSG_SUMMARY_ROW, device_id=dev_id, row=cd.summary_row(ct_number, name, totals[ct_number], p["invert"]))
         cost_secs = self._post_cost(post, dev_id, p["start"], p["stop"])
+        self._post_self_use(post, dev_id, p["start"], p["stop"])
         post(MSG_STATUS, device_id=dev_id,
              message=f"Energy per {bucket.value.lower()} from minute data: {len(labels)} bar(s) "
                      f"in {time() - start_t:.1f} seconds (costs {cost_secs:.1f} s).")
@@ -355,6 +372,7 @@ class _ClientSession:
         cost_text = ""
         if plot_type.is_per_ct:
             cost_text = f", costs {self._post_cost(post, dev_id, p['start'], p['stop']):.1f} s"
+            self._post_self_use(post, dev_id, p["start"], p["stop"])
 
         msg = f"Took {time() - start_t:.1f} seconds to read and plot the data " \
               f"({len(rows)} rows, DB read {read_secs:.1f} s{cost_text})."
@@ -454,6 +472,43 @@ class _ClientSession:
         post(MSG_COST, device_id=dev_id, ok=True, warn=False, summary="Calculating costs...", caveat="", rows=[])
         post(MSG_COST, device_id=dev_id, **self._calc_cost(start, stop))
         return time() - cost_t
+
+    def _post_self_use(self, post, dev_id, start, stop):
+        """@brief Work out and post the solar / battery self-consumption figures (worker thread)."""
+        try:
+            post(MSG_SELFUSE, device_id=dev_id, **self._calc_self_use(start, stop))
+        except Exception as ex:
+            self._uio.errorException()
+            post(MSG_SELFUSE, device_id=dev_id, visible=True, warn=True, summary=f"Failed: {ex}",
+                 caveat=su.CAVEAT, rows=[])
+
+    def _calc_self_use(self, start, stop):
+        """@return A dict with visible, warn, summary, caveat and rows for the self-consumption line."""
+        roles = self._gui.settings_store.load().roles
+        if roles.solar is None and roles.battery is None:
+            return {"visible": False, "warn": False, "summary": "", "caveat": "", "rows": []}
+
+        def problem(text):
+            return {"visible": True, "warn": True, "summary": text, "caveat": su.CAVEAT, "rows": []}
+
+        if roles.grid is None:
+            return problem("Set the grid CT in 'Tariff & CT roles' to see solar and battery figures.")
+        for ref, what in ((roles.grid, "grid"), (roles.solar, "solar"), (roles.battery, "battery")):
+            if ref is not None and ref.device_id not in self._devices:
+                return problem(f"The {what} CT's device ({ref.device_id}) was not found in the database.")
+        with self._gui.data_source_factory() as ds:
+            cache = self._gui.half_hour_cache
+
+            def slots(ref):
+                if ref is None:
+                    return None
+                return cache.half_hour_energy(ds, ref.device_id, cd.act_watts_field(ref.ct), start, stop)
+            res = su.calc_self_use(slots(roles.grid), slots(roles.solar), slots(roles.battery),
+                                   grid_import_negative=roles.grid_import_negative,
+                                   solar_gen_negative=roles.solar_gen_negative,
+                                   battery_charge_negative=roles.battery_charge_negative)
+        return {"visible": True, "warn": res.solar_sign_suspect, "summary": su.summary_text(res),
+                "caveat": su.CAVEAT, "rows": su.table_rows(res)}
 
     def _calc_cost(self, start, stop):
         """@brief Calculate the whole-site cost for the period (runs in the worker thread).
@@ -702,6 +757,22 @@ class _ClientSession:
         dt.cost_summary.set_text("")
         dt.cost_table.rows = []
         dt.cost_table.update()
+        dt.self_summary.set_text("")
+        dt.self_table.rows = []
+        dt.self_table.update()
+
+    def _update_self_use(self, msg):
+        dt = self._tabs.get(msg["device_id"])
+        if dt is None:
+            return
+        dt.self_row.set_visibility(msg["visible"])
+        dt.self_summary.set_text(msg["summary"])
+        dt.self_summary.classes(replace="text-sm ellipsis " + ("text-warning" if msg["warn"] else "text-grey-4"))
+        dt.self_tip.set_text(msg["caveat"])
+        dt.self_table.rows = msg["rows"]
+        dt.self_table.update()
+        dt.self_table.set_visibility(bool(msg["rows"]))
+        self._set_chart_height(dt)
 
     def _update_cost(self, msg):
         dt = self._tabs.get(msg["device_id"])
@@ -719,12 +790,16 @@ class _ClientSession:
     def _kwh_table_px(self, dt):
         """@return The height the open kWh table adds below its header."""
         rows = max(1, len(dt.device.active_cts()),
-                   len(dt.cost_table.rows) if dt.cost_table.visible else 0)
-        return KWH_TABLE_HEADER_PX + KWH_ROW_PX * rows + 8
+                   len(dt.cost_table.rows) if dt.cost_table.visible else 0,
+                   len(dt.self_table.rows) if dt.self_table.visible else 0)
+        # + room for a horizontal scroll bar when the tables are wider than the window
+        return min(KWH_TABLES_MAX_PX, KWH_TABLE_HEADER_PX + KWH_ROW_PX * rows + 2) + 22
 
     def _set_chart_height(self, dt):
         """@brief Size the chart so the page fits the window with the kWh table open or closed."""
         offset = CHART_OFFSET_PX
+        if dt.kwh_bar.visible and dt.self_row.visible:
+            offset += SELFUSE_LINE_PX
         if self._kwh_expanded and dt.kwh_bar.visible:
             offset += self._kwh_table_px(dt)
         dt.chart.style(f"height: calc(100vh - {offset}px); min-height: 300px")
@@ -871,13 +946,24 @@ class _ClientSession:
                             dt.cost_summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
                             with ui.icon("info_outline", size="xs").classes("text-grey-5"):
                                 dt.cost_tip = ui.tooltip("").classes("text-body2").style("max-width: 420px")
+                        with ui.row().classes("w-full items-center gap-3 no-wrap") as dt.self_row:
+                            ui.icon("wb_sunny", size="xs").classes("text-weight-bold w-6")
+                            dt.self_summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
+                            with ui.icon("info_outline", size="xs").classes("text-grey-5"):
+                                dt.self_tip = ui.tooltip("").classes("text-body2").style("max-width: 420px")
+                        dt.self_row.set_visibility(False)
                 with dt.kwh_bar:
-                    with ui.row().classes("w-full items-start gap-4"):
+                    # One row of tables; it scrolls (rather than wraps or grows) so the chart keeps its space.
+                    with ui.row().classes("w-full items-start gap-4 no-wrap overflow-auto") \
+                                 .style(f"max-height: {KWH_TABLES_MAX_PX}px"):
                         dt.table = ui.table(columns=SUMMARY_COLUMNS, rows=[], row_key="ct") \
-                                     .props("dense flat bordered hide-bottom").classes("min-w-[340px]")
+                                     .props("dense flat bordered hide-bottom").classes("min-w-[340px] shrink-0")
                         dt.cost_table = ui.table(columns=COST_COLUMNS, rows=[], row_key="id") \
-                                          .props("dense flat bordered hide-bottom").classes("min-w-[340px]")
+                                          .props("dense flat bordered hide-bottom").classes("min-w-[340px] shrink-0")
                         dt.cost_table.set_visibility(False)
+                        dt.self_table = ui.table(columns=SELFUSE_COLUMNS, rows=[], row_key="id") \
+                                          .props("dense flat bordered hide-bottom").classes("min-w-[280px] shrink-0")
+                        dt.self_table.set_visibility(False)
                 with ui.element("div").classes("w-full") as dt.chart_box:
                     dt.chart = ui.echart(_base_chart_options(self._gui.dark)).classes("w-full")
                 self._set_chart_height(dt)
@@ -1085,7 +1171,11 @@ class _ClientSession:
         r = settings.roles
         roles = {"grid": r.grid.key() if r.grid else "",
                  "ev": r.ev.key() if r.ev else "",
-                 "grid_import_negative": r.grid_import_negative}
+                 "grid_import_negative": r.grid_import_negative,
+                 "solar": r.solar.key() if r.solar else "",
+                 "solar_gen_negative": r.solar_gen_negative,
+                 "battery": r.battery.key() if r.battery else "",
+                 "battery_charge_negative": r.battery_charge_negative}
         ev_rule = {"on": t.ev_slots_offpeak, "min_kwh": t.ev_slot_min_kwh,
                    "share_pc": round(t.ev_slot_min_grid_share * 100), "cap": t.ev_daily_cap_hours}
 
@@ -1138,14 +1228,15 @@ class _ClientSession:
             ev_row.bind_visibility_from(ev_rule, "on")
 
             ui.separator()
-            ui.label("CT roles. The grid CT and EV CT can be on different CT6 devices.").classes("text-sm text-grey-5")
+            ui.label("CT roles. Each can be on any CT6 device. Solar and battery CTs are optional "
+                     "(for the self-consumption figures).").classes("text-sm text-grey-5")
             sign_opts = {True: "Import is negative (CT6 default)", False: "Import is positive"}
             ct_opts = {"": "None"}
             for dev_id, dev in self._devices.items():
                 for n, name in dev.active_cts():
                     ct_opts[tf.CTRef(dev_id, n).key()] = f"{dev.name} · CT{n} {name}"
             # Keep a saved CT that isn't currently listed (e.g. device offline) selectable.
-            for key in (roles["grid"], roles["ev"]):
+            for key in (roles["grid"], roles["ev"], roles["solar"], roles["battery"]):
                 if key and key not in ct_opts:
                     ct_opts[key] = f"{key} (not found)"
             with ui.row().classes("items-center gap-3"):
@@ -1154,6 +1245,15 @@ class _ClientSession:
                   .bind_value(roles, "grid_import_negative")
             with ui.row().classes("items-center gap-3"):
                 ui.select(ct_opts, label="EV CT").props("dense").classes("w-60").bind_value(roles, "ev")
+            with ui.row().classes("items-center gap-3"):
+                ui.select(ct_opts, label="Solar CT").props("dense").classes("w-60").bind_value(roles, "solar")
+                ui.select({True: "Generation is negative", False: "Generation is positive"},
+                          label="Solar CT sign").props("dense").classes("w-60").bind_value(roles, "solar_gen_negative")
+            with ui.row().classes("items-center gap-3"):
+                ui.select(ct_opts, label="Battery CT").props("dense").classes("w-60").bind_value(roles, "battery")
+                ui.select({False: "Charging is positive", True: "Charging is negative"},
+                          label="Battery CT sign").props("dense").classes("w-60") \
+                  .bind_value(roles, "battery_charge_negative")
 
             error = ui.label("").classes("text-negative text-sm")
 
@@ -1173,9 +1273,12 @@ class _ClientSession:
                                        ev_daily_cap_hours=float(ev_rule["cap"]))
                     site_roles = tf.SiteRoles(grid=tf.CTRef.from_key(roles["grid"]),
                                               ev=tf.CTRef.from_key(roles["ev"]),
-                                              grid_import_negative=bool(roles["grid_import_negative"]))
-                    if site_roles.grid is not None and site_roles.grid == site_roles.ev:
-                        raise ValueError("The grid CT and the EV CT must be different CTs.")
+                                              grid_import_negative=bool(roles["grid_import_negative"]),
+                                              solar=tf.CTRef.from_key(roles["solar"]),
+                                              solar_gen_negative=bool(roles["solar_gen_negative"]),
+                                              battery=tf.CTRef.from_key(roles["battery"]),
+                                              battery_charge_negative=bool(roles["battery_charge_negative"]))
+                    site_roles.check()
                     if tariff.ev_slots_offpeak and site_roles.ev is None:
                         raise ValueError("Select the EV CT to use the EV charging rule.")
                     current = self._gui.settings_store.load()   # Keep the Heat pump tab settings
