@@ -29,6 +29,7 @@ from ct6 import ct6_dash2_auth as auth
 from ct6 import ct6_data as cd
 from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution, EnergyBucket
 from ct6 import ct6_tariff as tf
+from ct6 import ct6_heatpump as hp
 from ct6.ct6_data_source import HalfHourEnergyCache
 
 # Message types posted by worker threads.
@@ -43,8 +44,24 @@ MSG_ERROR = "error"
 MSG_DONE = "done"
 MSG_DOWNLOAD = "download"
 MSG_LIVE = "live"           # Live tab update (has its own request counter, see _start_live_job())
+MSG_HEATPUMP = "heatpump"   # Heat pump tab results
 
 LIVE_TAB = "__live__"       # Tab name of the Live tab
+HP_TAB = "__heatpump__"     # Tab name of the Heat pump tab
+HP_COLOURS = {hp.HEATING: "#ee6666", hp.COOLING: "#5470c6", hp.OFF: "#777777"}
+HP_KWH_COLOUR = "#fac858"
+HP_SETTINGS_PX = 58         # Height of the Heat pump tab settings row (instead of the plot type row)
+HP_MONTH_COLUMNS = [
+    {"name": "month", "label": "Month", "field": "month", "align": "left"},
+    {"name": "mode", "label": "Mode", "field": "mode", "align": "left"},
+    {"name": "data_days", "label": "Days with data", "field": "data_days", "align": "right"},
+    {"name": "on_days", "label": "On days", "field": "on_days", "align": "right"},
+    {"name": "hours", "label": "Run h", "field": "hours", "align": "right"},
+    {"name": "kwh", "label": "kWh", "field": "kwh", "align": "right"},
+]
+HELP_HEATPUMP = "A day is an on day when the heat pump CT's one minute average power was at or above the " \
+                "threshold for at least the minimum run-time that day. On days in the cooling months count as " \
+                "cooling, other months as heating. Uses the minute data, so it covers the full history."
 LIVE_SECONDS = 2.0          # Live tab refresh period
 LIVE_STATUS_COLOURS = {"ok": "text-positive", "stale": "text-warning", "offline": "text-negative"}
 
@@ -130,6 +147,21 @@ class _DeviceTab:
 
 
 @dataclass
+class _HeatPumpPanel:
+    """@brief The Heat pump tab widgets."""
+    ct_select: object = None
+    threshold: object = None
+    min_minutes: object = None
+    months: object = None
+    apply_btn: object = None
+    status: object = None
+    bar: object = None          # ui.expansion holding the monthly table
+    summary: object = None
+    month_table: object = None
+    chart: object = None
+
+
+@dataclass
 class _LiveCard:
     """@brief The Live tab widgets for one device."""
     device: cd.DeviceInfo
@@ -164,6 +196,8 @@ class _ClientSession:
         self._live_last_ts = {}    # device_id -> newest row timestamp seen
         self._live_id = 0
         self._live_busy = False
+        self._hp = None            # _HeatPumpPanel
+        self._hp_expanded = False
 
     # ------------------------------------------------------------ jobs
 
@@ -236,6 +270,8 @@ class _ClientSession:
         elif t == MSG_DOWNLOAD:
             ui.download.content(msg["content"], msg["filename"], media_type="text/csv")
             self._show_status(msg["device_id"], msg["message"])
+        elif t == MSG_HEATPUMP:
+            self._update_heatpump(msg)
         elif t == MSG_DONE:
             self._set_controls_enabled(True)
 
@@ -356,9 +392,12 @@ class _ClientSession:
              message=f"Exported {count} row(s) to CSV ({len(data) / 1024:.0f} KiB).")
 
     def _on_csv(self):
+        if self._tab_panels.value == HP_TAB:
+            self._read_heatpump(csv=True)
+            return
         dt = self._selected_tab()
         if dt is None:
-            ui.notify("Select a device tab to export its data.", type="info")
+            ui.notify("Select a device or Heat pump tab to export its data.", type="info")
             return
         try:
             start, stop = self._get_start_stop()
@@ -475,6 +514,9 @@ class _ClientSession:
 
     def _read_selected(self):
         """@brief Read and plot data for the selected device using the current settings."""
+        if self._tab_panels is not None and self._tab_panels.value == HP_TAB:
+            self._read_heatpump()
+            return
         dt = self._selected_tab()
         if dt is None:
             return
@@ -584,10 +626,16 @@ class _ClientSession:
         for dt in self._tabs.values():
             for w in (dt.plot_toggle, dt.bucket_toggle):
                 w.enable() if enabled else w.disable()
+        if self._hp is not None:
+            self._hp.apply_btn.enable() if enabled else self._hp.apply_btn.disable()
 
     def _show_status(self, device_id, message, error=False):
-        dt = self._tabs.get(device_id) if device_id else self._selected_tab()
-        label = dt.status if dt else self._global_status
+        if device_id == HP_TAB or (device_id is None and self._hp is not None
+                                   and self._tab_panels.value == HP_TAB):
+            label = self._hp.status
+        else:
+            dt = self._tabs.get(device_id) if device_id else self._selected_tab()
+            label = dt.status if dt else self._global_status
         label.set_text(message)
         label.classes(replace="text-sm " + ("text-negative" if error else "text-grey-5"))
 
@@ -755,10 +803,12 @@ class _ClientSession:
                 live_tab = ui.tab(LIVE_TAB, label="Live", icon="sensors")
                 for dev in devices:
                     self._tabs[dev.device_id] = _DeviceTab(device=dev, tab=ui.tab(dev.device_id, label=dev.name))
+                hp_tab = ui.tab(HP_TAB, label="Heat pump", icon="thermostat")
             with self._tab_panels:
                 self._build_live_panel(live_tab, devices)
                 for dev in devices:
                     self._build_device_panel(self._tabs[dev.device_id])
+                self._build_heatpump_panel(hp_tab)
             self._tab_panels.value = devices[0].device_id
         finally:
             self._suppress_events = False
@@ -831,6 +881,160 @@ class _ClientSession:
                 with ui.element("div").classes("w-full") as dt.chart_box:
                     dt.chart = ui.echart(_base_chart_options(self._gui.dark)).classes("w-full")
                 self._set_chart_height(dt)
+
+    # ------------------------------------------------------------ Heat pump tab
+
+    def _hp_ct_options(self, saved_key=""):
+        opts = {"": "Select the heat pump CT"}
+        for dev_id, dev in self._devices.items():
+            for n, name in dev.active_cts():
+                opts[tf.CTRef(dev_id, n).key()] = f"{dev.name} · CT{n} {name}"
+        if saved_key and saved_key not in opts:
+            opts[saved_key] = f"{saved_key} (not found)"
+        return opts
+
+    def _build_heatpump_panel(self, hp_tab):
+        """@brief Build the Heat pump tab: settings row, summary bar with a monthly table, daily chart."""
+        try:
+            settings = self._gui.settings_store.load().heatpump
+        except Exception:
+            settings = hp.HeatPumpSettings()
+        p = self._hp = _HeatPumpPanel()
+        month_opts = {i + 1: name for i, name in enumerate(hp.MONTH_NAMES)}
+        with ui.tab_panel(hp_tab).classes("p-0 w-full"):
+            with ui.column().classes("w-full gap-1"):
+                with ui.row().classes("w-full items-center gap-x-3 gap-y-1"):
+                    p.ct_select = ui.select(self._hp_ct_options(settings.ct_key), value=settings.ct_key,
+                                            label="Heat pump CT").props("dense").classes("w-56")
+                    p.threshold = ui.number("On at (W)", value=settings.threshold_w, min=1, step=10,
+                                            format="%.0f").props("dense").classes("w-24")
+                    p.min_minutes = ui.number("Min run/day (min)", value=settings.min_minutes, min=1, max=1440,
+                                              step=5, format="%.0f").props("dense").classes("w-32")
+                    p.months = ui.select(month_opts, value=list(settings.cooling_months), multiple=True,
+                                         label="Cooling months").props("dense").classes("w-48")
+                    p.apply_btn = ui.button("Apply", on_click=self._on_hp_apply).props("no-caps dense")
+                    self._help(HELP_HEATPUMP)
+                    p.status = ui.label("").classes("text-sm text-grey-5")
+                p.bar = ui.expansion(value=self._hp_expanded, on_value_change=self._on_hp_bar_toggle) \
+                          .props("dense dense-toggle header-class=q-px-sm").classes("w-full")
+                with p.bar.add_slot("header"):
+                    with ui.row().classes("w-full items-center gap-3 no-wrap"):
+                        ui.label("Days").classes("text-sm text-weight-bold w-10")
+                        p.summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
+                with p.bar:
+                    p.month_table = ui.table(columns=HP_MONTH_COLUMNS, rows=[], row_key="id") \
+                                      .props("dense flat bordered hide-bottom virtual-scroll") \
+                                      .classes("min-w-[480px]").style("max-height: 260px")
+                opts = _base_chart_options(self._gui.dark)
+                text = opts["textStyle"]["color"]
+                opts["xAxis"] = {**opts["xAxis"], "type": "category", "data": []}
+                opts["tooltip"] = {"trigger": "axis", "axisPointer": {"type": "shadow"}}
+                opts["toolbox"]["feature"] = {"saveAsImage": {}}
+                opts["yAxis"] = [{**opts["yAxis"], "name": "Run hours"},
+                                 {**opts["yAxis"], "name": "kWh", "position": "right", "nameGap": 40,
+                                  "splitLine": {"show": False}}]
+                opts["grid"]["right"] = 60
+                opts["legend"]["textStyle"] = {"color": text}
+                p.chart = ui.echart(opts).classes("w-full")
+                self._set_hp_chart_height()
+
+    def _hp_settings_from_widgets(self):
+        p = self._hp
+        if p.threshold.value is None or p.min_minutes.value is None:
+            raise ValueError("Enter the on threshold and the minimum run-time.")
+        s = hp.HeatPumpSettings(ct_key=p.ct_select.value or "", threshold_w=float(p.threshold.value),
+                                min_minutes=float(p.min_minutes.value),
+                                cooling_months=sorted(int(m) for m in (p.months.value or [])))
+        s.validate()
+        return s
+
+    def _on_hp_apply(self):
+        """@brief Save the Heat pump tab settings (shared by all clients) and re-read."""
+        try:
+            s = self._hp_settings_from_widgets()
+            current = self._gui.settings_store.load()
+            current.heatpump = s
+            self._gui.settings_store.save(current)
+        except (ValueError, OSError) as ex:
+            self._show_status(HP_TAB, str(ex), error=True)
+            return
+        self._read_heatpump()
+
+    def _read_heatpump(self, csv=False):
+        """@brief Analyse the heat pump CT for the selected dates (or export the per-day CSV)."""
+        try:
+            s = self._hp_settings_from_widgets()
+            start, stop = self._get_start_stop()
+        except ValueError as ex:
+            self._show_status(HP_TAB, str(ex), error=True)
+            return
+        ref = tf.CTRef.from_key(s.ct_key)
+        if ref is None:
+            self._show_status(HP_TAB, "Select the heat pump CT, then click Apply.", error=True)
+            return
+        device = self._devices.get(ref.device_id)
+        if device is None:
+            self._show_status(HP_TAB, "The heat pump CT's device was not found.", error=True)
+            return
+        if not csv:
+            self._hp.summary.set_text("")
+        self._start_job(self._worker_heatpump, {"settings": s, "device": device, "ct": ref.ct,
+                                                "start": start, "stop": stop, "csv": csv})
+
+    def _worker_heatpump(self, post, p):
+        start_t = time()
+        post(MSG_STATUS, device_id=HP_TAB, message="Reading Data...")
+        s, device = p["settings"], p["device"]
+        with self._gui.data_source_factory() as ds:
+            records = ds.daily_run_time(device.device_id, cd.act_watts_field(p["ct"]), s.threshold_w,
+                                        p["start"], p["stop"])
+        result = hp.analyse(records, s)
+        if p["csv"]:
+            text = hp.to_csv(result)
+            if not text:
+                post(MSG_ERROR, device_id=HP_TAB, message="No heat pump data to export for the selected dates.")
+                return
+            data = text.encode("utf-8")
+            ct_name = dict(device.active_cts()).get(p["ct"], f"CT{p['ct']}")
+            post(MSG_DOWNLOAD, device_id=HP_TAB, content=data,
+                 filename=cd.csv_filename(f"{device.name}_{ct_name}", p["start"], p["stop"], "HeatPumpDays"),
+                 message=f"Exported {len(result.days)} day(s) to CSV.")
+            return
+        post(MSG_HEATPUMP, summary=hp.summary_text(result), months=hp.month_table_rows(result),
+             chart=hp.chart_data(result, p["start"], p["stop"]))
+        post(MSG_STATUS, device_id=HP_TAB,
+             message=f"{len(result.days)} day(s) from minute data in {time() - start_t:.1f} seconds.")
+
+    def _update_heatpump(self, msg):
+        p = self._hp
+        p.summary.set_text(msg["summary"])
+        p.month_table.rows = msg["months"]
+        p.month_table.update()
+        c = msg["chart"]
+        opts = p.chart.options
+        opts["xAxis"]["data"] = c["labels"]
+        names = {hp.HEATING: "Heating", hp.COOLING: "Cooling", hp.OFF: "Below min run"}
+        series = [{"name": names[m], "type": "bar", "stack": "run", "barMaxWidth": 30,
+                   "itemStyle": {"color": HP_COLOURS[m]}, "data": c[m]} for m in (hp.HEATING, hp.COOLING, hp.OFF)]
+        series.append({"name": "kWh", "type": "line", "yAxisIndex": 1, "showSymbol": False, "connectNulls": False,
+                       "lineStyle": {"width": 1.5, "color": HP_KWH_COLOUR}, "itemStyle": {"color": HP_KWH_COLOUR},
+                       "data": c["kwh"]})
+        opts["series"] = series
+        opts["legend"]["data"] = [s["name"] for s in series]
+        p.chart.update()
+        self._set_hp_chart_height()
+
+    def _on_hp_bar_toggle(self, e):
+        self._hp_expanded = e.value
+        self._set_hp_chart_height()
+
+    def _set_hp_chart_height(self):
+        p = self._hp
+        offset = CHART_OFFSET_PX - 37 + HP_SETTINGS_PX     # The kWh bar has 2 lines, this summary 1
+        if self._hp_expanded:
+            # The table scrolls beyond 260 px; 32 px is the expansion's padding around it.
+            offset += min(260, KWH_TABLE_HEADER_PX + KWH_ROW_PX * max(1, len(p.month_table.rows)) + 8) + 32
+        p.chart.style(f"height: calc(100vh - {offset}px); min-height: 300px")
 
     # ------------------------------------------------------------ page
 
@@ -974,7 +1178,9 @@ class _ClientSession:
                         raise ValueError("The grid CT and the EV CT must be different CTs.")
                     if tariff.ev_slots_offpeak and site_roles.ev is None:
                         raise ValueError("Select the EV CT to use the EV charging rule.")
-                    self._gui.settings_store.save(tf.Settings(tariff, site_roles))
+                    current = self._gui.settings_store.load()   # Keep the Heat pump tab settings
+                    current.tariff, current.roles = tariff, site_roles
+                    self._gui.settings_store.save(current)
                 except (ValueError, KeyError) as ex:
                     error.set_text(str(ex))
                     return

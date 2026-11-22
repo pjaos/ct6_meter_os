@@ -28,9 +28,11 @@ from dataclasses import dataclass, field, asdict
 from datetime import date, datetime, timedelta
 from functools import lru_cache
 
+from ct6.ct6_heatpump import HeatPumpSettings
+
 DEFAULT_OFFPEAK_START = "23:30"
 DEFAULT_OFFPEAK_END = "05:30"
-SETTINGS_VERSION = 3
+SETTINGS_VERSION = 4
 
 DEFAULT_EV_SLOT_MIN_KWH = 0.1        # EV energy in a half-hour that marks an IOG slot
 DEFAULT_EV_SLOT_MIN_GRID_SHARE = 0.5 # Share of that EV energy that must come from the grid
@@ -186,6 +188,7 @@ class SiteRoles:
 class Settings:
     tariff: Tariff = field(default_factory=Tariff)
     roles: SiteRoles = field(default_factory=SiteRoles)
+    heatpump: HeatPumpSettings = field(default_factory=HeatPumpSettings)
 
     def to_dict(self):
         return {"version": SETTINGS_VERSION,
@@ -196,7 +199,8 @@ class Settings:
                            "ev_slot_min_kwh": self.tariff.ev_slot_min_kwh,
                            "ev_slot_min_grid_share": self.tariff.ev_slot_min_grid_share,
                            "ev_daily_cap_hours": self.tariff.ev_daily_cap_hours},
-                "roles": self.roles.to_dict()}
+                "roles": self.roles.to_dict(),
+                "heatpump": self.heatpump.to_dict()}
 
     @staticmethod
     def from_dict(d):
@@ -212,7 +216,7 @@ class Settings:
             roles = SiteRoles.from_dict(d["roles"])
         else:
             roles = SiteRoles.from_v1_devices(d.get("devices"))
-        return Settings(tariff, roles)
+        return Settings(tariff, roles, HeatPumpSettings.from_dict(d.get("heatpump")))
 
 
 class SettingsStore:
@@ -233,6 +237,7 @@ class SettingsStore:
     def save(self, settings):
         """@brief Validate and atomically write the settings."""
         settings.tariff.validate()
+        settings.heatpump.validate()
         data = json.dumps(settings.to_dict(), indent=2)
         with self._lock:
             folder = os.path.dirname(os.path.abspath(self.filename))

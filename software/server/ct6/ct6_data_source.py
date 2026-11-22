@@ -62,6 +62,14 @@ class CT6DataSource(ABC):
                    <column>_neg (kWh from negative readings, <= 0) for each column."""
 
     @abstractmethod
+    def daily_run_time(self, device_id, column, threshold_w, start_dt, stop_dt):
+        """@brief Per day heat pump figures from the minute resolution table (Heat pump tab).
+                  The absolute value of the power is used, so a reversed CT clamp still works.
+           @param threshold_w A minute counts as running when its average power is at or above this.
+           @return A list of dicts ordered by day: day (date), on_minutes (running minutes),
+                   minutes (minutes with data), peak_w (highest minute average) and kwh."""
+
+    @abstractmethod
     def recent_rows(self, device_id, since_dt):
         """@brief Read the full resolution rows newer than since_dt (used by the Live tab).
            @return A list of row dicts ordered by time."""
@@ -250,6 +258,16 @@ class MySQLDataSource(CT6DataSource):
                     r[k] = float(v or 0.0)
         return rows
 
+    def daily_run_time(self, device_id, column, threshold_w, start_dt, stop_dt):
+        c = _check_column(column)
+        sql = f"SELECT DATE({TIMESTAMP}) AS day, SUM(ABS({c}) >= %s) AS on_minutes, COUNT(*) AS minutes, " \
+              f"MAX(ABS({c})) AS peak_w, SUM(ABS({c})) / 60000.0 AS kwh " \
+              f"FROM {_quote_name(device_id)}.{BaseConstants.MINUTE_RES_DB_DATA_TABLE_NAME} " \
+              f"WHERE {TIMESTAMP} BETWEEN %s AND %s GROUP BY day ORDER BY day"
+        rows = self._query(sql, (float(threshold_w), start_dt, stop_dt))
+        return [{"day": r["day"], "on_minutes": int(r["on_minutes"] or 0), "minutes": int(r["minutes"]),
+                 "peak_w": float(r["peak_w"] or 0.0), "kwh": float(r["kwh"] or 0.0)} for r in rows]
+
     def recent_rows(self, device_id, since_dt):
         sql = f"SELECT * FROM {_quote_name(device_id)}.{BaseConstants.MAX_RES_DB_DATA_TABLE_NAME} " \
               f"WHERE {TIMESTAMP} > %s ORDER BY {TIMESTAMP}"
@@ -409,6 +427,17 @@ class SQLiteDataSource(CT6DataSource):
                 if k != "period":
                     r[k] = float(v or 0.0)
         return rows
+
+    def daily_run_time(self, device_id, column, threshold_w, start_dt, stop_dt):
+        c = _check_column(column)
+        sql = f"SELECT DATE({TIMESTAMP}) AS day, SUM(ABS({c}) >= ?) AS on_minutes, COUNT(*) AS minutes, " \
+              f"MAX(ABS({c})) AS peak_w, SUM(ABS({c})) / 60000.0 AS kwh " \
+              f"FROM {BaseConstants.MINUTE_RES_DB_DATA_TABLE_NAME} " \
+              f"WHERE {TIMESTAMP} BETWEEN ? AND ? GROUP BY day ORDER BY day"
+        rows = self._query(device_id, sql, (float(threshold_w), self._ts_text(start_dt), self._ts_text(stop_dt)))
+        return [{"day": date.fromisoformat(r["day"]), "on_minutes": int(r["on_minutes"] or 0),
+                 "minutes": int(r["minutes"]), "peak_w": float(r["peak_w"] or 0.0),
+                 "kwh": float(r["kwh"] or 0.0)} for r in rows]
 
     def recent_rows(self, device_id, since_dt):
         sql = f"SELECT * FROM {BaseConstants.MAX_RES_DB_DATA_TABLE_NAME} WHERE {TIMESTAMP} > ? ORDER BY {TIMESTAMP}"

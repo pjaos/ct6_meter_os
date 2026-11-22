@@ -66,6 +66,16 @@ class TestSQLiteDataSource(unittest.TestCase):
         self.ds.close()
         self.tmp.cleanup()
 
+    def test_daily_run_time(self):
+        rows = self.ds.daily_run_time(self.house, "CT1_ACT_WATTS", 600.0,
+                                      datetime(2026, 11, 19), datetime(2026, 11, 21))
+        self.assertEqual([r["day"] for r in rows], [date(2026, 11, 19), date(2026, 11, 20)])
+        self.assertEqual((rows[0]["on_minutes"], rows[0]["minutes"]), (1, 1))
+        # 1200 W and |-600| W are >= 600 W; 60 W isn't.
+        self.assertEqual((rows[1]["on_minutes"], rows[1]["minutes"]), (2, 3))
+        self.assertAlmostEqual(rows[1]["peak_w"], 1200.0)
+        self.assertAlmostEqual(rows[1]["kwh"], (1200 + 600 + 60) / 60000.0)
+
     def test_list_devices_skips_other_files_and_names_duplicates(self):
         make_ct6_db(os.path.join(self.folder, "B_SN0002.db"), "HOUSE", ("EV", "", "", "", "", ""), {})
         make_ct6_db(os.path.join(self.folder, "C_SN0003.db"), "", ("Zappi", "", "", "", "", ""), {})
