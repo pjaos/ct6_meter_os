@@ -499,16 +499,28 @@ class _ClientSession:
         with self._gui.data_source_factory() as ds:
             cache = self._gui.half_hour_cache
 
-            def slots(ref):
+            def slots(ref, a=start, b=stop):
                 if ref is None:
                     return None
-                return cache.half_hour_energy(ds, ref.device_id, cd.act_watts_field(ref.ct), start, stop)
-            res = su.calc_self_use(slots(roles.grid), slots(roles.solar), slots(roles.battery),
+                return cache.half_hour_energy(ds, ref.device_id, cd.act_watts_field(ref.ct), a, b)
+            solar = slots(roles.solar)
+            gen_negative, detected = roles.solar_gen_negative, False
+            if roles.solar is not None and roles.solar_sign_auto:
+                found = su.detect_gen_negative(solar)
+                if found is None:
+                    # Not enough solar in the range (e.g. at night): look at the 14 days before it.
+                    day0 = datetime.combine(start.date(), datetime.min.time())
+                    found = su.detect_gen_negative(slots(roles.solar, day0 - timedelta(days=14),
+                                                         day0 - timedelta(seconds=1)))
+                if found is not None:
+                    gen_negative, detected = found, True
+            res = su.calc_self_use(slots(roles.grid), solar, slots(roles.battery),
                                    grid_import_negative=roles.grid_import_negative,
-                                   solar_gen_negative=roles.solar_gen_negative,
+                                   solar_gen_negative=gen_negative,
                                    battery_charge_negative=roles.battery_charge_negative)
-        return {"visible": True, "warn": res.solar_sign_suspect, "summary": su.summary_text(res),
-                "caveat": su.CAVEAT, "rows": su.table_rows(res)}
+            res.solar_sign_detected = detected
+        return {"visible": True, "warn": res.solar_sign_suspect or res.battery_sign_suspect,
+                "summary": su.summary_text(res), "caveat": su.CAVEAT, "rows": su.table_rows(res)}
 
     def _calc_cost(self, start, stop):
         """@brief Calculate the whole-site cost for the period (runs in the worker thread).
@@ -1169,13 +1181,17 @@ class _ClientSession:
             rates = [{"valid_from": first.isoformat(), "peak": None, "offpeak": None,
                       "export": None, "standing": None}]
         r = settings.roles
+        invert = self._invert_kw()      # Plotted value = -stored value
+        polarity_name = self._polarity.value
         roles = {"grid": r.grid.key() if r.grid else "",
                  "ev": r.ev.key() if r.ev else "",
                  "grid_import_negative": r.grid_import_negative,
                  "solar": r.solar.key() if r.solar else "",
-                 "solar_gen_negative": r.solar_gen_negative,
+                 # Solar and battery signs are shown as they plot with the sidebar's current polarity.
+                 "solar_sign": "auto" if r.solar_sign_auto else
+                               ("below" if r.solar_gen_negative != invert else "above"),
                  "battery": r.battery.key() if r.battery else "",
-                 "battery_charge_negative": r.battery_charge_negative}
+                 "battery_sign": "below" if r.battery_charge_negative != invert else "above"}
         ev_rule = {"on": t.ev_slots_offpeak, "min_kwh": t.ev_slot_min_kwh,
                    "share_pc": round(t.ev_slot_min_grid_share * 100), "cap": t.ev_daily_cap_hours}
 
@@ -1247,13 +1263,16 @@ class _ClientSession:
                 ui.select(ct_opts, label="EV CT").props("dense").classes("w-60").bind_value(roles, "ev")
             with ui.row().classes("items-center gap-3"):
                 ui.select(ct_opts, label="Solar CT").props("dense").classes("w-60").bind_value(roles, "solar")
-                ui.select({True: "Generation is negative", False: "Generation is positive"},
-                          label="Solar CT sign").props("dense").classes("w-60").bind_value(roles, "solar_gen_negative")
+                ui.select({"auto": "Detect automatically", "above": "Generation plots above 0",
+                           "below": "Generation plots below 0"},
+                          label="Solar generation").props("dense").classes("w-60").bind_value(roles, "solar_sign")
             with ui.row().classes("items-center gap-3"):
                 ui.select(ct_opts, label="Battery CT").props("dense").classes("w-60").bind_value(roles, "battery")
-                ui.select({False: "Charging is positive", True: "Charging is negative"},
-                          label="Battery CT sign").props("dense").classes("w-60") \
-                  .bind_value(roles, "battery_charge_negative")
+                ui.select({"above": "Charging plots above 0", "below": "Charging plots below 0"},
+                          label="Battery charging").props("dense").classes("w-60") \
+                  .bind_value(roles, "battery_sign")
+            ui.label(f"Above/below 0 are as the plot shows them with the polarity set to '{polarity_name}'.") \
+              .classes("text-xs text-grey-5")
 
             error = ui.label("").classes("text-negative text-sm")
 
@@ -1275,9 +1294,12 @@ class _ClientSession:
                                               ev=tf.CTRef.from_key(roles["ev"]),
                                               grid_import_negative=bool(roles["grid_import_negative"]),
                                               solar=tf.CTRef.from_key(roles["solar"]),
-                                              solar_gen_negative=bool(roles["solar_gen_negative"]),
+                                              solar_sign_auto=roles["solar_sign"] == "auto",
+                                              solar_gen_negative=r.solar_gen_negative
+                                              if roles["solar_sign"] == "auto"
+                                              else (roles["solar_sign"] == "below") != invert,
                                               battery=tf.CTRef.from_key(roles["battery"]),
-                                              battery_charge_negative=bool(roles["battery_charge_negative"]))
+                                              battery_charge_negative=(roles["battery_sign"] == "below") != invert)
                     site_roles.check()
                     if tariff.ev_slots_offpeak and site_roles.ev is None:
                         raise ValueError("Select the EV CT to use the EV charging rule.")

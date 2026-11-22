@@ -44,7 +44,9 @@ class TestSelfUse(unittest.TestCase):
         self.assertAlmostEqual(r.home_grid_kwh, 0.5 + 0.2)
         # Home supply adds up.
         self.assertAlmostEqual(r.solar_home_kwh + r.discharge_kwh + r.home_grid_kwh, 0.5 + 1.0 + 1.2)
-        self.assertAlmostEqual(r.self_sufficiency, 2.0 / r.home_kwh)
+        # Half the battery's charge came from solar, so half its discharge counts as solar.
+        self.assertAlmostEqual(r.battery_solar_share, 0.5)
+        self.assertAlmostEqual(r.self_sufficiency, (1.0 + 0.5) / r.home_kwh)
         self.assertFalse(r.solar_sign_suspect)
 
     def test_signs_flipped(self):
@@ -69,6 +71,7 @@ class TestSelfUse(unittest.TestCase):
         text = su.summary_text(r)
         self.assertIn("Battery in 3.00 · out 1.00 kWh", text)
         self.assertIn("from battery", text)
+        self.assertAlmostEqual(r.self_sufficiency, 1.0 / r.home_kwh)
         items = [row["item"] for row in su.table_rows(r)]
         self.assertFalse(any(i.startswith("Solar generated") for i in items))
         self.assertIn("  from the grid", items)
@@ -88,13 +91,56 @@ class TestSelfUse(unittest.TestCase):
         self.assertIsNone(r.self_sufficiency)
         self.assertIn("Solar 0.00 kWh, – used on site", su.summary_text(r))
 
+    def test_grid_charged_battery_is_not_solar(self):
+        # Battery charged only overnight from the grid, solar all exported or used directly.
+        battery = [slot(T0, pos=1.5), slot(T2, neg=1.0)]
+        grid = [slot(T0, neg=2.0), slot(T1, pos=2.0), slot(T2, neg=0.2)]
+        r = su.calc_self_use(grid, self.solar, battery)
+        self.assertAlmostEqual(r.solar_battery_kwh, 0.0)
+        self.assertAlmostEqual(r.grid_battery_kwh, 1.5)
+        self.assertAlmostEqual(r.solar_home_kwh, 1.0)
+        self.assertAlmostEqual(r.self_sufficiency, 1.0 / r.home_kwh)   # The battery adds nothing
+
+    def test_detect_gen_negative(self):
+        self.assertTrue(su.detect_gen_negative(self.solar))            # Generation read negative
+        flipped = [{"slot": x["slot"], "pos_kwh": -x["neg_kwh"], "neg_kwh": -x["pos_kwh"]} for x in self.solar]
+        self.assertFalse(su.detect_gen_negative(flipped))
+        self.assertIsNone(su.detect_gen_negative([slot(T0, pos=0.01)]))  # Night only: can't tell
+        self.assertIsNone(su.detect_gen_negative([]))
+
+    def test_detected_sign_suppresses_warning(self):
+        r = su.calc_self_use(self.grid, self.solar, self.battery, solar_gen_negative=False)
+        r.solar_sign_detected = True
+        self.assertFalse(r.solar_sign_suspect)
+
+    def test_battery_sign_check_needs_a_week(self):
+        def week(slots):
+            out = []
+            for d in range(8):
+                for x in slots:
+                    out.append({**x, "slot": x["slot"].replace(day=1 + d)})
+            return out
+        # Right way round: no warning.
+        r = su.calc_self_use(week(self.grid), week(self.solar), week(self.battery))
+        self.assertEqual(r.days, 8)
+        self.assertFalse(r.battery_sign_suspect)
+        # Wrong way round over a week: out (3.0/day) > in (1.0/day) is flagged.
+        r = su.calc_self_use(week(self.grid), week(self.solar), week(self.battery), battery_charge_negative=True)
+        self.assertTrue(r.battery_sign_suspect)
+        self.assertIn("⚠ Check the battery CT sign", su.summary_text(r))
+        # Same over one day: not flagged (an evening can be all discharge).
+        r = su.calc_self_use(self.grid, self.solar, self.battery, battery_charge_negative=True)
+        self.assertFalse(r.battery_sign_suspect)
+
     def test_roles_round_trip_and_check(self):
         roles = tf.SiteRoles(grid=tf.CTRef("A", 1), solar=tf.CTRef("A", 2), solar_gen_negative=False,
+                             solar_sign_auto=False,
                              battery=tf.CTRef("B", 3), battery_charge_negative=True)
         self.assertEqual(tf.SiteRoles.from_dict(roles.to_dict()), roles)
         old = tf.SiteRoles.from_dict({"grid": {"device_id": "A", "ct": 1}})
         self.assertIsNone(old.solar)
         self.assertTrue(old.solar_gen_negative)
+        self.assertTrue(old.solar_sign_auto)
         self.assertFalse(old.battery_charge_negative)
         roles.check()
         roles.battery = tf.CTRef("A", 2)

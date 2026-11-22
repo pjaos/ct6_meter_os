@@ -45,6 +45,8 @@ class SelfUseResult:
     home_kwh: float = 0.0
     home_grid_kwh: float = 0.0
     slots: int = 0
+    days: int = 0                       # Days with data
+    solar_sign_detected: bool = False   # The solar CT sign was detected from the data
 
     @property
     def solar_used_kwh(self):
@@ -56,11 +58,23 @@ class SelfUseResult:
         return self.solar_used_kwh / self.solar_kwh if self.solar_kwh > 0.005 else None
 
     @property
+    def battery_solar_share(self):
+        """@return The share of the battery's charge that came from solar (0..1)."""
+        return self.solar_battery_kwh / self.charge_kwh if self.charge_kwh > 0.005 else 0.0
+
+    @property
     def self_sufficiency(self):
-        """@return The share of home use supplied by solar and the battery (0..1), or None."""
+        """@return The share of home use supplied by solar (0..1), or None. With a solar CT, battery
+                   discharge counts only in proportion to the solar share of its charge, so a
+                   battery charged from the grid overnight doesn't count as self-supplied.
+                   Without a solar CT, the share supplied by the battery."""
         if self.home_kwh <= 0.005:
             return None
-        return max(0.0, min(1.0, (self.solar_home_kwh + self.discharge_kwh) / self.home_kwh))
+        if self.has_solar:
+            own = self.solar_home_kwh + self.discharge_kwh * self.battery_solar_share
+        else:
+            own = self.discharge_kwh
+        return max(0.0, min(1.0, own / self.home_kwh))
 
     @property
     def battery_efficiency(self):
@@ -70,7 +84,30 @@ class SelfUseResult:
     @property
     def solar_sign_suspect(self):
         """@return True if the solar CT reads more in the 'consumption' direction than generation."""
-        return self.has_solar and self.solar_reverse_kwh > max(0.5, self.solar_kwh)
+        return self.has_solar and not self.solar_sign_detected and self.solar_reverse_kwh > max(0.5, self.solar_kwh)
+
+    @property
+    def battery_sign_suspect(self):
+        """@return True if, over a week or more, more came out of the battery than went in
+                   (impossible, so the battery CT sign is probably the wrong way round)."""
+        return self.has_battery and self.days >= BATTERY_CHECK_DAYS and \
+            self.discharge_kwh > max(1.0, self.charge_kwh * 1.05)
+
+
+BATTERY_CHECK_DAYS = 7      # Range needed before battery out > in is flagged
+MIN_DETECT_KWH = 1.0        # Solar energy needed to detect the solar CT sign
+
+
+def detect_gen_negative(solar_slots):
+    """@brief Detect which way the solar CT reads generation. Generation is far larger than the
+              inverter's overnight standby, so it is the direction with more energy.
+       @return True if generation reads negative, False if positive, or None if there isn't
+               enough energy to tell (e.g. a range at night)."""
+    pos = sum(float(s["pos_kwh"] or 0.0) for s in solar_slots or [])
+    neg = -sum(float(s["neg_kwh"] or 0.0) for s in solar_slots or [])
+    if max(pos, neg) < MIN_DETECT_KWH:
+        return None
+    return neg > pos
 
 
 def _by_slot(slots):
@@ -115,6 +152,7 @@ def calc_self_use(grid_slots, solar_slots=None, battery_slots=None, grid_import_
         r.home_kwh += home
         r.home_grid_kwh += max(0.0, imp - (chg - to_batt))
         r.slots += 1
+    r.days = len({slot.date() for slot in grid})
     return r
 
 
@@ -130,8 +168,10 @@ def summary_text(r):
     if r.has_battery:
         parts.append(f"Battery in {r.charge_kwh:.2f} · out {r.discharge_kwh:.2f} kWh")
     parts.append(f"Home {r.home_kwh:.2f} kWh, {_pc(r.self_sufficiency)} from "
-                 f"{'solar & battery' if r.has_solar and r.has_battery else 'solar' if r.has_solar else 'battery'}")
+                 f"{'solar' if r.has_solar else 'battery'}")
     text = " · ".join(parts)
+    if r.battery_sign_suspect:
+        text = "⚠ Check the battery CT sign (more out than in) · " + text
     if r.solar_sign_suspect:
         text = "⚠ Check the solar CT sign · " + text
     return text
@@ -161,7 +201,8 @@ def table_rows(r):
         add("  from the grid" + (" (estimate)" if r.has_solar else ""), r.grid_battery_kwh,
             share(r.grid_battery_kwh, r.charge_kwh))
         add("Battery discharged (% of in)", r.discharge_kwh, _pc(r.battery_efficiency))
-    add("Home use (% self-supplied)", r.home_kwh, _pc(r.self_sufficiency))
+    add("Home use (% from solar)" if r.has_solar else "Home use (% from battery)", r.home_kwh,
+        _pc(r.self_sufficiency))
     if r.has_solar:
         add("  from solar", r.solar_home_kwh, share(r.solar_home_kwh, r.home_kwh))
     if r.has_battery:
@@ -173,6 +214,7 @@ def table_rows(r):
 CAVEAT = ("Whole site, from the grid, solar and battery CTs set in 'Tariff & CT roles'. "
           "Home use is everything except the battery (it includes the EV, Eddi etc.). "
           "Self-consumption = solar used on site ÷ solar generated. "
-          "Self-sufficiency = home use supplied by solar and the battery ÷ home use; "
-          "battery energy charged from the grid counts as battery. "
-          "The solar/grid split of the battery charge is estimated per half-hour.")
+          "Home use from solar = solar used directly plus battery discharge in proportion to the "
+          "share of the battery's charge that came from solar (grid-charged battery energy counts as grid). "
+          "The solar/grid split of the battery charge is estimated per half-hour. "
+          "The solar CT sign is detected from the data unless set in 'Tariff & CT roles'.")

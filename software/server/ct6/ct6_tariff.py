@@ -158,7 +158,8 @@ class SiteRoles:
     ev: CTRef = None
     grid_import_negative: bool = True   # CT6 default: import power is a negative value
     solar: CTRef = None
-    solar_gen_negative: bool = True     # Generation flows into the home, like import
+    solar_gen_negative: bool = True     # Used when solar_sign_auto is False
+    solar_sign_auto: bool = True        # Detect the solar CT sign from the data
     battery: CTRef = None
     battery_charge_negative: bool = False   # Discharge flows into the home (negative), so charge is positive
 
@@ -167,6 +168,7 @@ class SiteRoles:
             return r.to_dict() if r else None
         return {"grid": ref(self.grid), "ev": ref(self.ev), "grid_import_negative": self.grid_import_negative,
                 "solar": ref(self.solar), "solar_gen_negative": self.solar_gen_negative,
+                "solar_sign_auto": self.solar_sign_auto,
                 "battery": ref(self.battery), "battery_charge_negative": self.battery_charge_negative}
 
     @staticmethod
@@ -177,6 +179,7 @@ class SiteRoles:
                          grid_import_negative=bool(d.get("grid_import_negative", True)),
                          solar=CTRef.from_dict(d.get("solar")),
                          solar_gen_negative=bool(d.get("solar_gen_negative", True)),
+                         solar_sign_auto=bool(d.get("solar_sign_auto", True)),
                          battery=CTRef.from_dict(d.get("battery")),
                          battery_charge_negative=bool(d.get("battery_charge_negative", False)))
 
