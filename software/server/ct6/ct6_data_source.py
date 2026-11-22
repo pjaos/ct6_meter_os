@@ -48,6 +48,7 @@ class CT6DataSource(ABC):
         """@brief Total a power column per half-hour using the minute resolution table.
                   Each minute row is taken as one minute at that power. Used for costs.
            @return A list of dicts with slot (datetime, start of the half-hour),
+                   minutes (minute rows with data in the half-hour),
                    pos_kwh (energy from positive readings, >= 0) and
                    neg_kwh (energy from negative readings, <= 0), ordered by slot."""
 
@@ -229,12 +230,13 @@ class MySQLDataSource(CT6DataSource):
         slot = f"DATE_SUB({TIMESTAMP}, INTERVAL MOD(MINUTE({TIMESTAMP}), 30) * 60 + SECOND({TIMESTAMP}) SECOND)"
         sql = f"SELECT {slot} AS slot, " \
               f"SUM(GREATEST({column}, 0)) / 60000.0 AS pos_kwh, " \
-              f"SUM(LEAST({column}, 0)) / 60000.0 AS neg_kwh " \
+              f"SUM(LEAST({column}, 0)) / 60000.0 AS neg_kwh, COUNT(*) AS minutes " \
               f"FROM {_quote_name(device_id)}.{BaseConstants.MINUTE_RES_DB_DATA_TABLE_NAME} " \
               f"WHERE {TIMESTAMP} BETWEEN %s AND %s GROUP BY slot ORDER BY slot"
         rows = self._query(sql, (start_dt, stop_dt))
         for r in rows:
             r["pos_kwh"] = float(r["pos_kwh"] or 0.0)
+            r["minutes"] = int(r["minutes"] or 0)
             r["neg_kwh"] = float(r["neg_kwh"] or 0.0)
         return rows
 
@@ -401,12 +403,14 @@ class SQLiteDataSource(CT6DataSource):
         slot = f"SUBSTR({TIMESTAMP}, 1, 14) || CASE WHEN CAST(SUBSTR({TIMESTAMP}, 15, 2) AS INTEGER) < 30 " \
                f"THEN '00:00' ELSE '30:00' END"
         sql = f"SELECT {slot} AS slot, SUM(MAX({column}, 0)) / 60000.0 AS pos_kwh, " \
-              f"SUM(MIN({column}, 0)) / 60000.0 AS neg_kwh FROM {BaseConstants.MINUTE_RES_DB_DATA_TABLE_NAME} " \
+              f"SUM(MIN({column}, 0)) / 60000.0 AS neg_kwh, COUNT(*) AS minutes " \
+              f"FROM {BaseConstants.MINUTE_RES_DB_DATA_TABLE_NAME} " \
               f"WHERE {TIMESTAMP} BETWEEN ? AND ? GROUP BY slot ORDER BY slot"
         rows = self._query(device_id, sql, (self._ts_text(start_dt), self._ts_text(stop_dt)))
         for r in rows:
             r["slot"] = self._parse_ts(r["slot"])
             r["pos_kwh"] = float(r["pos_kwh"] or 0.0)
+            r["minutes"] = int(r["minutes"] or 0)
             r["neg_kwh"] = float(r["neg_kwh"] or 0.0)
         return rows
 

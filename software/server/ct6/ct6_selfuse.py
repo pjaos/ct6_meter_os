@@ -47,6 +47,7 @@ class SelfUseResult:
     slots: int = 0
     days: int = 0                       # Days with data
     solar_sign_detected: bool = False   # The solar CT sign was detected from the data
+    coverage: dict = None               # CT role name -> share of the range's minutes with data (0..1)
 
     @property
     def solar_used_kwh(self):
@@ -92,6 +93,24 @@ class SelfUseResult:
                    (impossible, so the battery CT sign is probably the wrong way round)."""
         return self.has_battery and self.days >= BATTERY_CHECK_DAYS and \
             self.discharge_kwh > max(1.0, self.charge_kwh * 1.05)
+
+
+COVERAGE_NOTE_BELOW = 0.99  # Show the data coverage in the summary line below this
+
+def data_coverage(slots, start_dt, end_dt):
+    """@brief The share of the minutes in start_dt..end_dt that have a minute row.
+       @param slots Half-hour energy dicts with a minutes count.
+       @param end_dt The end of the range, normally min(stop, now).
+       @return 0..1, or None if the range has no minutes."""
+    expected = round((end_dt - start_dt).total_seconds() / 60.0)
+    if expected <= 0:
+        return None
+    return min(1.0, sum(int(s.get("minutes", 0) or 0) for s in slots or []) / expected)
+
+
+def coverage_text(coverage):
+    """@return e.g. 'grid 99.8%, solar 96.4%' or '' if there is nothing to show."""
+    return ", ".join(f"{name} {value * 100:.1f}%" for name, value in (coverage or {}).items() if value is not None)
 
 
 BATTERY_CHECK_DAYS = 7      # Range needed before battery out > in is flagged
@@ -169,6 +188,9 @@ def summary_text(r):
         parts.append(f"Battery in {r.charge_kwh:.2f} · out {r.discharge_kwh:.2f} kWh")
     parts.append(f"Home {r.home_kwh:.2f} kWh, {_pc(r.self_sufficiency)} from "
                  f"{'solar' if r.has_solar else 'battery'}")
+    low = [v for v in (r.coverage or {}).values() if v is not None and v < COVERAGE_NOTE_BELOW]
+    if low:
+        parts.append(f"data {min(low) * 100:.1f}% complete")
     text = " · ".join(parts)
     if r.battery_sign_suspect:
         text = "⚠ Check the battery CT sign (more out than in) · " + text
@@ -208,7 +230,24 @@ def table_rows(r):
     if r.has_battery:
         add("  from the battery", r.discharge_kwh, share(r.discharge_kwh, r.home_kwh))
     add("  from the grid", r.home_grid_kwh, share(r.home_grid_kwh, r.home_kwh))
+    if r.coverage:
+        add("Minutes with data")
+        for name, value in r.coverage.items():
+            if value is not None:
+                add(f"  {name} CT", None, f"{value * 100:.1f}%")
     return rows
+
+
+def caveat_text(r):
+    """@return The tooltip text, including the data coverage."""
+    text = CAVEAT
+    cov = coverage_text(r.coverage)
+    if cov:
+        text += (f" Minutes with data: {cov} of the minutes in the range. Missing minutes count as zero "
+                 "here (and in the costs), while the kWh table (as ct6_dash) multiplies each reading by the "
+                 "time since the previous one, so a gap is filled by the reading after it and the table "
+                 "can show more.")
+    return text
 
 
 CAVEAT = ("Whole site, from the grid, solar and battery CTs set in 'Tariff & CT roles'. "

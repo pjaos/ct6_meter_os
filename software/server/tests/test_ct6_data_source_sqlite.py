@@ -66,6 +66,13 @@ class TestSQLiteDataSource(unittest.TestCase):
         self.ds.close()
         self.tmp.cleanup()
 
+    def test_half_hour_energy_minutes(self):
+        rows = self.ds.half_hour_energy(self.house, "CT1_ACT_WATTS", datetime(2026, 11, 19), datetime(2026, 11, 21))
+        self.assertEqual([(r["slot"], r["minutes"]) for r in rows],
+                         [(datetime(2026, 11, 19, 23, 30), 1), (datetime(2026, 11, 20, 0, 0), 1),
+                          (datetime(2026, 11, 20, 12, 0), 1), (datetime(2026, 11, 20, 23, 30), 1)])
+        self.assertAlmostEqual(rows[2]["neg_kwh"], -0.01)
+
     def test_daily_run_time(self):
         rows = self.ds.daily_run_time(self.house, "CT1_ACT_WATTS", 600.0,
                                       datetime(2026, 11, 19), datetime(2026, 11, 21))

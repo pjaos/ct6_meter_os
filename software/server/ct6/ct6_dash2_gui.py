@@ -514,13 +514,27 @@ class _ClientSession:
                                                          day0 - timedelta(seconds=1)))
                 if found is not None:
                     gen_negative, detected = found, True
-            res = su.calc_self_use(slots(roles.grid), solar, slots(roles.battery),
+            grid, battery = slots(roles.grid), slots(roles.battery)
+            res = su.calc_self_use(grid, solar, battery,
                                    grid_import_negative=roles.grid_import_negative,
                                    solar_gen_negative=gen_negative,
                                    battery_charge_negative=roles.battery_charge_negative)
             res.solar_sign_detected = detected
+            res.coverage = {name: self._coverage(ref, data, start, stop)
+                            for name, ref, data in (("grid", roles.grid, grid), ("solar", roles.solar, solar),
+                                                    ("battery", roles.battery, battery)) if ref is not None}
         return {"visible": True, "warn": res.solar_sign_suspect or res.battery_sign_suspect,
-                "summary": su.summary_text(res), "caveat": su.CAVEAT, "rows": su.table_rows(res)}
+                "summary": su.summary_text(res), "caveat": su.caveat_text(res), "rows": su.table_rows(res)}
+
+    def _coverage(self, ref, slots, start, stop):
+        """@return The share of minutes with data for a CT over start..stop, from the device's first
+                   data and up to now."""
+        dev = self._devices.get(ref.device_id)
+        begin = start
+        if dev is not None and dev.first_date:
+            begin = max(start, datetime.combine(dev.first_date, datetime.min.time()))
+        end = min(stop + timedelta(seconds=1), datetime.now().replace(second=0, microsecond=0))
+        return su.data_coverage(slots, begin, end)
 
     def _calc_cost(self, start, stop):
         """@brief Calculate the whole-site cost for the period (runs in the worker thread).
@@ -553,6 +567,9 @@ class _ClientSession:
         res = tf.calc_cost(grid, tariff, start, stop, import_negative=roles.grid_import_negative, ev_slots=ev)
         ev_name = (devices[roles.ev.device_id].ct_names[roles.ev.ct - 1] or f"CT{roles.ev.ct}") if roles.ev else None
         summary = tf.cost_summary_text(res, ev_name)
+        cov = self._coverage(roles.grid, grid, start, stop)
+        if cov is not None:
+            caveat += f" Grid CT minutes with data: {cov * 100:.1f}% (missing minutes count as zero)."
         warning = tf.uncosted_warning(res, tariff)
         if warning:
             summary = f"{warning} · {summary}"

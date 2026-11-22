@@ -132,6 +132,25 @@ class TestSelfUse(unittest.TestCase):
         r = su.calc_self_use(self.grid, self.solar, self.battery, battery_charge_negative=True)
         self.assertFalse(r.battery_sign_suspect)
 
+    def test_data_coverage(self):
+        a = datetime(2025, 6, 1)
+        slots = [{"slot": a, "pos_kwh": 0, "neg_kwh": 0, "minutes": 30},
+                 {"slot": a.replace(minute=30), "pos_kwh": 0, "neg_kwh": 0, "minutes": 24}]
+        self.assertAlmostEqual(su.data_coverage(slots, a, a.replace(hour=1)), 54 / 60)
+        self.assertIsNone(su.data_coverage(slots, a, a))
+        self.assertEqual(su.data_coverage(slots, a, a.replace(minute=40)), 1.0)    # Capped
+        r = su.calc_self_use(self.grid, self.solar, self.battery)
+        r.coverage = {"grid": 0.998, "solar": 0.964, "battery": None}
+        self.assertIn("data 96.4% complete", su.summary_text(r))
+        rows = {row["item"]: row["pc"] for row in su.table_rows(r)}
+        self.assertEqual((rows["  grid CT"], rows["  solar CT"]), ("99.8%", "96.4%"))
+        self.assertNotIn("  battery CT", rows)
+        self.assertIn("Minutes with data: grid 99.8%, solar 96.4%", su.caveat_text(r))
+        r.coverage = {"grid": 0.995}
+        self.assertNotIn("complete", su.summary_text(r))
+        r.coverage = None
+        self.assertEqual(su.caveat_text(r), su.CAVEAT)
+
     def test_roles_round_trip_and_check(self):
         roles = tf.SiteRoles(grid=tf.CTRef("A", 1), solar=tf.CTRef("A", 2), solar_gen_negative=False,
                              solar_sign_auto=False,
