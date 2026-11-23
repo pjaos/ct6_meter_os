@@ -168,6 +168,26 @@ class TestCompare(unittest.TestCase):
         self.assertEqual(out[0]["CT1_ACT_WATTS"], 5.0)
 
 
+class TestZoom(unittest.TestCase):
+
+    def test_zoom_resolution(self):
+        self.assertEqual(cd.zoom_resolution(2 * 3600, Resolution.MIN), Resolution.SEC)
+        self.assertEqual(cd.zoom_resolution(3 * 86400, Resolution.HOUR), Resolution.MIN)
+        self.assertEqual(cd.zoom_resolution(60 * 86400, Resolution.DAY), Resolution.HOUR)
+        self.assertIsNone(cd.zoom_resolution(3 * 86400, Resolution.MIN))     # Already fine enough
+        self.assertIsNone(cd.zoom_resolution(3600, Resolution.SEC))
+        self.assertIsNone(cd.zoom_resolution(1000 * 86400, Resolution.DAY))
+
+    def test_merge_points(self):
+        base = [["2026-11-20 00:00:00", 1], ["2026-11-20 01:00:00", 2], ["2026-11-20 02:00:00", 3],
+                ["2026-11-20 03:00:00", 4]]
+        fine = [["2026-11-20 00:59:00", 9], ["2026-11-20 01:00:00", 5], ["2026-11-20 01:30:00", 6],
+                ["2026-11-20 02:00:00", 7]]
+        out = cd.merge_points(base, fine, "2026-11-20 01:00:00", "2026-11-20 02:00:00")
+        self.assertEqual([p[1] for p in out], [1, 5, 6, 7, 4])
+        self.assertEqual(out, sorted(out, key=lambda p: p[0]))
+
+
 class TestKWh(unittest.TestCase):
     START = datetime(2026, 11, 20, 0, 0)
 

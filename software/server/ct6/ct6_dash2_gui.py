@@ -49,6 +49,9 @@ MSG_DOWNLOAD = "download"
 MSG_LIVE = "live"           # Live tab update (has its own request counter, see _start_live_job())
 MSG_HEATPUMP = "heatpump"   # Heat pump tab results
 MSG_SELFUSE = "selfuse"     # Solar / battery self-consumption figures
+MSG_ZOOM = "zoom"           # Finer data for a zoomed-in plot (has its own request counter)
+ZOOM_DELAY_SECS = 0.7       # Wait this long after the last zoom/pan before re-reading
+ZOOM_PAD = 0.1              # Read this fraction of the visible span extra on each side (for panning)
 
 LIVE_TAB = "__live__"       # Tab name of the Live tab
 HP_TAB = "__heatpump__"     # Tab name of the Heat pump tab
@@ -109,6 +112,10 @@ HELP_COMPARE = "Draw an earlier period over the plot as dashed lines in the same
                "the selected dates: the previous period of the same length (Today vs yesterday, " \
                "This week vs last week), the week before, or the same dates a year before. The kWh table " \
                "adds the earlier period's totals. Not shown on the Energy view."
+HELP_ZOOM = "When you zoom in on a plot (mouse wheel, slider or box zoom), re-read the visible part " \
+            "at a finer resolution: Sec for up to 6 hours, Min for up to 14 days, Hour beyond that. " \
+            "It runs shortly after you stop zooming and doesn't block the controls. kWh figures still " \
+            "cover the whole selected period."
 HELP_PEAK = "Find the day with the largest daily kWh value (+ve or -ve) for the selected CT port " \
             "between the selected start and stop dates/times. This can be used to gauge solar " \
             "panel performance/degradation over time."
@@ -208,6 +215,11 @@ class _DeviceTab:
     bucket_row: object = None
     mode: str = "line"          # Current chart layout: "line" or "bar"
     chart_box: object = None    # Container the chart is (re)built in
+    read_params: dict = None    # Parameters of the last plot read (for zoom refinement)
+    base_series: list = None    # The plotted series as read (before any zoom refinement)
+    x_min: object = None        # datetime extent of the plotted data
+    x_max: object = None
+    zoom_timer: object = None
 
 
 @dataclass
@@ -246,6 +258,7 @@ class _ClientSession:
         self._options = gui.options
         self._queue = queue.Queue()
         self._job_id = 0
+        self._zoom_id = 0
         self._job_lock = threading.Lock()
         self._suppress_events = False
         self._tabs = {}            # device_id -> _DeviceTab
@@ -301,6 +314,13 @@ class _ClientSession:
                 msg = self._queue.get_nowait()
             except queue.Empty:
                 return
+            if msg["type"] == MSG_ZOOM:
+                if msg.get("zoom_id") == self._zoom_id and msg.get("job_id") == self._job_id:
+                    try:
+                        self._apply_zoom(msg)
+                    except Exception:
+                        self._uio.errorException()
+                continue
             if msg["type"] == MSG_LIVE:
                 if msg.get("live_id") == self._live_id:
                     self._live_busy = False
@@ -720,6 +740,9 @@ class _ClientSession:
                   "gaps": bool(self._gaps.value),
                   "compare": Compare(self._compare.value or Compare.OFF.value),
                   "bucket": EnergyBucket(dt.bucket_toggle.value)}
+        dt.read_params = params
+        dt.base_series = None
+        self._zoom_id += 1          # Drop any zoom refinement still running for the old plot
         self._start_job(self._worker_read, params)
 
     # ------------------------------------------------------------ remembered settings
@@ -897,10 +920,116 @@ class _ClientSession:
                                       "opacity": 0.6 if cmp else 1},
                         "z": 1 if cmp else 2, "emphasis": {"disabled": True}, "data": s["data"]}
             opts["series"] = [line(s) for s in msg["series"]]
+            dt.base_series = msg["series"]
+            xs = [pt[0] for s_ in msg["series"] for pt in (s_["data"][:1] + s_["data"][-1:])]
+            dt.x_min = datetime.strptime(min(xs), "%Y-%m-%d %H:%M:%S") if xs else None
+            dt.x_max = datetime.strptime(max(xs), "%Y-%m-%d %H:%M:%S") if xs else None
+            for zoom in opts.get("dataZoom", []):
+                zoom.pop("start", None)
+                zoom.pop("end", None)
             opts["legend"]["data"] = [s["name"] for s in msg["series"]]
         dt.chart.update()
         dt.kwh_bar.set_visibility(msg["has_kwh"])
         self._set_chart_height(dt)
+
+    # ------------------------------------------------------------ zoom refinement
+
+    def _hook_zoom(self, dt):
+        dt.chart.on("chart:datazoom", lambda _e, d=dt: self._on_zoom(d))
+
+    def _on_zoom(self, dt):
+        """@brief Called on every zoom/pan: re-read finer data once the user has stopped."""
+        if not self._zoom_refine.value or dt.mode != "line" or not dt.base_series or dt.read_params is None:
+            return
+        if dt.zoom_timer is not None:
+            dt.zoom_timer.cancel()
+        dt.zoom_timer = ui.timer(ZOOM_DELAY_SECS, lambda d=dt: self._refine_zoom(d), once=True)
+
+    async def _refine_zoom(self, dt):
+        dt.zoom_timer = None
+        if dt.x_min is None or dt.x_max is None or dt.x_max <= dt.x_min or dt.base_series is None:
+            return
+        try:
+            option = await dt.chart.run_chart_method("getOption", timeout=2)
+            zoom = option["dataZoom"][0]
+            start_pc, end_pc = float(zoom.get("start", 0)), float(zoom.get("end", 100))
+        except Exception:
+            return
+        if end_pc - start_pc >= 99.5:
+            return                  # Not zoomed in
+        extent = (dt.x_max - dt.x_min).total_seconds()
+        view0 = dt.x_min + timedelta(seconds=extent * start_pc / 100.0)
+        view1 = dt.x_min + timedelta(seconds=extent * end_pc / 100.0)
+        p = dt.read_params
+        res = cd.zoom_resolution((view1 - view0).total_seconds(), p["resolution"])
+        if res is None:
+            return
+        pad = (view1 - view0) * ZOOM_PAD
+        w0 = max(dt.x_min, view0 - pad).replace(microsecond=0)
+        w1 = min(dt.x_max, view1 + pad).replace(microsecond=0)
+        self._zoom_id += 1
+        zoom_id, job_id = self._zoom_id, self._job_id
+        self._show_status(dt.device.device_id, f"Loading {res.value} data for the zoomed-in part...")
+
+        def run():
+            msg = {"type": MSG_ZOOM, "zoom_id": zoom_id, "job_id": job_id, "device_id": dt.device.device_id,
+                   "start_pc": start_pc, "end_pc": end_pc, "res": res.value}
+            t0 = time()
+            try:
+                with self._gui.data_source_factory() as ds:
+                    count = ds.count_rows(p["device"].device_id, w0, w1, res)
+                    if count > p["maxpp"]:
+                        msg["error"] = f"Zoom in further for {res.value} data ({count} values, max = {p['maxpp']})."
+                        self._queue.put(msg)
+                        return
+                    rows = ds.read_rows(p["device"].device_id, w0, w1, res)
+                msg["series"] = self._series_data(rows, p, res)
+                msg["x0"], msg["x1"] = cd._x(w0), cd._x(w1)
+            except Exception as ex:
+                self._uio.errorException()
+                msg["error"] = f"Zoom read failed: {ex}"
+            msg["secs"] = time() - t0
+            self._queue.put(msg)
+
+        threading.Thread(target=run, daemon=True, name=f"ct6_dash2_zoom_{zoom_id}").start()
+
+    def _series_data(self, rows, p, resolution):
+        """@return The point lists of the main (not comparison) traces, in plot order."""
+        plot_type, device = p["plot_type"], p["device"]
+        gap_secs = cd.gap_threshold(rows, resolution) if p["gaps"] else None
+        out = []
+        if plot_type.is_per_ct:
+            is_power = plot_type == PlotType.POWER
+            for ct_number, _name in device.active_cts():
+                column = cd.ct_field(ct_number, plot_type, p["power_type"])
+                points = cd.build_series(rows, column, resolution, p["invert"], is_power=is_power, gap_secs=gap_secs)
+                if not is_power:
+                    points = [[x, None if y is None else abs(y)] for x, y in points]
+                out.append(cd.downsample_minmax(points, p["maxdp"]))
+        else:
+            points = cd.build_series(rows, plot_type.single_field, resolution, is_power=False, gap_secs=gap_secs)
+            out.append(cd.downsample_minmax(points, p["maxdp"]))
+        return out
+
+    def _apply_zoom(self, msg):
+        dt = self._tabs.get(msg["device_id"])
+        if dt is None or dt.base_series is None or dt.mode != "line":
+            return
+        if msg.get("error"):
+            self._show_status(dt.device.device_id, msg["error"])
+            return
+        opts = dt.chart.options
+        fine = iter(msg["series"])
+        for i, s in enumerate(dt.base_series):
+            if not s.get("compare"):
+                opts["series"][i]["data"] = cd.merge_points(s["data"], next(fine, []), msg["x0"], msg["x1"])
+        # Keep the user's zoom (the data extent is unchanged, so the percentages still apply).
+        for zoom in opts.get("dataZoom", []):
+            zoom["start"], zoom["end"] = msg["start_pc"], msg["end_pc"]
+        dt.chart.update()
+        self._show_status(dt.device.device_id,
+                          f"Zoomed in: showing {msg['res']} data for {msg['x0'][:16]} – {msg['x1'][:16]} "
+                          f"(read in {msg['secs']:.1f} s).")
 
     # ------------------------------------------------------------ theme
 
@@ -938,6 +1067,7 @@ class _ClientSession:
         dt.chart_box.clear()
         with dt.chart_box:
             dt.chart = ui.echart(opts).classes("w-full")
+        self._hook_zoom(dt)
         self._set_chart_height(dt)
 
     def _update_summary_row(self, device_id, row, compare_label=""):
@@ -1187,6 +1317,7 @@ class _ClientSession:
                         dt.self_table.set_visibility(False)
                 with ui.element("div").classes("w-full") as dt.chart_box:
                     dt.chart = ui.echart(_base_chart_options(self._dark)).classes("w-full")
+                    self._hook_zoom(dt)
                 self._set_chart_height(dt)
 
     # ------------------------------------------------------------ Heat pump tab
@@ -1626,6 +1757,12 @@ class _ClientSession:
                                           value=self._valid_pref(up.COMPARE, compares, Compare.OFF.value),
                                           on_change=self._on_compare_change).props("dense").classes("w-44")
                 self._help(HELP_COMPARE)
+            with ui.row().classes("items-center gap-1 no-wrap"):
+                self._zoom_refine = ui.checkbox("Load finer data when zoomed in",
+                                                value=bool(self._prefs.get(up.ZOOM_REFINE)),
+                                                on_change=lambda e: self._remember(up.ZOOM_REFINE, bool(e.value))) \
+                                      .props("dense")
+                self._help(HELP_ZOOM)
             self._controls += [self._resolution, self._power_type, self._polarity, self._gaps, self._compare]
 
             ui.separator()

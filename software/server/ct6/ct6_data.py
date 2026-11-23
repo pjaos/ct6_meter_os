@@ -306,6 +306,33 @@ def build_series(rows, column, resolution, invert=False, is_power=True, gap_secs
     return points
 
 
+# Zoom refinement: the finest resolution used for a zoomed-in span (seconds) of at most this.
+ZOOM_RESOLUTION_LIMITS = [(Resolution.SEC, 6 * 3600), (Resolution.MIN, 14 * 86400), (Resolution.HOUR, 800 * 86400)]
+RESOLUTION_ORDER = [Resolution.SEC, Resolution.MIN, Resolution.HOUR, Resolution.DAY]
+
+
+def zoom_resolution(span_secs, current):
+    """@brief The resolution to re-read a zoomed-in time span at.
+       @param span_secs The visible span in seconds.
+       @param current The Resolution the plot was read at.
+       @return A finer Resolution than current, or None if current is already fine enough."""
+    for res, limit in ZOOM_RESOLUTION_LIMITS:
+        if span_secs <= limit:
+            break
+    else:
+        res = Resolution.DAY
+    return res if RESOLUTION_ORDER.index(res) < RESOLUTION_ORDER.index(current) else None
+
+
+def merge_points(base, fine, x0, x1):
+    """@brief Replace the base points between x0 and x1 (x strings, inclusive) with the finer points.
+       @return The merged list of [x, y] points."""
+    before = [p for p in base if p[0] < x0]
+    after = [p for p in base if p[0] > x1]
+    inside = [p for p in fine if x0 <= p[0] <= x1]
+    return before + inside + after
+
+
 def downsample_minmax(points, max_points):
     """@brief Reduce the number of points sent to the browser while keeping peaks.
               The points are split into buckets and the min and max of each bucket
