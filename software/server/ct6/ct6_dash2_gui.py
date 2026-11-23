@@ -99,6 +99,10 @@ MAX_MSGS_PER_POLL = 200
 HELP_RESOLUTION = "Select the plot resolution."
 HELP_POWER_TYPE = "Select the power type. Active = Power normally charged by electricity supplier."
 HELP_POLARITY = "Select imported electrical power to be plotted as negative or positive values."
+HELP_GAPS = "Break the plot lines where readings are missing (e.g. the CT6 was offline) instead of " \
+            "joining the readings either side with a straight line. A gap is longer than 5 times the " \
+            "usual time between readings, and at least 1 min (Sec), 5 min (Min), 3 h (Hour) or 3 days (Day). " \
+            "kWh figures are not affected."
 HELP_PEAK = "Find the day with the largest daily kWh value (+ve or -ve) for the selected CT port " \
             "between the selected start and stop dates/times. This can be used to gauge solar " \
             "panel performance/degradation over time."
@@ -114,6 +118,7 @@ SUMMARY_COLUMNS = [
 
 
 THEME_KEY = "dark_theme"     # app.storage.user key: this browser's theme choice
+GAPS_KEY = "show_gaps"       # app.storage.user key: break plot lines at data gaps
 THEME_CSS = """
 .ct6-sub { color: #9e9e9e; }
 .ct6-sum { color: #bdbdbd; }
@@ -385,18 +390,21 @@ class _ClientSession:
         plot_type = p["plot_type"]
         series = []
         downsampled = False
+        gap_secs = cd.gap_threshold(rows, p["resolution"]) if p["gaps"] else None
         if plot_type.is_per_ct:
             is_power = plot_type == PlotType.POWER
             for ct_number, name in device.active_cts():
                 column = cd.ct_field(ct_number, plot_type, p["power_type"])
-                points = cd.build_series(rows, column, p["resolution"], p["invert"], is_power=is_power)
+                points = cd.build_series(rows, column, p["resolution"], p["invert"], is_power=is_power,
+                                         gap_secs=gap_secs)
                 if not is_power:
-                    points = [[x, abs(y)] for x, y in points]
+                    points = [[x, None if y is None else abs(y)] for x, y in points]
                 reduced = cd.downsample_minmax(points, p["maxdp"])
                 downsampled |= len(reduced) < len(points)
                 series.append({"name": name, "data": reduced})
         else:
-            points = cd.build_series(rows, plot_type.single_field, p["resolution"], is_power=False)
+            points = cd.build_series(rows, plot_type.single_field, p["resolution"], is_power=False,
+                                     gap_secs=gap_secs)
             reduced = cd.downsample_minmax(points, p["maxdp"])
             downsampled = len(reduced) < len(points)
             series.append({"name": plot_type.single_trace_name(), "data": reduced})
@@ -417,6 +425,10 @@ class _ClientSession:
 
         msg = f"Took {time() - start_t:.1f} seconds to read and plot the data " \
               f"({len(rows)} rows, DB read {read_secs:.1f} s{cost_text})."
+        if gap_secs is not None:
+            gaps = cd.count_gaps(rows, gap_secs)
+            if gaps:
+                msg += f" {gaps} data gap(s) over {cd.format_duration(gap_secs)} shown as breaks."
         if downsampled:
             msg += f" Display reduced to {p['maxdp']} points per trace."
         post(MSG_STATUS, device_id=dev_id, message=msg)
@@ -660,8 +672,14 @@ class _ClientSession:
                   "stop": stop,
                   "maxpp": self._options.maxpp,
                   "maxdp": self._options.maxdp,
+                  "gaps": bool(self._gaps.value),
                   "bucket": EnergyBucket(dt.bucket_toggle.value)}
         self._start_job(self._worker_read, params)
+
+    def _on_gaps_change(self, e):
+        app.storage.user[GAPS_KEY] = bool(e.value)
+        if self._tab_panels is not None and self._selected_tab() is not None:
+            self._read_selected()
 
     def _invert_kw(self):
         """@return True if imported power should be plotted as positive values (as ct6_dash)."""
@@ -1474,7 +1492,12 @@ class _ClientSession:
                 self._polarity = ui.toggle([p.value for p in Polarity], value=default_pol.value) \
                                    .props("no-caps dense")
                 self._help(HELP_POLARITY)
-            self._controls += [self._resolution, self._power_type, self._polarity]
+            with ui.row().classes("items-center gap-1 no-wrap"):
+                self._gaps = ui.checkbox("Show data gaps as breaks",
+                                         value=bool(app.storage.user.get(GAPS_KEY, True)),
+                                         on_change=self._on_gaps_change).props("dense")
+                self._help(HELP_GAPS)
+            self._controls += [self._resolution, self._power_type, self._polarity, self._gaps]
 
             ui.separator()
             ui.label("Peak daily kWh").classes("text-sm ct6-sub")

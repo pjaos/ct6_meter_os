@@ -206,7 +206,33 @@ def _x(ts):
     return ts.strftime(X_FORMAT)
 
 
-def build_series(rows, column, resolution, invert=False, is_power=True):
+# Smallest gap (seconds) shown as a break in the plot line, per resolution. The actual
+# threshold is the larger of this and GAP_MEDIAN_FACTOR x the typical reading interval.
+GAP_FLOOR_SECS = {"Sec": 60, "Min": 5 * 60, "Hour": 3 * 3600, "Day": 3 * 86400}
+GAP_MEDIAN_FACTOR = 5
+
+
+def gap_threshold(rows, resolution):
+    """@brief The time between readings above which the plot line is broken.
+       @param rows The DB rows (dicts with a TIMESTAMP datetime), oldest first.
+       @param resolution The Resolution.
+       @return Seconds."""
+    floor = GAP_FLOOR_SECS.get(resolution.value, 300)
+    times = [r[TIMESTAMP] for r in rows]
+    if len(times) < 3:
+        return floor
+    steps = sorted((b - a).total_seconds() for a, b in zip(times, times[1:]))
+    median = steps[len(steps) // 2]
+    return max(floor, GAP_MEDIAN_FACTOR * median)
+
+
+def count_gaps(rows, gap_secs):
+    """@return The number of gaps longer than gap_secs between consecutive rows."""
+    times = [r[TIMESTAMP] for r in rows]
+    return sum(1 for a, b in zip(times, times[1:]) if (b - a).total_seconds() > gap_secs)
+
+
+def build_series(rows, column, resolution, invert=False, is_power=True, gap_secs=None):
     """@brief Build the [x, y] points for one trace (as ct6_dash's _addToPlot()).
        @param rows The DB rows (dicts with a TIMESTAMP datetime).
        @param column The DB column to plot.
@@ -215,13 +241,19 @@ def build_series(rows, column, resolution, invert=False, is_power=True):
        @param invert If True negate the values (power plots only).
        @param is_power True for power columns (W → kW, may be inverted).
               False for PF (abs value) and single field plots (raw value).
+       @param gap_secs If set, a [x, None] point is added in the middle of each gap longer than
+              this between readings, so the plot line is broken there (ECharts connectNulls off).
        @return A list of [x_string, y] points."""
     points = []
+    last_ts = None
     for row in rows:
         ts = row[TIMESTAMP]
         value = row.get(column)
         if value is None:
             continue
+        if gap_secs is not None and last_ts is not None and (ts - last_ts).total_seconds() > gap_secs:
+            points.append([_x(last_ts + (ts - last_ts) / 2), None])
+        last_ts = ts
         if is_power:
             value = (-value if invert else value) / 1000.0
         y = round(value, 4)
@@ -237,8 +269,9 @@ def downsample_minmax(points, max_points):
     """@brief Reduce the number of points sent to the browser while keeping peaks.
               The points are split into buckets and the min and max of each bucket
               are kept (in time order).
+              Gap markers ([x, None]) are always kept so line breaks survive.
        @param points A list of [x, y] points.
-       @param max_points The maximum number of points to return (>= 4).
+       @param max_points The maximum number of points to return (>= 4), plus any gap markers.
        @return The (possibly reduced) list of points."""
     n = len(points)
     if max_points is None or max_points <= 0 or n <= max_points:
@@ -252,9 +285,12 @@ def downsample_minmax(points, max_points):
         if hi <= lo:
             continue
         bucket = points[lo:hi]
-        i_min = min(range(len(bucket)), key=lambda i: bucket[i][1])
-        i_max = max(range(len(bucket)), key=lambda i: bucket[i][1])
-        for i in sorted({i_min, i_max}):
+        keep = {i for i, pt in enumerate(bucket) if pt[1] is None}
+        values = [i for i, pt in enumerate(bucket) if pt[1] is not None]
+        if values:
+            keep.add(min(values, key=lambda i: bucket[i][1]))
+            keep.add(max(values, key=lambda i: bucket[i][1]))
+        for i in sorted(keep):
             out.append(bucket[i])
     return out
 
@@ -396,6 +432,19 @@ def live_status(age_secs):
     if age_secs is None or age_secs >= LIVE_STALE_SECS:
         return "offline"
     return "ok" if age_secs < LIVE_OK_SECS else "stale"
+
+
+def format_duration(secs):
+    """@return A short duration, e.g. '45 s', '5 min', '3 h', '2 days'."""
+    secs = max(0, int(secs))
+    if secs < 60:
+        return f"{secs} s"
+    if secs < 3600:
+        return f"{secs // 60} min"
+    if secs < 86400:
+        return f"{secs // 3600} h"
+    days = secs // 86400
+    return f"{days} day{'s' if days != 1 else ''}"
 
 
 def format_age(age_secs):

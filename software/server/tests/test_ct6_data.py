@@ -100,6 +100,49 @@ class TestSeries(unittest.TestCase):
         self.assertEqual(len(cd.downsample_minmax(pts[:50], 100)), 50)
 
 
+class TestGaps(unittest.TestCase):
+
+    def rows(self, minutes):
+        t0 = datetime(2026, 11, 20)
+        return [{cd.TIMESTAMP: t0 + timedelta(minutes=m), "CT1_ACT_WATTS": 1000.0} for m in minutes]
+
+    def test_threshold(self):
+        rows = self.rows(range(0, 60))                       # 1 min data
+        self.assertEqual(cd.gap_threshold(rows, Resolution.MIN), 300)
+        rows = self.rows([0, 10, 20, 30, 40])                # 10 min data: 5 x median wins
+        self.assertEqual(cd.gap_threshold(rows, Resolution.MIN), 3000)
+        self.assertEqual(cd.gap_threshold(self.rows([0]), Resolution.SEC), 60)
+
+    def test_build_series_breaks(self):
+        rows = self.rows([0, 1, 2, 30, 31])                  # 28 min gap
+        pts = cd.build_series(rows, "CT1_ACT_WATTS", Resolution.MIN, gap_secs=300)
+        self.assertEqual(len(pts), 6)
+        self.assertIsNone(pts[3][1])
+        self.assertEqual(pts[3][0], "2026-11-20 00:16:00")    # Middle of the gap
+        self.assertEqual(cd.count_gaps(rows, 300), 1)
+        # No breaks without gap_secs (as before).
+        self.assertEqual(len(cd.build_series(rows, "CT1_ACT_WATTS", Resolution.MIN)), 5)
+
+    def test_hour_steps_and_breaks(self):
+        t0 = datetime(2026, 11, 20)
+        rows = [{cd.TIMESTAMP: t0 + timedelta(hours=h), "CT1_ACT_WATTS": 500.0} for h in (0, 1, 2, 10)]
+        pts = cd.build_series(rows, "CT1_ACT_WATTS", Resolution.HOUR, gap_secs=3 * 3600)
+        xs = [p[0] for p in pts]
+        self.assertEqual(xs, sorted(xs))                     # The marker stays in time order
+        self.assertEqual([p[1] for p in pts].count(None), 1)
+
+    def test_downsample_keeps_markers(self):
+        pts = [[f"x{i:04d}", float(i % 7)] for i in range(1000)]
+        pts.insert(500, ["x0499b", None])
+        out = cd.downsample_minmax(pts, 100)
+        self.assertIn(["x0499b", None], out)
+        self.assertLessEqual(len(out), 101)
+
+    def test_format_duration(self):
+        self.assertEqual([cd.format_duration(s) for s in (30, 300, 10800, 259200)],
+                         ["30 s", "5 min", "3 h", "3 days"])
+
+
 class TestKWh(unittest.TestCase):
     START = datetime(2026, 11, 20, 0, 0)
 
