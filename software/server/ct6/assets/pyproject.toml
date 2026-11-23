@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ct6"
-version = "15.7"
+version = "16.0"
 description = ""
 authors = ["Paul Austen <pjaos@gmail.com>"]
 readme = "README.md"
