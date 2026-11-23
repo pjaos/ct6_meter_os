@@ -950,9 +950,12 @@ class _ClientSession:
         if dt.x_min is None or dt.x_max is None or dt.x_max <= dt.x_min or dt.base_series is None:
             return
         try:
-            option = await dt.chart.run_chart_method("getOption", timeout=2)
-            zoom = option["dataZoom"][0]
-            start_pc, end_pc = float(zoom.get("start", 0)), float(zoom.get("end", 100))
+            # Ask the browser for just the zoom percentages. (getOption() would send every data
+            # point back, which can exceed NiceGUI's 1 MB message limit on a big plot.)
+            zoom = await ui.run_javascript(
+                f"const z = getElement({dt.chart.id}).chart.getOption().dataZoom[0];"
+                f"return [z.start, z.end];", timeout=2)
+            start_pc, end_pc = float(zoom[0]), float(zoom[1])
         except Exception:
             return
         if end_pc - start_pc >= 99.5:
@@ -983,6 +986,12 @@ class _ClientSession:
                         self._queue.put(msg)
                         return
                     rows = ds.read_rows(p["device"].device_id, w0, w1, res)
+                if not rows:
+                    # e.g. per-second data no longer kept for these dates: keep what's plotted.
+                    msg["error"] = f"No {res.value} data for the zoomed-in part; showing " \
+                                   f"{p['resolution'].value} data."
+                    self._queue.put(msg)
+                    return
                 msg["series"] = self._series_data(rows, p, res)
                 msg["x0"], msg["x1"] = cd._x(w0), cd._x(w1)
             except Exception as ex:
