@@ -4,3 +4,4 @@ esp32_start_rshell.sh
 todel
 heatpump_days.sh
 run_mqtt_server.sh
+doc
