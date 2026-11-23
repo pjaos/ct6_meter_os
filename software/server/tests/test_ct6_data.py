@@ -143,6 +143,31 @@ class TestGaps(unittest.TestCase):
                          ["30 s", "5 min", "3 h", "3 days"])
 
 
+class TestCompare(unittest.TestCase):
+
+    def test_offsets(self):
+        day = (datetime(2026, 11, 23), datetime(2026, 11, 23, 23, 59, 59))
+        self.assertEqual(cd.compare_offset(cd.Compare.OFF, *day), (None, ""))
+        self.assertEqual(cd.compare_offset(cd.Compare.PREVIOUS, *day), (timedelta(days=1), "previous"))
+        week = (datetime(2026, 11, 23), datetime(2026, 11, 29, 23, 59, 59))
+        self.assertEqual(cd.compare_offset(cd.Compare.PREVIOUS, *week)[0], timedelta(days=7))
+        self.assertEqual(cd.compare_offset(cd.Compare.WEEK, *day), (timedelta(days=7), "week before"))
+        off, label = cd.compare_offset(cd.Compare.YEAR, *day)
+        self.assertEqual((day[0] - off, label), (datetime(2025, 11, 23), "year before"))
+        off, _ = cd.compare_offset(cd.Compare.YEAR, datetime(2028, 2, 29), datetime(2028, 2, 29, 23, 59))
+        self.assertEqual(datetime(2028, 2, 29) - off, datetime(2027, 2, 28))
+        # A few hours still compares with the day before.
+        self.assertEqual(cd.compare_offset(cd.Compare.PREVIOUS, datetime(2026, 11, 23, 8),
+                                           datetime(2026, 11, 23, 10))[0], timedelta(days=1))
+
+    def test_shift_rows(self):
+        rows = [{cd.TIMESTAMP: datetime(2026, 11, 22, 12), "CT1_ACT_WATTS": 5.0}]
+        out = cd.shift_rows(rows, timedelta(days=1))
+        self.assertEqual(out[0][cd.TIMESTAMP], datetime(2026, 11, 23, 12))
+        self.assertEqual(rows[0][cd.TIMESTAMP], datetime(2026, 11, 22, 12))   # Original unchanged
+        self.assertEqual(out[0]["CT1_ACT_WATTS"], 5.0)
+
+
 class TestKWh(unittest.TestCase):
     START = datetime(2026, 11, 20, 0, 0)
 

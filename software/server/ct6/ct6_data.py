@@ -51,6 +51,47 @@ class Polarity(Enum):
     IMPORT_NEGATIVE = "Import is negative"
 
 
+class Compare(Enum):
+    """@brief Period overlay: what to draw over the selected period for comparison."""
+    OFF = "Off"
+    PREVIOUS = "Previous period"
+    WEEK = "Week before"
+    YEAR = "Year before"
+
+
+def compare_offset(compare, start_dt, stop_dt):
+    """@brief How far back the comparison period is.
+       @param compare A Compare value.
+       @return (timedelta, short label) or (None, "") if off. The comparison period is
+               start_dt - offset .. stop_dt - offset; its readings are plotted offset later
+               so they line up with the selected period.
+               PREVIOUS: the range length rounded up to whole days (so Today compares with
+               yesterday, This week with last week). YEAR: the same dates a year earlier
+               (29 Feb compares with 28 Feb)."""
+    if compare == Compare.PREVIOUS:
+        days = max(1, -(-int((stop_dt - start_dt).total_seconds()) // 86400))
+        return timedelta(days=days), "previous"
+    if compare == Compare.WEEK:
+        return timedelta(days=7), "week before"
+    if compare == Compare.YEAR:
+        try:
+            year_before = start_dt.replace(year=start_dt.year - 1)
+        except ValueError:          # 29 February
+            year_before = start_dt.replace(year=start_dt.year - 1, day=28)
+        return start_dt - year_before, "year before"
+    return None, ""
+
+
+def shift_rows(rows, offset):
+    """@return Copies of the rows with TIMESTAMP moved later by offset (for the comparison overlay)."""
+    out = []
+    for r in rows:
+        c = dict(r)
+        c[TIMESTAMP] = r[TIMESTAMP] + offset
+        out.append(c)
+    return out
+
+
 class PlotType(Enum):
     """@brief The things that can be plotted. The value is the label shown to the user."""
     POWER = "Power"

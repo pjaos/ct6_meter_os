@@ -25,9 +25,11 @@ KWH_BAR_OPEN = "kwh_bar_open"
 HP_BAR_OPEN = "hp_bar_open"
 SHOW_GAPS = "show_gaps"
 DARK_THEME = "dark_theme"
+COMPARE = "compare"             # Period overlay
 
 DEFAULTS = {TAB: None, PRESET: "Today", RESOLUTION: None, POWER_TYPE: None, POLARITY: None, PLOT_TYPE: None,
-            BUCKET: None, KWH_BAR_OPEN: False, HP_BAR_OPEN: False, SHOW_GAPS: True, DARK_THEME: None}
+            BUCKET: None, KWH_BAR_OPEN: False, HP_BAR_OPEN: False, SHOW_GAPS: True, DARK_THEME: None,
+            COMPARE: None}
 STORAGE_PREFIX = "pref_"        # Key prefix in app.storage.user
 
 

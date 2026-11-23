@@ -29,7 +29,7 @@ from ct6 import ct6_dash2_auth as auth
 from ct6 import ct6_dash2_prefs as up
 
 from ct6 import ct6_data as cd
-from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution, EnergyBucket
+from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution, EnergyBucket, Compare
 from ct6 import ct6_tariff as tf
 from ct6 import ct6_heatpump as hp
 from ct6 import ct6_selfuse as su
@@ -105,6 +105,10 @@ HELP_GAPS = "Break the plot lines where readings are missing (e.g. the CT6 was o
             "joining the readings either side with a straight line. A gap is longer than 5 times the " \
             "usual time between readings, and at least 1 min (Sec), 5 min (Min), 3 h (Hour) or 3 days (Day). " \
             "kWh figures are not affected."
+HELP_COMPARE = "Draw an earlier period over the plot as dashed lines in the same colours, lined up with " \
+               "the selected dates: the previous period of the same length (Today vs yesterday, " \
+               "This week vs last week), the week before, or the same dates a year before. The kWh table " \
+               "adds the earlier period's totals. Not shown on the Energy view."
 HELP_PEAK = "Find the day with the largest daily kWh value (+ve or -ve) for the selected CT port " \
             "between the selected start and stop dates/times. This can be used to gauge solar " \
             "panel performance/degradation over time."
@@ -116,6 +120,7 @@ SUMMARY_COLUMNS = [
      "classes": "bg-green-8 text-white", "headerClasses": "bg-green-8 text-white"},
     {"name": "negative", "label": "kWh", "field": "negative", "align": "right",
      "classes": "bg-orange-8 text-white", "headerClasses": "bg-orange-8 text-white"},
+    {"name": "compare", "label": "Compare kWh", "field": "compare", "align": "right"},
 ]
 
 
@@ -166,7 +171,8 @@ def _base_chart_options(dark=True):
         "backgroundColor": "transparent",
         "textStyle": {"color": text},
         "tooltip": {"trigger": "axis"},
-        "legend": {"type": "scroll", "top": 0, "left": "center", "textStyle": {"color": text}},
+        # Keep the (scrolling) legend clear of the toolbox icons on the right.
+        "legend": {"type": "scroll", "top": 0, "left": 60, "width": "78%", "textStyle": {"color": text}},
         "grid": {"left": 70, "right": 30, "top": 40, "bottom": 70},
         "toolbox": {"right": 10, "top": 0, "iconStyle": {"borderColor": text},
                     "feature": {"dataZoom": {"yAxisIndex": "none"}, "restore": {}, "saveAsImage": {}}},
@@ -321,7 +327,7 @@ class _ClientSession:
         elif t == MSG_PLOT_DATA:
             self._update_plot(msg)
         elif t == MSG_SUMMARY_ROW:
-            self._update_summary_row(msg["device_id"], msg["row"])
+            self._update_summary_row(msg["device_id"], msg["row"], msg.get("compare_label", ""))
         elif t == MSG_COST:
             self._update_cost(msg)
         elif t == MSG_SELFUSE:
@@ -370,7 +376,9 @@ class _ClientSession:
         self._post_self_use(post, dev_id, p["start"], p["stop"])
         post(MSG_STATUS, device_id=dev_id,
              message=f"Energy per {bucket.value.lower()} from minute data: {len(labels)} bar(s) "
-                     f"in {time() - start_t:.1f} seconds (costs {cost_secs:.1f} s).")
+                     f"in {time() - start_t:.1f} seconds (costs {cost_secs:.1f} s)." +
+                     (" The period comparison isn't shown on the Energy view."
+                      if p.get("compare", Compare.OFF) != Compare.OFF else ""))
 
     def _worker_read(self, post, p):
         if p["plot_type"] == PlotType.ENERGY:
@@ -392,6 +400,20 @@ class _ClientSession:
         series = []
         downsampled = False
         gap_secs = cd.gap_threshold(rows, p["resolution"]) if p["gaps"] else None
+
+        # Period overlay: read the earlier period and move it forward so it lines up.
+        offset, cmp_label = cd.compare_offset(p["compare"], p["start"], p["stop"])
+        cmp_rows = []
+        if offset is not None:
+            cmp_start, cmp_stop = p["start"] - offset, p["stop"] - offset
+            with self._gui.data_source_factory() as ds:
+                cmp_count = ds.count_rows(dev_id, cmp_start, cmp_stop, p["resolution"])
+                if cmp_count > p["maxpp"]:
+                    post(MSG_ERROR, device_id=dev_id, message=f"Reduce plot resolution ({cmp_count} values "
+                         f"read for the comparison period, max = {p['maxpp']}).")
+                    return
+                cmp_rows = cd.shift_rows(ds.read_rows(dev_id, cmp_start, cmp_stop, p["resolution"]), offset)
+        cmp_gap_secs = cd.gap_threshold(cmp_rows, p["resolution"]) if p["gaps"] and cmp_rows else None
         if plot_type.is_per_ct:
             is_power = plot_type == PlotType.POWER
             for ct_number, name in device.active_cts():
@@ -402,13 +424,26 @@ class _ClientSession:
                     points = [[x, None if y is None else abs(y)] for x, y in points]
                 reduced = cd.downsample_minmax(points, p["maxdp"])
                 downsampled |= len(reduced) < len(points)
-                series.append({"name": name, "data": reduced})
+                series.append({"name": name, "data": reduced, "colour": len(series)})
+            for i, (ct_number, name) in enumerate(device.active_cts() if cmp_rows else []):
+                column = cd.ct_field(ct_number, plot_type, p["power_type"])
+                points = cd.build_series(cmp_rows, column, p["resolution"], p["invert"], is_power=is_power,
+                                         gap_secs=cmp_gap_secs)
+                if not is_power:
+                    points = [[x, None if y is None else abs(y)] for x, y in points]
+                series.append({"name": f"{name} ({cmp_label})", "data": cd.downsample_minmax(points, p["maxdp"]),
+                               "colour": i, "compare": True})
         else:
             points = cd.build_series(rows, plot_type.single_field, p["resolution"], is_power=False,
                                      gap_secs=gap_secs)
             reduced = cd.downsample_minmax(points, p["maxdp"])
             downsampled = len(reduced) < len(points)
-            series.append({"name": plot_type.single_trace_name(), "data": reduced})
+            series.append({"name": plot_type.single_trace_name(), "data": reduced, "colour": 0})
+            if cmp_rows:
+                points = cd.build_series(cmp_rows, plot_type.single_field, p["resolution"], is_power=False,
+                                         gap_secs=cmp_gap_secs)
+                series.append({"name": f"{plot_type.single_trace_name()} ({cmp_label})",
+                               "data": cd.downsample_minmax(points, p["maxdp"]), "colour": 0, "compare": True})
 
         post(MSG_PLOT_DATA, device_id=dev_id, series=series,
              y_label=plot_type.y_axis_label(p["power_type"]), scale=plot_type != PlotType.POWER,
@@ -417,7 +452,11 @@ class _ClientSession:
         if plot_type.is_per_ct:
             for ct_number, name in device.active_cts():
                 kwh = cd.calc_kwh(rows, cd.act_watts_field(ct_number), p["invert"])
-                post(MSG_SUMMARY_ROW, device_id=dev_id, row=cd.summary_row(ct_number, name, kwh, p["invert"]))
+                row = cd.summary_row(ct_number, name, kwh, p["invert"])
+                if offset is not None:
+                    cmp_kwh = cd.calc_kwh(cmp_rows, cd.act_watts_field(ct_number), p["invert"])
+                    row["compare"] = cd.summary_row(ct_number, name, cmp_kwh, p["invert"])["total"]
+                post(MSG_SUMMARY_ROW, device_id=dev_id, row=row, compare_label=cmp_label)
 
         cost_text = ""
         if plot_type.is_per_ct:
@@ -426,6 +465,11 @@ class _ClientSession:
 
         msg = f"Took {time() - start_t:.1f} seconds to read and plot the data " \
               f"({len(rows)} rows, DB read {read_secs:.1f} s{cost_text})."
+        if offset is not None:
+            first = (p["start"] - offset).strftime("%d %b %Y")
+            last = (p["stop"] - offset).strftime("%d %b %Y")
+            msg += f" Compared with {first}" + (f" – {last}" if last != first else "") + \
+                   ("" if cmp_rows else " (no data)") + "."
         if gap_secs is not None:
             gaps = cd.count_gaps(rows, gap_secs)
             if gaps:
@@ -674,6 +718,7 @@ class _ClientSession:
                   "maxpp": self._options.maxpp,
                   "maxdp": self._options.maxdp,
                   "gaps": bool(self._gaps.value),
+                  "compare": Compare(self._compare.value or Compare.OFF.value),
                   "bucket": EnergyBucket(dt.bucket_toggle.value)}
         self._start_job(self._worker_read, params)
 
@@ -692,6 +737,11 @@ class _ClientSession:
         self._prefs.clear()
         app.storage.user.pop(up.STORAGE_PREFIX + up.DARK_THEME, None)
         ui.navigate.reload()
+
+    def _on_compare_change(self, e):
+        self._remember(up.COMPARE, e.value)
+        if not self._suppress_events and self._tab_panels is not None and self._selected_tab() is not None:
+            self._read_selected()
 
     def _on_gaps_change(self, e):
         self._prefs.set(up.SHOW_GAPS, bool(e.value))
@@ -838,9 +888,15 @@ class _ClientSession:
             opts["series"] = series
             opts["legend"]["data"] = [b["name"] for b in msg["bars"]]
         else:
-            opts["series"] = [{"name": s["name"], "type": "line", "showSymbol": False, "sampling": "lttb",
-                               "lineStyle": {"width": 2}, "emphasis": {"disabled": True}, "data": s["data"]}
-                              for s in msg["series"]]
+            def line(s):
+                colour = PALETTE[s.get("colour", 0) % len(PALETTE)]
+                cmp = s.get("compare", False)
+                return {"name": s["name"], "type": "line", "showSymbol": False, "sampling": "lttb",
+                        "itemStyle": {"color": colour},
+                        "lineStyle": {"width": 1.5 if cmp else 2, "color": colour, "type": "dashed" if cmp else "solid",
+                                      "opacity": 0.6 if cmp else 1},
+                        "z": 1 if cmp else 2, "emphasis": {"disabled": True}, "data": s["data"]}
+            opts["series"] = [line(s) for s in msg["series"]]
             opts["legend"]["data"] = [s["name"] for s in msg["series"]]
         dt.chart.update()
         dt.kwh_bar.set_visibility(msg["has_kwh"])
@@ -884,14 +940,24 @@ class _ClientSession:
             dt.chart = ui.echart(opts).classes("w-full")
         self._set_chart_height(dt)
 
-    def _update_summary_row(self, device_id, row):
+    def _update_summary_row(self, device_id, row, compare_label=""):
         dt = self._tabs.get(device_id)
         if dt is None:
             return
         rows = [r for r in dt.table.rows if r["ct"] != row["ct"]] + [row]
         dt.table.rows = sorted(rows, key=lambda r: r["ct"])
+        self._show_compare_column(dt, compare_label)
         dt.table.update()
-        dt.kwh_summary.set_text(" · ".join(f"{r['sensor']} {r['total']}" for r in dt.table.rows))
+        dt.kwh_summary.set_text(" · ".join(
+            f"{r['sensor']} {r['total']}" + (f" ({r['compare']})" if "compare" in r else "") for r in dt.table.rows))
+
+    def _show_compare_column(self, dt, compare_label):
+        """@brief Show the kWh table's Compare column only with a period overlay."""
+        names = [c["name"] for c in SUMMARY_COLUMNS if compare_label or c["name"] != "compare"]
+        for c in dt.table.columns:
+            if c["name"] == "compare":
+                c["label"] = f"kWh ({compare_label})" if compare_label else "Compare kWh"
+        dt.table.props(f":visible-columns={names!r}".replace("'", '"'))
 
     def _clear_summary(self, dt):
         dt.table.rows = []
@@ -1110,8 +1176,9 @@ class _ClientSession:
                     # One row of tables; it scrolls (rather than wraps or grows) so the chart keeps its space.
                     with ui.row().classes("w-full items-start gap-4 no-wrap overflow-auto") \
                                  .style(f"max-height: {KWH_TABLES_MAX_PX}px"):
-                        dt.table = ui.table(columns=SUMMARY_COLUMNS, rows=[], row_key="ct") \
+                        dt.table = ui.table(columns=[dict(c) for c in SUMMARY_COLUMNS], rows=[], row_key="ct") \
                                      .props("dense flat bordered hide-bottom").classes("min-w-[340px] shrink-0")
+                        self._show_compare_column(dt, "")
                         dt.cost_table = ui.table(columns=COST_COLUMNS, rows=[], row_key="id") \
                                           .props("dense flat bordered hide-bottom").classes("min-w-[340px] shrink-0")
                         dt.cost_table.set_visibility(False)
@@ -1553,7 +1620,13 @@ class _ClientSession:
                                          value=bool(self._prefs.get(up.SHOW_GAPS)),
                                          on_change=self._on_gaps_change).props("dense")
                 self._help(HELP_GAPS)
-            self._controls += [self._resolution, self._power_type, self._polarity, self._gaps]
+            with ui.row().classes("items-center gap-1 no-wrap"):
+                compares = [c.value for c in Compare]
+                self._compare = ui.select(compares, label="Compare with",
+                                          value=self._valid_pref(up.COMPARE, compares, Compare.OFF.value),
+                                          on_change=self._on_compare_change).props("dense").classes("w-44")
+                self._help(HELP_COMPARE)
+            self._controls += [self._resolution, self._power_type, self._polarity, self._gaps, self._compare]
 
             ui.separator()
             ui.label("Peak daily kWh").classes("text-sm ct6-sub")
