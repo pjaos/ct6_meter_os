@@ -113,9 +113,47 @@ SUMMARY_COLUMNS = [
 ]
 
 
+THEME_KEY = "dark_theme"     # app.storage.user key: this browser's theme choice
+THEME_CSS = """
+.ct6-sub { color: #9e9e9e; }
+.ct6-sum { color: #bdbdbd; }
+body.body--light .ct6-sub { color: #616161; }
+body.body--light .ct6-sum { color: #424242; }
+body.body--light .text-warning { color: #b26a00 !important; }
+"""
+
+
+def _chart_colours(dark):
+    return {"text": "#cccccc" if dark else "#333333", "grid": "#3a3a3a" if dark else "#e0e0e0"}
+
+
+def _apply_chart_theme(opts, dark):
+    """@brief Set the theme colours in ECharts options (in place) without touching the data.
+       @return opts."""
+    c = _chart_colours(dark)
+    opts.setdefault("textStyle", {})["color"] = c["text"]
+    if "legend" in opts:
+        opts["legend"].setdefault("textStyle", {})["color"] = c["text"]
+    if "toolbox" in opts:
+        opts["toolbox"].setdefault("iconStyle", {})["borderColor"] = c["text"]
+    for key in ("xAxis", "yAxis"):
+        axes = opts.get(key)
+        for axis in (axes if isinstance(axes, list) else [axes] if axes else []):
+            axis.setdefault("axisLabel", {})["color"] = c["text"]
+            if "nameTextStyle" in axis or key == "yAxis":
+                axis.setdefault("nameTextStyle", {})["color"] = c["text"]
+            split = axis.get("splitLine")
+            if split is not None and split.get("show", True):
+                split.setdefault("lineStyle", {})["color"] = c["grid"]
+    for zoom in opts.get("dataZoom", []):
+        if zoom.get("type") == "slider":
+            zoom.setdefault("textStyle", {})["color"] = c["text"]
+    return opts
+
+
 def _base_chart_options(dark=True):
-    text = "#cccccc" if dark else "#333333"
-    grid_line = "#3a3a3a" if dark else "#e0e0e0"
+    c = _chart_colours(dark)
+    text, grid_line = c["text"], c["grid"]
     axis_line = {"lineStyle": {"color": "#777777"}}
     return {
         "animation": False,
@@ -211,6 +249,9 @@ class _ClientSession:
         self._live_id = 0
         self._live_busy = False
         self._hp = None            # _HeatPumpPanel
+        self._dark = gui.dark      # This browser's theme (set from app.storage.user in build())
+        self._dark_mode = None
+        self._theme_btn = None
         self._hp_expanded = False
 
     # ------------------------------------------------------------ jobs
@@ -721,7 +762,7 @@ class _ClientSession:
             dt = self._tabs.get(device_id) if device_id else self._selected_tab()
             label = dt.status if dt else self._global_status
         label.set_text(message)
-        label.classes(replace="text-sm " + ("text-negative" if error else "text-grey-5"))
+        label.classes(replace="text-sm " + ("text-negative" if error else "ct6-sub"))
 
     def _update_plot(self, msg):
         dt = self._tabs.get(msg["device_id"])
@@ -754,12 +795,33 @@ class _ClientSession:
         dt.kwh_bar.set_visibility(msg["has_kwh"])
         self._set_chart_height(dt)
 
+    # ------------------------------------------------------------ theme
+
+    def _show_theme_button(self):
+        """@brief The header button shows the theme it switches to."""
+        self._theme_btn.props(f"icon={'light_mode' if self._dark else 'dark_mode'}")
+        self._theme_tip.set_text("Light theme" if self._dark else "Dark theme")
+
+    def _toggle_theme(self):
+        """@brief Switch between the dark and light themes, remembered for this browser."""
+        self._dark = not self._dark
+        app.storage.user[THEME_KEY] = self._dark
+        self._dark_mode.set_value(self._dark)
+        self._show_theme_button()
+        charts = [dt.chart for dt in self._tabs.values()] + [c.chart for c in self._live_cards.values()]
+        if self._hp is not None:
+            charts.append(self._hp.chart)
+        for chart in charts:
+            if chart is not None:
+                _apply_chart_theme(chart.options, self._dark)
+                chart.update()
+
     def _set_chart_mode(self, dt, mode):
         """@brief Switch a device chart between the time series ("line") and Energy ("bar") layouts."""
         if dt.mode == mode:
             return
         dt.mode = mode
-        opts = _base_chart_options(self._gui.dark)
+        opts = _base_chart_options(self._dark)
         if mode == "bar":
             opts["xAxis"] = {**opts["xAxis"], "type": "category", "data": []}
             opts["tooltip"] = {"trigger": "axis", "axisPointer": {"type": "shadow"}}
@@ -796,7 +858,7 @@ class _ClientSession:
             return
         dt.self_row.set_visibility(msg["visible"])
         dt.self_summary.set_text(msg["summary"])
-        dt.self_summary.classes(replace="text-sm ellipsis " + ("text-warning" if msg["warn"] else "text-grey-4"))
+        dt.self_summary.classes(replace="text-sm ellipsis " + ("text-warning" if msg["warn"] else "ct6-sum"))
         dt.self_tip.set_text(msg["caveat"])
         dt.self_table.rows = msg["rows"]
         dt.self_table.update()
@@ -809,7 +871,7 @@ class _ClientSession:
             return
         dt.cost_summary.set_text(msg["summary"])
         normal = msg["ok"] and not msg.get("warn")
-        dt.cost_summary.classes(replace="text-sm ellipsis " + ("text-grey-4" if normal else "text-warning"))
+        dt.cost_summary.classes(replace="text-sm ellipsis " + ("ct6-sum" if normal else "text-warning"))
         dt.cost_tip.set_text(msg["caveat"])
         dt.cost_table.rows = msg["rows"]
         dt.cost_table.update()
@@ -931,15 +993,15 @@ class _ClientSession:
                         with ui.row().classes("w-full items-center gap-2"):
                             card.dot = ui.icon("circle", size="xs").classes("text-grey-6")
                             ui.label(dev.name).classes("text-subtitle1 text-weight-bold")
-                            card.age = ui.label("").classes("text-sm text-grey-5")
+                            card.age = ui.label("").classes("text-sm ct6-sub")
                             ui.space()
-                            card.stats = ui.label("").classes("text-sm text-grey-4")
+                            card.stats = ui.label("").classes("text-sm ct6-sum")
                         with ui.row().classes("w-full gap-6"):
                             for ct_number, name in dev.active_cts():
                                 with ui.column().classes("gap-0"):
-                                    ui.label(name).classes("text-xs text-grey-5")
+                                    ui.label(name).classes("text-xs ct6-sub")
                                     card.ct_values[ct_number] = ui.label("–").classes("text-h6")
-                        opts = _base_chart_options(self._gui.dark)
+                        opts = _base_chart_options(self._dark)
                         opts.pop("dataZoom")
                         opts.pop("toolbox")
                         opts["grid"] = {"left": 60, "right": 20, "top": 30, "bottom": 25}
@@ -960,7 +1022,7 @@ class _ClientSession:
                                              .props("no-caps dense")
                         self._help(HELP_ENERGY_BUCKET)
                     dt.bucket_row.set_visibility(False)
-                    dt.status = ui.label("").classes("text-sm text-grey-5")
+                    dt.status = ui.label("").classes("text-sm ct6-sub")
                 # kWh table above the plot, collapsed by default. The header shows the totals.
                 dt.kwh_bar = ui.expansion(value=self._kwh_expanded,
                                           on_value_change=lambda e: self._on_kwh_toggle(e.value)) \
@@ -969,16 +1031,16 @@ class _ClientSession:
                     with ui.column().classes("w-full gap-0"):
                         with ui.row().classes("w-full items-center gap-3 no-wrap"):
                             ui.label("kWh").classes("text-sm text-weight-bold w-6")
-                            dt.kwh_summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
+                            dt.kwh_summary = ui.label("").classes("text-sm ct6-sum ellipsis")
                         with ui.row().classes("w-full items-center gap-3 no-wrap"):
                             ui.label("£").classes("text-sm text-weight-bold w-6")
-                            dt.cost_summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
-                            with ui.icon("info_outline", size="xs").classes("text-grey-5"):
+                            dt.cost_summary = ui.label("").classes("text-sm ct6-sum ellipsis")
+                            with ui.icon("info_outline", size="xs").classes("ct6-sub"):
                                 dt.cost_tip = ui.tooltip("").classes("text-body2").style("max-width: 420px")
                         with ui.row().classes("w-full items-center gap-3 no-wrap") as dt.self_row:
                             ui.icon("wb_sunny", size="xs").classes("text-weight-bold w-6")
-                            dt.self_summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
-                            with ui.icon("info_outline", size="xs").classes("text-grey-5"):
+                            dt.self_summary = ui.label("").classes("text-sm ct6-sum ellipsis")
+                            with ui.icon("info_outline", size="xs").classes("ct6-sub"):
                                 dt.self_tip = ui.tooltip("").classes("text-body2").style("max-width: 420px")
                         dt.self_row.set_visibility(False)
                 with dt.kwh_bar:
@@ -994,7 +1056,7 @@ class _ClientSession:
                                           .props("dense flat bordered hide-bottom").classes("min-w-[280px] shrink-0")
                         dt.self_table.set_visibility(False)
                 with ui.element("div").classes("w-full") as dt.chart_box:
-                    dt.chart = ui.echart(_base_chart_options(self._gui.dark)).classes("w-full")
+                    dt.chart = ui.echart(_base_chart_options(self._dark)).classes("w-full")
                 self._set_chart_height(dt)
 
     # ------------------------------------------------------------ Heat pump tab
@@ -1029,18 +1091,18 @@ class _ClientSession:
                                          label="Cooling months").props("dense").classes("w-48")
                     p.apply_btn = ui.button("Apply", on_click=self._on_hp_apply).props("no-caps dense")
                     self._help(HELP_HEATPUMP)
-                    p.status = ui.label("").classes("text-sm text-grey-5")
+                    p.status = ui.label("").classes("text-sm ct6-sub")
                 p.bar = ui.expansion(value=self._hp_expanded, on_value_change=self._on_hp_bar_toggle) \
                           .props("dense dense-toggle header-class=q-px-sm").classes("w-full")
                 with p.bar.add_slot("header"):
                     with ui.row().classes("w-full items-center gap-3 no-wrap"):
                         ui.label("Days").classes("text-sm text-weight-bold w-10")
-                        p.summary = ui.label("").classes("text-sm text-grey-4 ellipsis")
+                        p.summary = ui.label("").classes("text-sm ct6-sum ellipsis")
                 with p.bar:
                     p.month_table = ui.table(columns=HP_MONTH_COLUMNS, rows=[], row_key="id") \
                                       .props("dense flat bordered hide-bottom virtual-scroll") \
                                       .classes("min-w-[480px]").style("max-height: 260px")
-                opts = _base_chart_options(self._gui.dark)
+                opts = _base_chart_options(self._dark)
                 text = opts["textStyle"]["color"]
                 opts["xAxis"] = {**opts["xAxis"], "type": "category", "data": []}
                 opts["tooltip"] = {"trigger": "axis", "axisPointer": {"type": "shadow"}}
@@ -1157,11 +1219,17 @@ class _ClientSession:
         """@brief Build the page for this client."""
         self._peak_label = None
         self._tab_panels = None
+        self._dark = bool(app.storage.user.get(THEME_KEY, self._gui.dark))
+        ui.add_css(THEME_CSS)
+        self._dark_mode = ui.dark_mode(self._dark)
         with ui.header().classes("items-center py-1"):
             ui.button(icon="menu", on_click=lambda: drawer.toggle()).props("flat round color=white")
             ui.label(self._gui.PAGE_TITLE).classes("text-lg")
             ui.space()
             ui.label(f"Software Version: {self._gui.version}").classes("text-xs")
+            with ui.button(on_click=self._toggle_theme).props("flat round dense color=white") as self._theme_btn:
+                self._theme_tip = ui.tooltip("")
+            self._show_theme_button()
             if self._gui.login_manager is not None:
                 username = app.storage.user.get(auth.USERNAME, "")
                 ui.icon("person").classes("q-ml-md")
@@ -1174,7 +1242,7 @@ class _ClientSession:
         with ui.column().classes("w-full gap-1"):
             self._tabs_bar = ui.tabs(on_change=None).classes("w-full").props("align=left no-caps dense inline-label")
             self._tab_panels = ui.tab_panels(self._tabs_bar, on_change=self._on_tab_change).classes("w-full")
-            self._global_status = ui.label("").classes("text-sm text-grey-5")
+            self._global_status = ui.label("").classes("text-sm ct6-sub")
 
         ui.timer(POLL_SECONDS, self._poll)
         ui.timer(LIVE_SECONDS, self._live_tick)
@@ -1215,15 +1283,15 @@ class _ClientSession:
         with ui.dialog() as dialog, ui.card().classes("w-[840px] max-w-full"):
             ui.label("Tariff & CT roles").classes("text-h6")
             ui.label("Costs are for the whole site, so they are the same on every device tab.") \
-              .classes("text-sm text-grey-5")
-            ui.label("Off-peak window (local time). Import inside it uses the off-peak rate.").classes("text-sm text-grey-5")
+              .classes("text-sm ct6-sub")
+            ui.label("Off-peak window (local time). Import inside it uses the off-peak rate.").classes("text-sm ct6-sub")
             with ui.row().classes("items-center gap-4"):
                 op_start = self._time_input("Off-peak start")
                 op_start.value = t.offpeak_start
                 op_end = self._time_input("Off-peak end")
                 op_end.value = t.offpeak_end
 
-            ui.label("Rates. Each applies from its date until the next one starts.").classes("text-sm text-grey-5 q-mt-sm")
+            ui.label("Rates. Each applies from its date until the next one starts.").classes("text-sm ct6-sub q-mt-sm")
 
             @ui.refreshable
             def rate_rows():
@@ -1262,7 +1330,7 @@ class _ClientSession:
 
             ui.separator()
             ui.label("CT roles. Each can be on any CT6 device. Solar and battery CTs are optional "
-                     "(for the self-consumption figures).").classes("text-sm text-grey-5")
+                     "(for the self-consumption figures).").classes("text-sm ct6-sub")
             sign_opts = {True: "Import is negative (CT6 default)", False: "Import is positive"}
             ct_opts = {"": "None"}
             for dev_id, dev in self._devices.items():
@@ -1289,7 +1357,7 @@ class _ClientSession:
                           label="Battery charging").props("dense").classes("w-60") \
                   .bind_value(roles, "battery_sign")
             ui.label(f"Above/below 0 are as the plot shows them with the polarity set to '{polarity_name}'.") \
-              .classes("text-xs text-grey-5")
+              .classes("text-xs ct6-sub")
 
             error = ui.label("").classes("text-negative text-sm")
 
@@ -1371,7 +1439,7 @@ class _ClientSession:
         return date_input, time_input
 
     def _help(self, text):
-        ui.icon("help_outline").classes("text-grey-5 cursor-help").tooltip(text)
+        ui.icon("help_outline").classes("ct6-sub cursor-help").tooltip(text)
 
     def _build_controls(self):
         with ui.column().classes("w-full gap-3"):
@@ -1409,7 +1477,7 @@ class _ClientSession:
             self._controls += [self._resolution, self._power_type, self._polarity]
 
             ui.separator()
-            ui.label("Peak daily kWh").classes("text-sm text-grey-5")
+            ui.label("Peak daily kWh").classes("text-sm ct6-sub")
             with ui.row().classes("items-center gap-2 no-wrap"):
                 self._peak_ct = ui.select([], label="CT Port").props("dense").classes("w-36")
                 peak_btn = ui.button("Find Peak Day", on_click=self._on_find_peak).props("no-caps dense")
@@ -1531,6 +1599,7 @@ class CT6Dash2GUI:
                 finally:
                     login_btn.enable()
 
+            ui.dark_mode(bool(app.storage.user.get(THEME_KEY, self.dark)))
             with ui.card().classes("absolute-center w-80 q-pa-lg"):
                 ui.label(self.PAGE_TITLE).classes("text-h6")
                 username = ui.input("Username").props("autofocus autocomplete=username").classes("w-full")
