@@ -10,6 +10,7 @@
      dropped so the newest request always wins."""
 
 import asyncio
+import os
 import queue
 import threading
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ from nicegui.storage import Storage
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ct6 import ct6_dash2_auth as auth
+from ct6 import ct6_dash2_prefs as up
 
 from ct6 import ct6_data as cd
 from ct6.ct6_data import PlotType, PowerType, Polarity, Resolution, EnergyBucket
@@ -117,8 +119,7 @@ SUMMARY_COLUMNS = [
 ]
 
 
-THEME_KEY = "dark_theme"     # app.storage.user key: this browser's theme choice
-GAPS_KEY = "show_gaps"       # app.storage.user key: break plot lines at data gaps
+USER_PREFS_FILENAME = "ct6Dash2UserPrefs.json"     # Per-user remembered settings (login enabled)
 THEME_CSS = """
 .ct6-sub { color: #9e9e9e; }
 .ct6-sum { color: #bdbdbd; }
@@ -676,8 +677,24 @@ class _ClientSession:
                   "bucket": EnergyBucket(dt.bucket_toggle.value)}
         self._start_job(self._worker_read, params)
 
+    # ------------------------------------------------------------ remembered settings
+
+    def _remember(self, key, value):
+        """@brief Remember a setting the user changed (ignored while the code itself sets widgets)."""
+        if not self._suppress_events:
+            self._prefs.set(key, value)
+
+    def _valid_pref(self, key, allowed, default):
+        value = self._prefs.get(key)
+        return value if value in allowed else default
+
+    def _reset_prefs(self):
+        self._prefs.clear()
+        app.storage.user.pop(up.STORAGE_PREFIX + up.DARK_THEME, None)
+        ui.navigate.reload()
+
     def _on_gaps_change(self, e):
-        app.storage.user[GAPS_KEY] = bool(e.value)
+        self._prefs.set(up.SHOW_GAPS, bool(e.value))
         if self._tab_panels is not None and self._selected_tab() is not None:
             self._read_selected()
 
@@ -694,20 +711,30 @@ class _ClientSession:
             dt.plot_toggle.value = PlotType.POWER.value
         self._read_selected()
 
-    def _on_preset(self, preset):
+    def _on_preset(self, preset, startup=False):
+        """@param startup True when restoring the remembered preset on page load: the remembered
+                  resolution and plot types are kept."""
         r = cd.preset_range(preset)
         dt = self._selected_tab()
         self._suppress_events = True
         try:
             self._resolution.value = r.resolution.value
+            if startup:
+                self._resolution.value = self._valid_pref(up.RESOLUTION, [x.value for x in Resolution],
+                                                          r.resolution.value)
             self._start_date.value = r.start_date.isoformat()
             self._start_time.value = r.start_time
             self._stop_date.value = r.stop_date.isoformat()
             self._stop_time.value = r.stop_time
-            if dt is not None and dt.plot_toggle.value != PlotType.ENERGY.value:
+            if not startup and dt is not None and dt.plot_toggle.value != PlotType.ENERGY.value:
                 dt.plot_toggle.value = PlotType.POWER.value
         finally:
             self._suppress_events = False
+        if not startup:
+            self._prefs.set(up.PRESET, preset)
+            self._prefs.set(up.RESOLUTION, None)
+            if dt is not None:
+                self._prefs.set(up.PLOT_TYPE, dt.plot_toggle.value)
         self._read_selected()
 
     def _step_date(self, date_input, days):
@@ -723,6 +750,8 @@ class _ClientSession:
             tab.bucket_row.set_visibility(tab.plot_toggle.value == PlotType.ENERGY.value)
         if self._suppress_events:
             return
+        if tab is not None and tab.plot_toggle.value:
+            self._prefs.set(up.PLOT_TYPE, tab.plot_toggle.value)
         dt = self._selected_tab()
         if dt is not None and dt.device.device_id == device_id and dt.plot_toggle.value:
             self._read_selected()
@@ -730,6 +759,9 @@ class _ClientSession:
     def _on_bucket_change(self, device_id):
         if self._suppress_events:
             return
+        tab = self._tabs.get(device_id)
+        if tab is not None and tab.bucket_toggle.value:
+            self._prefs.set(up.BUCKET, tab.bucket_toggle.value)
         dt = self._selected_tab()
         if dt is not None and dt.device.device_id == device_id and dt.plot_toggle.value == PlotType.ENERGY.value:
             self._read_selected()
@@ -737,6 +769,7 @@ class _ClientSession:
     def _on_tab_change(self):
         if self._suppress_events:
             return
+        self._prefs.set(up.TAB, self._tab_panels.value)
         if self._tab_panels.value == LIVE_TAB:
             self._live_tick()
             return
@@ -823,7 +856,8 @@ class _ClientSession:
     def _toggle_theme(self):
         """@brief Switch between the dark and light themes, remembered for this browser."""
         self._dark = not self._dark
-        app.storage.user[THEME_KEY] = self._dark
+        self._prefs.set(up.DARK_THEME, self._dark)
+        app.storage.user[up.STORAGE_PREFIX + up.DARK_THEME] = self._dark    # For the login page
         self._dark_mode.set_value(self._dark)
         self._show_theme_button()
         charts = [dt.chart for dt in self._tabs.values()] + [c.chart for c in self._live_cards.values()]
@@ -918,6 +952,7 @@ class _ClientSession:
         if self._suppress_events or value == self._kwh_expanded:
             return
         self._kwh_expanded = value
+        self._prefs.set(up.KWH_BAR_OPEN, bool(value))
         self._suppress_events = True
         try:
             for dt in self._tabs.values():
@@ -993,12 +1028,22 @@ class _ClientSession:
                 for dev in devices:
                     self._build_device_panel(self._tabs[dev.device_id])
                 self._build_heatpump_panel(hp_tab)
-            self._tab_panels.value = devices[0].device_id
+            # Restore the remembered tab, plot type and Energy bucket.
+            valid_tabs = [LIVE_TAB, HP_TAB] + [d.device_id for d in devices]
+            self._tab_panels.value = self._valid_pref(up.TAB, valid_tabs, devices[0].device_id)
+            plot_type = self._valid_pref(up.PLOT_TYPE, [p.value for p in PlotType], PlotType.POWER.value)
+            bucket = self._valid_pref(up.BUCKET, [b.value for b in EnergyBucket], EnergyBucket.AUTO.value)
+            for dt in self._tabs.values():
+                dt.plot_toggle.value = plot_type
+                dt.bucket_toggle.value = bucket
+                dt.bucket_row.set_visibility(plot_type == PlotType.ENERGY.value)
         finally:
             self._suppress_events = False
         self._update_peak_options()
-        # On startup show today's data (as ct6_dash).
-        self._on_preset("Today")
+        # On startup show the remembered date preset (Today by default, as ct6_dash).
+        self._on_preset(self._valid_pref(up.PRESET, cd.PRESETS, "Today"), startup=True)
+        if self._tab_panels.value == LIVE_TAB:
+            self._live_tick()
 
     def _build_live_panel(self, live_tab, devices):
         """@brief Build the Live tab: one card per device with its latest readings and a rolling chart."""
@@ -1221,6 +1266,7 @@ class _ClientSession:
 
     def _on_hp_bar_toggle(self, e):
         self._hp_expanded = e.value
+        self._prefs.set(up.HP_BAR_OPEN, bool(e.value))
         self._set_hp_chart_height()
 
     def _set_hp_chart_height(self):
@@ -1237,7 +1283,11 @@ class _ClientSession:
         """@brief Build the page for this client."""
         self._peak_label = None
         self._tab_panels = None
-        self._dark = bool(app.storage.user.get(THEME_KEY, self._gui.dark))
+        username = app.storage.user.get(auth.USERNAME) if self._gui.login_manager is not None else None
+        self._prefs = up.Prefs(app.storage.user, self._gui.user_prefs_file, username)
+        self._dark = bool(self._prefs.get(up.DARK_THEME, self._gui.dark))
+        self._kwh_expanded = bool(self._prefs.get(up.KWH_BAR_OPEN))
+        self._hp_expanded = bool(self._prefs.get(up.HP_BAR_OPEN))
         ui.add_css(THEME_CSS)
         self._dark_mode = ui.dark_mode(self._dark)
         with ui.header().classes("items-center py-1"):
@@ -1480,21 +1530,27 @@ class _ClientSession:
             self._stop_date, self._stop_time = self._date_row("Stop Date", "Stop Time")
 
             with ui.row().classes("items-center gap-1 no-wrap"):
-                self._resolution = ui.toggle([r.value for r in Resolution], value=Resolution.MIN.value) \
+                self._resolution = ui.toggle([r.value for r in Resolution], value=Resolution.MIN.value,
+                                             on_change=lambda e: self._remember(up.RESOLUTION, e.value)) \
                                      .props("no-caps dense")
                 self._help(HELP_RESOLUTION)
             with ui.row().classes("items-center gap-1 no-wrap"):
-                self._power_type = ui.toggle([p.value for p in PowerType], value=PowerType.ACTIVE.value) \
+                power_types = [p.value for p in PowerType]
+                self._power_type = ui.toggle(power_types,
+                                             value=self._valid_pref(up.POWER_TYPE, power_types, PowerType.ACTIVE.value),
+                                             on_change=lambda e: self._remember(up.POWER_TYPE, e.value)) \
                                      .props("no-caps dense")
                 self._help(HELP_POWER_TYPE)
             with ui.row().classes("items-center gap-1 no-wrap"):
                 default_pol = Polarity.IMPORT_NEGATIVE if self._options.negative else Polarity.IMPORT_POSITIVE
-                self._polarity = ui.toggle([p.value for p in Polarity], value=default_pol.value) \
+                polarities = [p.value for p in Polarity]
+                self._polarity = ui.toggle(polarities, value=self._valid_pref(up.POLARITY, polarities, default_pol.value),
+                                           on_change=lambda e: self._remember(up.POLARITY, e.value)) \
                                    .props("no-caps dense")
                 self._help(HELP_POLARITY)
             with ui.row().classes("items-center gap-1 no-wrap"):
                 self._gaps = ui.checkbox("Show data gaps as breaks",
-                                         value=bool(app.storage.user.get(GAPS_KEY, True)),
+                                         value=bool(self._prefs.get(up.SHOW_GAPS)),
                                          on_change=self._on_gaps_change).props("dense")
                 self._help(HELP_GAPS)
             self._controls += [self._resolution, self._power_type, self._polarity, self._gaps]
@@ -1507,6 +1563,13 @@ class _ClientSession:
                 self._help(HELP_PEAK)
             self._peak_label = ui.label("").classes("text-sm whitespace-normal")
             self._controls += [peak_btn]
+
+            ui.separator()
+            where = "for your login" if self._prefs.per_user else "in this browser"
+            ui.label(f"Display settings (tab, dates preset, resolution, plot type, polarity, theme and so on) "
+                     f"are remembered {where}.").classes("text-xs ct6-sub whitespace-normal")
+            ui.button("Reset display settings", icon="restart_alt", on_click=self._reset_prefs) \
+              .props("flat dense no-caps size=sm").classes("self-start")
 
 
 def _kw_text(kw):
@@ -1555,6 +1618,10 @@ class CT6Dash2GUI:
         self.storage_path = storage_path
         self.storage_secret = storage_secret
         self.settings_store = settings_store or tf.SettingsStore("ct6Dash2Settings.json")
+        # With login, display settings are remembered per user in a file next to the settings file.
+        self.user_prefs_file = up.UserPrefsFile(os.path.join(
+            os.path.dirname(os.path.abspath(self.settings_store.filename)), USER_PREFS_FILENAME)) \
+            if login_manager is not None else None
         if login_manager is not None and not storage_secret:
             raise ValueError("A storage secret is required when login is enabled.")
 
@@ -1622,7 +1689,7 @@ class CT6Dash2GUI:
                 finally:
                     login_btn.enable()
 
-            ui.dark_mode(bool(app.storage.user.get(THEME_KEY, self.dark)))
+            ui.dark_mode(bool(app.storage.user.get(up.STORAGE_PREFIX + up.DARK_THEME, self.dark)))
             with ui.card().classes("absolute-center w-80 q-pa-lg"):
                 ui.label(self.PAGE_TITLE).classes("text-h6")
                 username = ui.input("Username").props("autofocus autocomplete=username").classes("w-full")
